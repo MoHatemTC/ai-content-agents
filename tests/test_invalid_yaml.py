@@ -17,3 +17,4 @@ except Exception as e:
 
 finally:
     yaml_path.write_text(original)
+

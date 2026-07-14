@@ -1,15 +1,26 @@
+import os
+
+from dotenv import load_dotenv
 from openai import OpenAI
 
+load_dotenv()
+
 client = OpenAI(
-    api_key="sk-3buuEqEUau2qzFvp6TA5dw",
-    base_url="https://management.sprints.ai/litellm",
+    api_key=os.getenv("LITELLM_API_KEY"),
+    base_url=os.getenv("LITELLM_BASE_URL"),
     timeout=60,
 )
 
+# LiteLLM configuration is loaded from the .env file.
+# Make sure LITELLM_API_KEY, LITELLM_BASE_URL, and DEFAULT_MODEL are set before running this test.
+
 response = client.chat.completions.create(
-    model="FW-Kimi-K2.6",
+    model=os.getenv("DEFAULT_MODEL"),
     messages=[
-        {"role": "user", "content": "Say hello in one sentence."}
+        {
+            "role": "user",
+            "content": "Say hello in one sentence."
+        }
     ],
 )
 
