@@ -19,6 +19,8 @@ from openai import OpenAI
 
 from src.validation.schemas import MentorOutput
 
+from pydantic import ValidationError
+
 load_dotenv()
 
 
@@ -33,18 +35,41 @@ class MentorAgent:
     - Validate output using Pydantic
     """
 
-    def __init__(self) -> None:
+    def __init__(self, mock_mode: Optional[bool] = None) -> None:
         """Initialize the Mentor Agent."""
 
-        self.client = OpenAI(
-            api_key=os.getenv("LITELLM_API_KEY"),
-            base_url=os.getenv("LITELLM_BASE_URL"),
-        )
+        # print("Base URL:", os.getenv("LITELLM_BASE_URL")) # to debug/check if the base URL is loaded correctly
+        # print("Model:", os.getenv("DEFAULT_MODEL")) # to debug/check if the model is loaded correctly
+        # print("API Key Loaded:", bool(os.getenv("LITELLM_API_KEY"))) # to debug/check if the API key is loaded correctly
 
+        api_key = os.getenv("LITELLM_API_KEY")
+        base_url = os.getenv("LITELLM_BASE_URL")
         self.model = os.getenv("DEFAULT_MODEL", "FW-Kimi-K2.6")
 
-        self.prompt = self._load_prompt()
+        if not api_key:
+            raise ValueError("Missing LITELLM_API_KEY environment variable.")
 
+        if not base_url:
+            raise ValueError("Missing LITELLM_BASE_URL environment variable.")
+
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=60.0,  # Increase timeout while testing
+        )
+
+        self.prompt = self._load_prompt()
+        # Configure mock mode.
+        # If a value is passed to the constructor, use it.
+        # Otherwise, read it from the environment variable.
+        if mock_mode is None:
+            self.mock_mode = (
+                os.getenv("MOCK_MODE", "true").lower() == "true"
+            )
+        else:
+            self.mock_mode = mock_mode
+
+    
 
     def _load_prompt(self) -> dict[str, Any]:
         """
@@ -60,20 +85,38 @@ class MentorAgent:
             / "mentor.yaml"
         )
 
-        print(f"Loading prompt from: {prompt_path}")
+        # Check if the YAML file exists
+        if not prompt_path.exists():
+            raise FileNotFoundError(
+                f"Prompt file not found: {prompt_path}"
+            )
 
-        with open(prompt_path, "r", encoding="utf-8") as file:
-            data = yaml.safe_load(file)
+        try:
+            with open(prompt_path, "r", encoding="utf-8") as file:
+                data = yaml.safe_load(file)
 
-        print("Loaded YAML:")
-        print(data)
+        except yaml.YAMLError as e:
+            raise ValueError(
+                "Invalid YAML syntax in mentor.yaml."
+            ) from e
+
+        # Check if the YAML file is empty
+        if data is None:
+            raise ValueError("mentor.yaml is empty.")
+
+        # Ensure the YAML content is a dictionary
+        if not isinstance(data, dict):
+            raise TypeError(
+                "mentor.yaml must contain a YAML dictionary."
+            )
 
         return data
+    
 
     def _build_prompt(
         self,
         content: str,
-        user_question: Optional[str] = "",
+        user_question: Optional[str] = None,
         difficulty: str = "beginner",
     ) -> str:
         """
@@ -98,6 +141,8 @@ class MentorAgent:
         if template is None:
             raise KeyError("'prompt_template' not found in mentor.yaml")
 
+        user_question = user_question or ""
+        
         return template.format(
             content=content,
             user_question=user_question,
@@ -137,7 +182,7 @@ class MentorAgent:
     def generate(
         self,
         content: str,
-        user_question: Optional[str] = "",
+        user_question: Optional[str] = None,
         difficulty: str = "beginner",
     ) -> MentorOutput:
         """
@@ -162,12 +207,44 @@ class MentorAgent:
             user_question=user_question,
             difficulty=difficulty,
         )
+        
+        # Temporary mocked response used while LiteLLM is unavailable.
+        MOCK_RESPONSE = """
+        {
+        "explanation": "Python has two loop types: for and while.",
+        "key_points": [
+            "for loops",
+            "while loops"
+        ],
+        "next_steps": [
+            "Practice writing loops."
+        ],
+        "references": [
+            "Chunk 1"
+        ]
+        }
+        """
 
-        raw_response = self._call_llm(prompt)
+        if self.mock_mode:
+            raw_response = MOCK_RESPONSE
+        else:
+            raw_response = self._call_llm(prompt)
+
+
+        # print("\n=== RAW LLM RESPONSE ===")
+        # print(raw_response) # to debug/check the raw response from the LLM
+        # print("========================\n")
 
         try:
             response_json = json.loads(raw_response)
         except json.JSONDecodeError as e:
             raise ValueError("The LLM returned invalid JSON.") from e
         
-        return MentorOutput.model_validate(response_json)
+
+        try:
+            return MentorOutput.model_validate(response_json)
+
+        except ValidationError as e:
+            raise ValueError(
+                "The LLM response does not match MentorOutput schema."
+            ) from e
