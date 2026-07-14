@@ -1,53 +1,51 @@
-# Content Agents
+# Flashcards, Study Plan & Revision Tools
 
-Starter boilerplate for the **Content Agents Intermediate** internship track.
+This is the Sprint 1 implementation for the Flashcards, Study Plan & Revision lane. It includes Pydantic schemas, YAML prompts, a shared agent registry, and baseline generation code.
 
-Non-gating folder map only — no sprint solutions, agent logic, retrieval, DB, or UI implementation. Mentors and interns clone (or fork) this repo and implement deliverables under the folders below. Task requirements live in the separate task pack / LMS, not in this repo.
-
-## Stack
-
-- **Python**
-- **Streamlit** (frontend)
-- **FastAPI** + **Pydantic** (backend)
-- **SQLite** (persistence)
-
-## Folder map
-
-```text
-content-agents/
-  frontend/          # Streamlit UI
-  backend/           # FastAPI integration entrypoint
-  docs/              # Architecture and integration docs
-  tests/             # Tests
-  src/
-    agents/          # Agent implementations
-    prompts/         # Prompt templates
-    services/        # Shared services
-    retrieval/       # Retrieval / grounding
-    validation/      # Validation / guardrails
-    exports/         # Export utilities
+## Project Structure
+```
+.
+├── pyproject.toml
+├── test_suite.py
+└── src/
+    ├── __init__.py
+    ├── generation/
+    │   ├── __init__.py
+    │   ├── base_generator.py
+    │   └── mock_generator.py
+    ├── prompts/
+    │   ├── flashcards_prompt.yaml
+    │   ├── revision_prompt.yaml
+    │   └── study_plan_prompt.yaml
+    ├── registry/
+    │   ├── __init__.py
+    │   └── agent_registry.py
+    └── schemas/
+        ├── __init__.py
+        ├── flashcards.py
+        ├── revision.py
+        └── study_plan.py
 ```
 
-Implement sprint deliverables in the matching folders (`docs/`, `src/prompts/`, `backend/`, etc.). Do not treat this repo as a completed solution.
-
-## Setup
-
+## Installation
+Install dependencies:
 ```bash
-python -m venv .venv
-
-# Windows
-.venv\Scripts\activate
-
-# macOS / Linux
-source .venv/bin/activate
-
-pip install -r requirements.txt
-copy .env.example .env   # Windows
-# cp .env.example .env   # macOS / Linux
+pip install pydantic pyyaml
 ```
 
-Fill in `.env` with your own keys. Never commit secrets.
+## Usage
+Run the test suite to verify everything works:
+```bash
+python test_suite.py
+```
 
-## Collaboration
+## Schemas
+- **FlashcardSet**: Contains Flashcard objects with front/back content and tags
+- **StudyPlan**: Defines a learning goal and topic schedule with dates and durations
+- **RevisionSession**: Organizes RevisionItem objects with scheduled review dates and difficulty
 
-Mentors and interns work in this repo (or forks) in parallel. Use the task pack for acceptance criteria; use this tree only as the shared project layout.
+## Agents
+The shared registry (`AgentRegistry`) manages three agents:
+1. `flashcard_generator` - Generate flashcards from study materials
+2. `study_plan_generator` - Create structured study plans with goals and schedules
+3. `revision_plan_generator` - Build spaced repetition revision plans
