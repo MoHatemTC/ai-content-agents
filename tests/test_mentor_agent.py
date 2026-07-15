@@ -1,4 +1,12 @@
 from src.agents.mentor_agent import MentorAgent
+from src.validation.schemas import MentorOutput
+
+
+def test_mentor_agent_generation():
+    """
+    Verify that the Mentor Agent generates
+    a valid MentorOutput object.
+    """
 
 # ==========================================
 # MOCK MODE
@@ -24,18 +32,26 @@ from src.agents.mentor_agent import MentorAgent
 # If MOCK_MODE=true  -> uses mock response.
 # If MOCK_MODE=false -> uses LiteLLM.
 # ==========================================
-agent = MentorAgent()
 
-result = agent.generate(
-    content="""
+    agent = MentorAgent()
+
+    result = agent.generate(
+        content="""
 Python is a programming language.
 A loop repeats instructions.
 There are for loops and while loops.
 """,
-    user_question="Explain loops.",
-    difficulty="beginner",
-)
+        user_question="Explain loops.",
+        difficulty="beginner",
+    )
 
-print(result.model_dump_json(indent=2))
+    assert isinstance(result, MentorOutput)
 
-print("\n MentorAgent test passed.")
+    assert result.explanation
+    assert len(result.key_points) > 0
+    assert len(result.next_steps) > 0
+    assert len(result.references) > 0
+
+    for reference in result.references:
+        assert reference.segment_id
+        assert reference.text

@@ -1,29 +1,40 @@
-import os
+from unittest.mock import MagicMock
 
-from dotenv import load_dotenv
-from openai import OpenAI
+from src.agents.mentor_agent import MentorAgent
 
-load_dotenv()
 
-client = OpenAI(
-    api_key=os.getenv("LITELLM_API_KEY"),
-    base_url=os.getenv("LITELLM_BASE_URL"),
-    timeout=60,
-)
+def test_api_mock_response():
+    """
+    Verify that the API client can be mocked
+    without making a real network request.
+    """
 
-# LiteLLM configuration is loaded from the .env file.
-# Make sure LITELLM_API_KEY, LITELLM_BASE_URL, and DEFAULT_MODEL are set before running this test.
+    agent = MentorAgent(mock_mode=True)
 
-response = client.chat.completions.create(
-    model=os.getenv("DEFAULT_MODEL"),
-    messages=[
-        {
-            "role": "user",
-            "content": "Say hello in one sentence."
-        }
-    ],
-)
+    mock_response = MagicMock()
 
-# print(response.choices[0].message.content) 
-# print(response) # this will print the entire response object, which includes metadata and other information.
-# print(response.model_dump_json(indent=2)) # this will print the entire response in JSON format.
+    mock_response.choices[0].message.content = """
+    {
+        "explanation": "Loops repeat instructions.",
+        "key_points": [
+            "Loops avoid repeating code."
+        ],
+        "next_steps": [
+            "Practice writing loops."
+        ],
+        "references": [
+            {
+                "segment_id": "seg1",
+                "text": "A loop repeats instructions."
+            }
+        ]
+    }
+    """
+
+    agent.client = MagicMock()
+    agent.client.chat.completions.create.return_value = mock_response
+
+    result = agent._call_llm("Explain loops")
+
+    assert result is not None
+    assert "Loops repeat instructions" in result

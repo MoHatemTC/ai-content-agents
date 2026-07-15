@@ -40,30 +40,7 @@ class ConceptAgent:
     def __init__(self, mock_mode: Optional[bool] = None) -> None:
         """Initialize the Concept Agent."""
 
-        # print("Base URL:", os.getenv("LITELLM_BASE_URL")) # to debug/check if the base URL is loaded correctly
-        # print("Model:", os.getenv("DEFAULT_MODEL")) # to debug/check if the model is loaded correctly
-        # print("API Key Loaded:", bool(os.getenv("LITELLM_API_KEY"))) # to debug/check if the API key is loaded correctly
-
-        api_key = os.getenv("LITELLM_API_KEY")
-        base_url = os.getenv("LITELLM_BASE_URL")
-        self.model = os.getenv("DEFAULT_MODEL", "FW-Kimi-K2.6")
-
-        if not api_key:
-            raise ValueError("Missing LITELLM_API_KEY environment variable.")
-
-        if not base_url:
-            raise ValueError("Missing LITELLM_BASE_URL environment variable.")
-
-        self.client = OpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            timeout=60.0,  # Increase timeout while testing
-        )
-
-        self.prompt = self._load_prompt()
-        # Configure mock mode.
-        # If a value is passed to the constructor, use it.
-        # Otherwise, read it from the environment variable.
+        # Configure mock mode first.
         if mock_mode is None:
             self.mock_mode = (
                 os.getenv("MOCK_MODE", "true").lower() == "true"
@@ -71,6 +48,32 @@ class ConceptAgent:
         else:
             self.mock_mode = mock_mode
 
+        # Load prompt.
+        self.prompt = self._load_prompt()
+
+        if not self.mock_mode:
+            api_key = os.getenv("LITELLM_API_KEY")
+            base_url = os.getenv("LITELLM_BASE_URL")
+            self.model = os.getenv("DEFAULT_MODEL", "FW-Kimi-K2.6")
+
+            if not api_key:
+                raise ValueError(
+                    "Missing LITELLM_API_KEY environment variable."
+                )
+
+            if not base_url:
+                raise ValueError(
+                    "Missing LITELLM_BASE_URL environment variable."
+                )
+
+            self.client = OpenAI(
+                api_key=api_key,
+                base_url=base_url,
+                timeout=60.0,
+            )
+        else:
+            self.client = None
+            self.model = None
     
 
     def _load_prompt(self) -> dict[str, Any]:
@@ -226,8 +229,11 @@ class ConceptAgent:
                 "for loops iterate over sequences.",
                 "while loops repeat while a condition is true."
             ],
-            "references": [
-                "chunk_001"
+        "references": [
+                {
+                    "segment_id": "chunk_001",
+                    "text": "Relevant content excerpt."
+                }
             ]
         }
         """

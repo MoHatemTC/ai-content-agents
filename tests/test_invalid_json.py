@@ -1,11 +1,17 @@
 import json
 
-invalid_response = """
-{
-    "explanation": "Python loops"
-"""
+import pytest
 
-try:
-    json.loads(invalid_response)
-except json.JSONDecodeError:
-    print("Invalid JSON test passed.")
+
+def test_invalid_json():
+    """
+    Verify that invalid JSON raises a JSONDecodeError.
+    """
+
+    invalid_response = """
+    {
+        "explanation": "Python loops"
+    """
+
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(invalid_response)

@@ -1,20 +1,25 @@
 from pathlib import Path
 
-yaml_path = Path("src/prompts/mentor.yaml")
+import pytest
 
-original = yaml_path.read_text()
+from src.agents.mentor_agent import MentorAgent
 
-yaml_path.write_text(":::: invalid yaml ::::")
 
-try:
-    from src.agents.mentor_agent import MentorAgent
+def test_invalid_yaml():
+    """
+    Verify that an invalid YAML prompt
+    raises an exception.
+    """
 
-    MentorAgent(mock_mode=True)
+    yaml_path = Path("src/prompts/mentor.yaml")
 
-except Exception as e:
-    print("Invalid YAML detected.")
-    print(e)
+    original = yaml_path.read_text()
 
-finally:
-    yaml_path.write_text(original)
+    yaml_path.write_text(":::: invalid yaml ::::")
 
+    try:
+        with pytest.raises(Exception):
+            MentorAgent(mock_mode=True)
+
+    finally:
+        yaml_path.write_text(original)

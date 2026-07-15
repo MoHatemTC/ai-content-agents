@@ -1,13 +1,19 @@
-import os
+import pytest
 
-# Simulate missing API key
-os.environ.pop("LITELLM_API_KEY", None)
+from src.agents.mentor_agent import MentorAgent
 
-try:
-    from src.agents.mentor_agent import MentorAgent
 
-    MentorAgent(mock_mode=True)
+def test_missing_environment_variables(monkeypatch):
+    """
+    Verify that the agent raises an error
+    when mock mode is disabled and the API
+    configuration is missing.
+    """
 
-except ValueError as e:
-    print("Missing environment variable detected.")
-    print(e)
+    monkeypatch.delenv("LITELLM_API_KEY", raising=False)
+
+    with pytest.raises(
+        ValueError,
+        match="Missing LITELLM_API_KEY"
+    ):
+        MentorAgent(mock_mode=False)

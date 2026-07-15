@@ -224,29 +224,48 @@ Typed Output
 
 ## Testing
 
-Run the available tests:
+This project uses **pytest** for automated testing.
+
+Run all tests:
 
 ```bash
-python -m tests.test_mentor_agent
-python -m tests.test_concept_agent
-python -m tests.test_registry
-python -m tests.test_invalid_json
-python -m tests.test_invalid_yaml
-python -m tests.test_missing_yaml
-python -m tests.test_missing_env
+python -m pytest tests/
 ```
 
-These tests verify:
+Or run individual test files:
 
-- Successful Mentor Agent generation
-- Successful Concept Agent generation
-- Registry functionality
-- Schema validation
-- Invalid JSON handling
-- Invalid YAML handling
-- Missing YAML detection
-- Missing environment configuration
-- Unknown agent handling
+```bash
+python -m pytest tests/test_mentor_agent.py
+python -m pytest tests/test_concept_agent.py
+python -m pytest tests/test_registry.py
+python -m pytest tests/test_schema_separation.py
+python -m pytest tests/test_invalid_json.py
+python -m pytest tests/test_invalid_yaml.py
+python -m pytest tests/test_missing_yaml.py
+python -m pytest tests/test_missing_env.py
+```
+
+To display the generated model responses during testing, run pytest with the `-s` flag:
+
+```bash
+python -m pytest -s tests/test_mentor_agent.py
+python -m pytest -s tests/test_concept_agent.py
+```
+
+### Test Coverage
+
+The test suite validates:
+
+- Successful Mentor Agent generation and `MentorOutput` schema validation
+- Successful Concept Agent generation and `ConceptOutput` schema validation
+- Agent Registry lookup and schema mapping
+- Schema separation between Mentor and Concept outputs
+- Invalid JSON response handling
+- Invalid YAML syntax detection
+- Missing YAML file handling
+- Missing environment configuration handling
+- Unknown agent name handling
+- Mock-mode baseline generation and validation
 
 ---
 

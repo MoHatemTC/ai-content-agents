@@ -1,18 +1,24 @@
 from pathlib import Path
 
-yaml_path = Path("src/prompts/mentor.yaml")
-backup = yaml_path.with_suffix(".bak")
+import pytest
 
-yaml_path.rename(backup)
+from src.agents.mentor_agent import MentorAgent
 
-try:
-    from src.agents.mentor_agent import MentorAgent
 
-    MentorAgent(mock_mode=True)
+def test_missing_yaml():
+    """
+    Verify that a missing YAML prompt
+    raises FileNotFoundError.
+    """
 
-except FileNotFoundError as e:
-    print("Missing YAML detected.")
-    print(e)
+    yaml_path = Path("src/prompts/mentor.yaml")
+    backup = yaml_path.with_suffix(".bak")
 
-finally:
-    backup.rename(yaml_path)
+    yaml_path.rename(backup)
+
+    try:
+        with pytest.raises(FileNotFoundError):
+            MentorAgent(mock_mode=True)
+
+    finally:
+        backup.rename(yaml_path)
