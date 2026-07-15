@@ -30,7 +30,7 @@ from src.validation.review_schema import (
     assert_exportable,
     is_legal_transition,
 )
-from src.validation.validator_base import ValidatorBase
+from src.validation.validator_base import ValidatorBase, build_generated_output
 
 
 class DemoItem(BaseModel):
@@ -194,6 +194,42 @@ def test_validator_reports_invalid_json() -> None:
     assert not result.passed
     assert any("JSON" in err for err in result.schema_errors)
     assert model is None
+
+
+def test_build_generated_output_copies_passing_verdict() -> None:
+    validator = ValidatorBase()
+    payload = {"question": "q", "answer": "a", "references": ["chunk-1"]}
+    result, model = validator.validate(payload, DemoItem)
+    assert model is not None
+    output = build_generated_output(
+        agent_run_id="run-1",
+        output_type="demo",
+        output_schema=DemoItem,
+        payload=model.model_dump(),
+        result=result,
+    )
+    assert output.validation_passed is True
+    assert output.validation_report["passed"] is True
+    assert output.schema_name == "DemoItem"
+    assert output.status is OutputStatus.PENDING
+
+
+def test_build_generated_output_copies_failing_verdict() -> None:
+    validator = ValidatorBase()
+    payload = {"question": "q", "answer": "a", "references": []}  # guardrail fails
+    result, _ = validator.validate(payload, DemoItem)
+    output = build_generated_output(
+        agent_run_id="run-1",
+        output_type="demo",
+        output_schema=DemoItem,
+        payload=payload,
+        result=result,
+    )
+    # Failed outputs are still persisted as pending so reviewers can see them,
+    # but the verdict on the record matches the validation result exactly.
+    assert output.validation_passed is False
+    assert output.validation_report["guardrail_violations"]
+    assert output.status is OutputStatus.PENDING
 
 
 def test_validator_reports_guardrail_violation() -> None:

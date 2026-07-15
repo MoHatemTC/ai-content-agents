@@ -11,7 +11,9 @@ steps and **never raises** on bad output — it returns a structured result inst
    collect violations.
 
 The validator has no knowledge of any specific agent: the caller supplies the
-schema type and (optionally) the rules, so the same base serves every lane.
+schema type and (optionally) the rules, so the same base validates any agent
+output. :func:`build_generated_output` then turns a validation result into the
+``GeneratedOutput`` record to persist, copying the verdict onto the record.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Sequence
+from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
@@ -29,6 +32,7 @@ from src.validation.guardrails import (
     GuardrailViolation,
     Severity,
 )
+from src.validation.review_schema import GeneratedOutput
 
 logger = logging.getLogger(__name__)
 
@@ -123,3 +127,44 @@ class ValidatorBase:
             len(violations),
         )
         return ValidationResult(passed=passed, guardrail_violations=violations), model
+
+
+def build_generated_output(
+    *,
+    agent_run_id: str,
+    output_type: str,
+    output_schema: type[BaseModel],
+    payload: dict[str, Any],
+    result: ValidationResult,
+) -> GeneratedOutput:
+    """Build a ``GeneratedOutput`` record from a validation result.
+
+    This is the intended bridge between validation and persistence: it copies the
+    verdict onto the record (``validation_passed`` / ``validation_report``) so the
+    two can never drift apart. The record starts in the default ``pending`` status
+    regardless of the verdict — failed outputs are persisted too, so reviewers can
+    see (and reject by not approving) what an agent produced.
+
+    Args:
+        agent_run_id: ID of the :class:`~src.validation.review_schema.AgentRun`
+            that produced this output.
+        output_type: Kind of artifact (question/flashcard/explanation/...).
+        output_schema: The Pydantic schema the output was validated against; its
+            class name is recorded as ``schema_name``.
+        payload: The output payload to store (typically ``model.model_dump()``
+            when validation passed, or the raw payload when it did not).
+        result: The :class:`ValidationResult` returned by
+            :meth:`ValidatorBase.validate` for this payload.
+
+    Returns:
+        A new :class:`~src.validation.review_schema.GeneratedOutput` in ``pending``
+        status, carrying the validation verdict.
+    """
+    return GeneratedOutput(
+        agent_run_id=agent_run_id,
+        output_type=output_type,
+        payload=payload,
+        schema_name=output_schema.__name__,
+        validation_passed=result.passed,
+        validation_report=result.model_dump(mode="json"),
+    )
