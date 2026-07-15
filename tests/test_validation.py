@@ -12,8 +12,11 @@ from pydantic import BaseModel, ValidationError
 from src.validation.guardrails import (
     DEFAULT_RULES,
     GuardrailContext,
+    GuardrailRule,
+    GuardrailViolation,
     NonEmptyTextRule,
     ReferencesPresentRule,
+    Severity,
 )
 from src.validation.review_schema import (
     AgentRun,
@@ -243,6 +246,31 @@ def test_non_empty_text_rule_fail() -> None:
 def test_default_rules_present() -> None:
     names = {rule.name for rule in DEFAULT_RULES}
     assert {"references_present", "non_empty_text"} <= names
+
+
+def test_violation_severity_defaults_to_error() -> None:
+    violation = GuardrailViolation(rule_name="x", message="boom")
+    assert violation.severity is Severity.ERROR
+
+
+def test_warning_severity_does_not_fail_validation() -> None:
+    class AlwaysWarnRule(GuardrailRule):
+        name = "always_warn"
+
+        def check(
+            self, output: BaseModel, context: GuardrailContext
+        ) -> GuardrailViolation | None:
+            return GuardrailViolation(
+                rule_name=self.name, message="heads up", severity=Severity.WARNING
+            )
+
+    result, model = ValidatorBase(default_rules=[AlwaysWarnRule()]).validate(
+        {"question": "q", "answer": "a", "references": ["chunk-1"]},
+        DemoItem,
+    )
+    assert model is not None
+    assert result.passed  # warnings are reported but do not fail validation
+    assert [v.severity for v in result.guardrail_violations] == [Severity.WARNING]
 
 
 # --------------------------------------------------------------------------- #

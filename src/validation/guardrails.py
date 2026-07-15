@@ -17,8 +17,20 @@ references are present.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from enum import Enum
 
 from pydantic import BaseModel
+
+
+class Severity(str, Enum):
+    """Severity of a guardrail violation.
+
+    ``ERROR`` violations fail validation; ``WARNING`` violations are surfaced in
+    the validation result for the reviewer but do not fail it.
+    """
+
+    ERROR = "error"
+    WARNING = "warning"
 
 
 class GuardrailViolation(BaseModel):
@@ -26,7 +38,7 @@ class GuardrailViolation(BaseModel):
 
     rule_name: str
     message: str
-    severity: str = "error"
+    severity: Severity = Severity.ERROR
 
 
 class GuardrailContext(BaseModel):
@@ -92,9 +104,11 @@ class ReferencesPresentRule(GuardrailRule):
 class NonEmptyTextRule(GuardrailRule):
     """Sanity rule: required text fields must not be blank or too short.
 
-    By default every string field on the output is checked; set
-    ``context.required_text_fields`` to restrict the check. The minimum length is
-    ``context.min_text_length`` (default 1, i.e. blank/whitespace-only fails).
+    By default **every** string field on the output is checked — agents whose
+    schemas include optional/legitimately-blank text fields should pass
+    ``context.required_text_fields`` to restrict the check to the fields that are
+    actually required. The minimum length is ``context.min_text_length``
+    (default 1, i.e. blank/whitespace-only fails).
     """
 
     name = "non_empty_text"

@@ -27,6 +27,7 @@ from src.validation.guardrails import (
     GuardrailContext,
     GuardrailRule,
     GuardrailViolation,
+    Severity,
 )
 
 logger = logging.getLogger(__name__)
@@ -112,7 +113,9 @@ class ValidatorBase:
             if violation is not None:
                 violations.append(violation)
 
-        passed = not violations
+        # Warning-severity violations are surfaced for the reviewer but only
+        # error-severity ones fail validation.
+        passed = not any(v.severity is Severity.ERROR for v in violations)
         logger.info(
             "validation complete: output_schema=%s passed=%s violations=%d",
             output_schema.__name__,
