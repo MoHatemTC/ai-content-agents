@@ -142,7 +142,7 @@ class MentorAgent:
             raise KeyError("'prompt_template' not found in mentor.yaml")
 
         user_question = user_question or ""
-        
+
         return template.format(
             content=content,
             user_question=user_question,
@@ -220,7 +220,7 @@ class MentorAgent:
             "Practice writing loops."
         ],
         "references": [
-            "Chunk 1"
+            "chunk_001"
         ]
         }
         """

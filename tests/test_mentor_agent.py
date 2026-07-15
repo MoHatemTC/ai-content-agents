@@ -7,7 +7,7 @@ from src.agents.mentor_agent import MentorAgent
 # Use this while developing or when the
 # API is unavailable.
 # ==========================================
-agent = MentorAgent(mock_mode=False)  
+# agent = MentorAgent(mock_mode=True)  
 
 # ==========================================
 # REAL API MODE
@@ -24,7 +24,7 @@ agent = MentorAgent(mock_mode=False)
 # If MOCK_MODE=true  -> uses mock response.
 # If MOCK_MODE=false -> uses LiteLLM.
 # ==========================================
-# agent = MentorAgent()
+agent = MentorAgent()
 
 result = agent.generate(
     content="""

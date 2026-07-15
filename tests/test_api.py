@@ -24,4 +24,6 @@ response = client.chat.completions.create(
     ],
 )
 
-print(response.choices[0].message.content)
+# print(response.choices[0].message.content) 
+# print(response) # this will print the entire response object, which includes metadata and other information.
+# print(response.model_dump_json(indent=2)) # this will print the entire response in JSON format.

@@ -8,6 +8,9 @@ outputs follow a consistent format.
 
 from pydantic import BaseModel, Field
 
+class ContentReference(BaseModel):
+    segment_id: str
+    text: str
 
 class MentorOutput(BaseModel):
     """
@@ -32,7 +35,7 @@ class MentorOutput(BaseModel):
         description="Recommended actions or topics for the learner to study next."
     )
 
-    references: list[str] = Field(
+    references: list[ContentReference] = Field(
         ...,
         description="Content chunks or references used to generate the response."
     )
@@ -61,7 +64,7 @@ class ConceptOutput(BaseModel):
         description="Important points that summarize the concept."
     )
 
-    references: list[str] = Field(
+    references: list[ContentReference] = Field(
         ...,
         description="Content chunks or references used to generate the explanation."
     )

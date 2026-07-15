@@ -94,6 +94,7 @@ class ConceptAgent:
             )
 
         try:
+            # print(prompt_path) # to debug/check the path to the YAML file temporarily
             with open(prompt_path, "r", encoding="utf-8") as file:
                 data = yaml.safe_load(file)
 
@@ -174,12 +175,18 @@ class ConceptAgent:
             temperature=0.3,
         )
 
+
+
+        # print(response.model_dump_json(indent=2))
+
         content = response.choices[0].message.content
 
         if not content:
             raise ValueError("The LLM returned an empty response.")
 
         return content.strip()
+
+
 
     def generate(
         self,
@@ -220,7 +227,7 @@ class ConceptAgent:
                 "while loops repeat while a condition is true."
             ],
             "references": [
-                "Chunk 1"
+                "chunk_001"
             ]
         }
         """
