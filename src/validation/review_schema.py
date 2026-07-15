@@ -42,7 +42,9 @@ def _new_id() -> str:
 class OutputStatus(str, Enum):
     """Lifecycle state of a generated output.
 
-    ``approved`` is terminal for Sprint 1 — there is no re-open path.
+    ``approved`` is terminal for Sprint 1 — there is no re-open path and no
+    further approve/edit action. Status-neutral audit comments may still be
+    appended to an approved output's review history.
     """
 
     PENDING = "pending"
@@ -194,14 +196,17 @@ def apply_review(
 
     Raises:
         IllegalTransitionError: If the action is not permitted from the output's
-            current status (including any action on an already-approved output).
+            current status. ``approved`` is terminal: approve/edit actions on an
+            already-approved output are rejected, while status-neutral
+            :attr:`ReviewAction.COMMENT` actions remain allowed for the audit trail.
         ValueError: If ``action`` is :attr:`ReviewAction.EDIT` without an
             ``edited_payload``.
     """
     previous = output.status
 
-    if previous == OutputStatus.APPROVED:
-        # Approved is terminal — no further review actions are permitted.
+    if previous == OutputStatus.APPROVED and action is not ReviewAction.COMMENT:
+        # Approved is terminal for status changes; only audit comments may still
+        # be appended.
         raise IllegalTransitionError(previous, previous)
 
     if action is ReviewAction.APPROVE:

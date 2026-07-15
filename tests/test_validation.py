@@ -105,6 +105,21 @@ def test_apply_review_on_approved_is_illegal() -> None:
         apply_review(output, "nour", ReviewAction.EDIT, edited_payload={"x": 1})
 
 
+def test_apply_review_approve_on_approved_is_illegal() -> None:
+    output = _make_output(OutputStatus.APPROVED)
+    with pytest.raises(IllegalTransitionError):
+        apply_review(output, "nour", ReviewAction.APPROVE)
+
+
+def test_apply_review_comment_on_approved_is_allowed() -> None:
+    # Approved is terminal for status changes only — audit comments still append.
+    output = _make_output(OutputStatus.APPROVED)
+    review = apply_review(output, "nour", ReviewAction.COMMENT, notes="exported in batch 3")
+    assert output.status is OutputStatus.APPROVED
+    assert review.previous_status is review.new_status is OutputStatus.APPROVED
+    assert review.notes == "exported in batch 3"
+
+
 def test_apply_review_comment_keeps_status() -> None:
     output = _make_output()
     review = apply_review(output, "nour", ReviewAction.COMMENT, notes="looks off")
