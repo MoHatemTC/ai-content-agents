@@ -18,8 +18,12 @@ class AgentConfig(BaseModel):
 
 
 class AgentRegistry:
-    def __init__(self, prompts_dir: Path = Path("src/prompts")):
-        self.prompts_dir = prompts_dir
+    def __init__(self, prompts_dir: Optional[Path] = None):
+        if prompts_dir is None:
+            # Resolve prompts directory relative to this file
+            self.prompts_dir = Path(__file__).parent.parent / "prompts"
+        else:
+            self.prompts_dir = prompts_dir
         self.agents: Dict[str, AgentConfig] = {}
         self.schemas: Dict[str, Type[BaseModel]] = {
             "FlashcardSet": FlashcardSet,
@@ -40,6 +44,12 @@ class AgentRegistry:
 
     def get_schema(self, schema_name: str) -> Optional[Type[BaseModel]]:
         return self.schemas.get(schema_name)
+
+    def get_schema_for_agent(self, agent_name: str) -> Optional[Type[BaseModel]]:
+        agent = self.get_agent(agent_name)
+        if agent:
+            return self.get_schema(agent.output_schema)
+        return None
 
     def list_agents(self) -> list:
         return list(self.agents.values())
