@@ -2,3 +2,6 @@ streamlit
 fastapi
 uvicorn
 pydantic
+PyYAML
+python-dotenv
+openai
