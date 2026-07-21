@@ -17,7 +17,7 @@ def test_question_bank_generation():
 # Use this while developing or when the
 # API is unavailable.
 # ==========================================
-# agent = QuestionBankAgent(mock_mode=True)
+    agent = QuestionBankAgent(mock_mode=True)
 
 # ==========================================
 # REAL API MODE
@@ -25,7 +25,7 @@ def test_question_bank_generation():
 # This ignores the MOCK_MODE value in .env.
 # Uncomment when the API is working.
 # ==========================================
-    agent = QuestionBankAgent(mock_mode=False)
+#    agent = QuestionBankAgent(mock_mode=False)
 
 # ==========================================
 # ENVIRONMENT MODE

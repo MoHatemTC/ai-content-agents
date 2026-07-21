@@ -17,7 +17,7 @@ def test_test_help_generation():
 # Use this while developing or when the
 # API is unavailable.
 # ==========================================
-# agent = TestHelpAgent(mock_mode=True)
+    agent = TestHelpAgent(mock_mode=True)
 
 # ==========================================
 # REAL API MODE
@@ -25,7 +25,7 @@ def test_test_help_generation():
 # This ignores the MOCK_MODE value in .env.
 # Uncomment when the API is working.
 # ==========================================
-    agent = TestHelpAgent(mock_mode=False)
+#    agent = TestHelpAgent(mock_mode=False)
 
 # ==========================================
 # ENVIRONMENT MODE
