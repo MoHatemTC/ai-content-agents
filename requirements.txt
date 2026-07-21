@@ -5,3 +5,4 @@ pydantic
 PyYAML
 python-dotenv
 openai
+chromadb
