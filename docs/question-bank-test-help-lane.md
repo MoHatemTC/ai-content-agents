@@ -188,6 +188,23 @@ Currently serves as an architecture placeholder (`render() -> None`) reserved fo
 
 ## Testing Strategy
 
+The project separates tests into two categories:
+
+### Unit Tests
+- Run entirely in Mock Mode.
+- Require no API key.
+- Safe for CI.
+- Verify business logic and schema validation.
+
+### Live Integration Tests
+- Require a configured `LITELLM_API_KEY`.
+- Automatically skipped when credentials are unavailable.
+- Verify communication with the configured LLM provider.
+
+---
+
+## Testing Strategy
+
 Run the full suite using `pytest`:
 
 ```bash
