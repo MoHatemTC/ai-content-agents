@@ -24,10 +24,11 @@ import math
 import os
 import re
 import zlib
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import chromadb
-from chromadb.api.types import EmbeddingFunction
+import numpy as np  # ships with chromadb (a hard dependency of it)
+from chromadb.api.types import Documents, EmbeddingFunction, Embeddings, Metadata
 from chromadb.config import Settings
 
 from src.retrieval.config import RetrievalConfig
@@ -35,6 +36,8 @@ from src.retrieval.models import Chunk
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
+
+    from chromadb.api.types import Embeddable
 
     from src.retrieval.models import RetrievalScope
 
@@ -148,7 +151,7 @@ def split_text_into_chunks(
     ]
 
 
-class HashingEmbeddingFunction(EmbeddingFunction):  # type: ignore[type-arg]
+class HashingEmbeddingFunction(EmbeddingFunction[Documents]):
     """Deterministic offline embedder: hashed bag-of-words, L2-normalized.
 
     Tokens are hashed (CRC32 — stable across processes, unlike ``hash()``)
@@ -181,16 +184,16 @@ class HashingEmbeddingFunction(EmbeddingFunction):  # type: ignore[type-arg]
         """Rebuild the embedder from :meth:`get_config` output."""
         return HashingEmbeddingFunction(dim=int(config.get("dim", 256)))
 
-    def __call__(self, input: list[str]) -> list[list[float]]:  # noqa: A002 - Chroma's interface name
+    def __call__(self, input: Documents) -> Embeddings:  # noqa: A002 - Chroma's interface name
         """Embed a batch of texts.
 
         Args:
             input: Texts to embed (Chroma's ``EmbeddingFunction`` signature).
 
         Returns:
-            One L2-normalized vector per input text.
+            One L2-normalized float32 vector per input text.
         """
-        vectors: list[list[float]] = []
+        vectors: Embeddings = []
         for text in input:
             vector = [0.0] * self._dim
             for token in _tokenize(text):
@@ -201,11 +204,11 @@ class HashingEmbeddingFunction(EmbeddingFunction):  # type: ignore[type-arg]
                 vector[0] = 1.0  # arbitrary unit vector: keeps cosine defined
             else:
                 vector = [value / norm for value in vector]
-            vectors.append(vector)
+            vectors.append(np.asarray(vector, dtype=np.float32))
         return vectors
 
 
-def _default_embedding_function() -> EmbeddingFunction | None:  # type: ignore[type-arg]
+def _default_embedding_function() -> EmbeddingFunction[Documents] | None:
     """Pick the embedder per the repo's ``MOCK_MODE`` convention.
 
     Returns:
@@ -232,7 +235,7 @@ class ChunkIndex:
         self,
         config: RetrievalConfig | None = None,
         *,
-        embedding_function: EmbeddingFunction | None = None,  # type: ignore[type-arg]
+        embedding_function: EmbeddingFunction[Documents] | None = None,
     ) -> None:
         """Create (or reopen) the index.
 
@@ -255,7 +258,11 @@ class ChunkIndex:
             client = chromadb.EphemeralClient(settings=settings)
         self._collection = client.get_or_create_collection(
             name=self._config.collection_name,
-            embedding_function=embedding_function,
+            # Chroma's EmbeddingFunction generic is invariant, so a text-only
+            # embedder needs a cast to the Documents|Images union it accepts.
+            embedding_function=cast(
+                "EmbeddingFunction[Embeddable] | None", embedding_function
+            ),
             metadata={"hnsw:space": "cosine"},
         )
 
@@ -278,9 +285,9 @@ class ChunkIndex:
         chunk_list = list(chunks)
         if not chunk_list:
             return 0
-        metadatas: list[dict[str, Any]] = []
+        metadatas: list[Metadata] = []
         for chunk in chunk_list:
-            metadata: dict[str, Any] = {
+            metadata: dict[str, str | int | float | bool] = {
                 "document_id": chunk.document_id,
                 "ordinal": chunk.ordinal,
             }
