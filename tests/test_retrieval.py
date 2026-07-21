@@ -8,10 +8,17 @@ All tests run fully offline: index tests inject the deterministic
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 from pydantic import ValidationError
 
 from src.retrieval.config import RetrievalConfig
+from src.retrieval.index import (
+    ChunkIndex,
+    HashingEmbeddingFunction,
+    split_text_into_chunks,
+)
 from src.retrieval.models import (
     Chunk,
     GroundedContext,
@@ -20,6 +27,25 @@ from src.retrieval.models import (
     RetrievedChunk,
 )
 from src.validation.schemas import ContentReference
+
+
+def make_index(**config_overrides: object) -> ChunkIndex:
+    """A fresh in-memory index with the deterministic offline embedder.
+
+    Chroma's EphemeralClient shares one in-process instance, so each test
+    gets a unique collection name to stay isolated.
+    """
+    config = RetrievalConfig(
+        collection_name=f"test-{uuid4().hex}",  # type: ignore[arg-type]
+        **config_overrides,  # type: ignore[arg-type]
+    )
+    return ChunkIndex(config, embedding_function=HashingEmbeddingFunction())
+
+
+@pytest.fixture()
+def index() -> ChunkIndex:
+    """Per-test isolated in-memory index."""
+    return make_index()
 
 
 def make_chunk(
@@ -159,3 +185,140 @@ class TestGroundedContext:
         )
         with pytest.raises(InsufficientGroundingError):
             context.as_prompt_content()
+
+
+class TestSplitTextIntoChunks:
+    def test_empty_text_returns_no_chunks(self) -> None:
+        assert split_text_into_chunks("", document_id="doc") == []
+        assert split_text_into_chunks("  \n\n   ", document_id="doc") == []
+
+    def test_single_paragraph_becomes_one_chunk(self) -> None:
+        chunks = split_text_into_chunks(
+            "Newton's second law relates force and mass.",
+            document_id="physics",
+            session_id="session-1",
+        )
+        assert len(chunks) == 1
+        assert chunks[0].chunk_id == "physics-c0000"
+        assert chunks[0].document_id == "physics"
+        assert chunks[0].session_id == "session-1"
+        assert chunks[0].ordinal == 0
+        assert chunks[0].text == "Newton's second law relates force and mass."
+
+    def test_paragraphs_pack_up_to_chunk_size(self) -> None:
+        config = RetrievalConfig(chunk_size=60, chunk_overlap=10)
+        text = "First paragraph about forces.\n\nSecond paragraph about mass.\n\nThird one about acceleration."
+        chunks = split_text_into_chunks(text, document_id="doc", config=config)
+        assert len(chunks) > 1
+        assert [chunk.ordinal for chunk in chunks] == list(range(len(chunks)))
+        # No paragraph is torn apart: each chunk holds whole paragraphs.
+        for chunk in chunks:
+            for paragraph in chunk.text.split("\n\n"):
+                assert paragraph in text
+
+    def test_oversized_paragraph_is_window_split_with_overlap(self) -> None:
+        config = RetrievalConfig(chunk_size=50, chunk_overlap=15)
+        words = [f"word{i:02d}" for i in range(30)]
+        text = " ".join(words)  # one long paragraph, no blank lines
+        chunks = split_text_into_chunks(text, document_id="doc", config=config)
+        assert len(chunks) > 1
+        # Every word survives the split.
+        joined = " ".join(chunk.text for chunk in chunks)
+        for word in words:
+            assert word in joined
+        # Consecutive windows overlap: each next chunk starts with words
+        # already present at the end of the previous chunk.
+        for previous, current in zip(chunks, chunks[1:]):
+            first_word = current.text.split()[0]
+            assert first_word in previous.text.split()
+
+    def test_document_id_is_sanitized_for_citation_safe_ids(self) -> None:
+        chunks = split_text_into_chunks("Some content.", document_id="My Notes! (v2)")
+        assert len(chunks) == 1
+        assert chunks[0].document_id == "My-Notes---v2-"
+        assert chunks[0].chunk_id == "My-Notes---v2--c0000"
+
+
+class TestHashingEmbeddingFunction:
+    def test_is_deterministic_across_instances(self) -> None:
+        first = HashingEmbeddingFunction()(["newton force mass"])
+        second = HashingEmbeddingFunction()(["newton force mass"])
+        assert first[0] == pytest.approx(second[0])
+
+    def test_shared_vocabulary_scores_higher_cosine(self) -> None:
+        embedder = HashingEmbeddingFunction()
+        query, related, unrelated = embedder(
+            [
+                "newton force acceleration",
+                "newton said force equals mass times acceleration",
+                "git branches are lightweight pointers to commits",
+            ]
+        )
+
+        def cosine(a: list[float], b: list[float]) -> float:
+            return sum(x * y for x, y in zip(a, b))  # vectors are L2-normalized
+
+        assert cosine(query, related) > cosine(query, unrelated)
+
+
+class TestChunkIndex:
+    def test_default_embedder_is_offline_under_mock_mode(self) -> None:
+        # conftest pins MOCK_MODE=true, so the default construction path must
+        # pick the hashing embedder and never download an embedding model.
+        default_index = ChunkIndex(RetrievalConfig(collection_name=f"test-{uuid4().hex}"))
+        default_index.add_chunks([make_chunk()])
+        assert len(default_index) == 1
+
+    def test_starts_empty(self, index: ChunkIndex) -> None:
+        assert len(index) == 0
+        assert index.document_ids() == []
+
+    def test_add_chunks_and_get_roundtrip(self, index: ChunkIndex) -> None:
+        chunk = make_chunk(doc="doc-a", ordinal=0, text="Force equals mass times acceleration.")
+        assert index.add_chunks([chunk]) == 1
+        assert len(index) == 1
+        fetched = index.get_chunk("doc-a-c0000")
+        assert fetched == chunk
+
+    def test_get_chunk_roundtrips_none_session(self, index: ChunkIndex) -> None:
+        chunk = make_chunk(doc="doc-b", ordinal=0, session=None)
+        index.add_chunks([chunk])
+        fetched = index.get_chunk("doc-b-c0000")
+        assert fetched is not None
+        assert fetched.session_id is None
+
+    def test_get_chunk_missing_returns_none(self, index: ChunkIndex) -> None:
+        assert index.get_chunk("nope-c0000") is None
+
+    def test_document_ids_lists_ingested_documents(self, index: ChunkIndex) -> None:
+        index.add_chunks([make_chunk(doc="doc-a"), make_chunk(doc="doc-b")])
+        assert index.document_ids() == ["doc-a", "doc-b"]
+
+    def test_incremental_add_extends_existing_index(self, index: ChunkIndex) -> None:
+        index.add_chunks([make_chunk(doc="doc-a", ordinal=0)])
+        index.add_chunks([make_chunk(doc="doc-a", ordinal=1), make_chunk(doc="doc-b")])
+        assert len(index) == 3
+
+    def test_add_document_replaces_previous_version(self, index: ChunkIndex) -> None:
+        old = split_text_into_chunks(
+            "One.\n\nTwo.\n\nThree.",
+            document_id="notes",
+            config=RetrievalConfig(chunk_size=5, chunk_overlap=1),
+        )
+        assert index.add_document("notes", old) == 3
+        new = split_text_into_chunks("Only paragraph now.", document_id="notes")
+        assert index.add_document("notes", new) == 1
+        assert len(index) == 1
+        assert index.get_chunk("notes-c0001") is None
+        assert index.get_chunk("notes-c0000") is not None
+
+    def test_add_document_rejects_foreign_chunks(self, index: ChunkIndex) -> None:
+        with pytest.raises(ValueError, match="does not belong"):
+            index.add_document("notes", [make_chunk(doc="other")])
+
+    def test_remove_document(self, index: ChunkIndex) -> None:
+        index.add_chunks([make_chunk(doc="doc-a"), make_chunk(doc="doc-b")])
+        assert index.remove_document("doc-a") == 1
+        assert len(index) == 1
+        assert index.get_chunk("doc-a-c0000") is None
+        assert index.remove_document("doc-a") == 0
