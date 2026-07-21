@@ -26,6 +26,7 @@ from src.retrieval.models import (
     RetrievalScope,
     RetrievedChunk,
 )
+from src.retrieval.grounding import build_grounded_context, verify_references
 from src.retrieval.retriever import ChromaRetriever
 from src.validation.schemas import ContentReference
 
@@ -449,3 +450,52 @@ class TestChromaRetriever:
         retriever = ChromaRetriever(index)
         results = retriever.retrieve("identical chunk text", RetrievalScope(document_id="doc"))
         assert [result.chunk.chunk_id for result in results] == ["doc-c0000", "doc-c0001"]
+
+
+class TestGroundingContract:
+    def test_build_grounded_context_returns_in_scope_payload(self) -> None:
+        _, retriever = seeded_retriever()
+        scope = RetrievalScope(session_id="session-2")
+        context = build_grounded_context("photosynthesis light energy", scope, retriever)
+        assert context.query == "photosynthesis light energy"
+        assert context.scope == scope
+        assert context.is_sufficient
+        assert all(chunk_id.startswith("bio-notes") for chunk_id in context.chunk_ids)
+
+    def test_build_grounded_context_respects_top_k(self) -> None:
+        _, retriever = seeded_retriever()
+        context = build_grounded_context(
+            "photosynthesis light", RetrievalScope(session_id="session-2"), retriever, top_k=1
+        )
+        assert len(context.chunks) == 1
+
+    def test_build_grounded_context_insufficient_when_nothing_matches(self) -> None:
+        _, retriever = seeded_retriever()
+        context = build_grounded_context(
+            "photosynthesis light", RetrievalScope(session_id="session-1"), retriever
+        )
+        assert context.is_sufficient is False
+        with pytest.raises(InsufficientGroundingError):
+            context.as_prompt_content()
+
+    def test_verify_references_accepts_cited_subset(self) -> None:
+        _, retriever = seeded_retriever()
+        context = build_grounded_context(
+            "photosynthesis light", RetrievalScope(session_id="session-2"), retriever
+        )
+        references = context.to_content_references()[:1]
+        verification = verify_references(references, context)
+        assert verification.valid is True
+        assert verification.unknown_segment_ids == []
+
+    def test_verify_references_flags_fabricated_segment_ids(self) -> None:
+        _, retriever = seeded_retriever()
+        context = build_grounded_context(
+            "photosynthesis light", RetrievalScope(session_id="session-2"), retriever
+        )
+        fabricated = ContentReference(segment_id="made-up-c9999", text="invented")
+        verification = verify_references(
+            [*context.to_content_references(), fabricated], context
+        )
+        assert verification.valid is False
+        assert verification.unknown_segment_ids == ["made-up-c9999"]
