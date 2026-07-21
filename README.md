@@ -45,7 +45,10 @@ python test_suite.py
 - **RevisionSession**: Organizes RevisionItem objects with scheduled review dates and difficulty
 
 ## Agents
+
 The shared registry (`AgentRegistry`) manages three agents:
 1. `flashcard_generator` - Generate flashcards from study materials
 2. `study_plan_generator` - Create structured study plans with goals and schedules
 3. `revision_plan_generator` - Build spaced repetition revision plans
+
+Mentors and interns work in this repo (or forks) in parallel. Use the task pack for acceptance criteria; use this tree only as the shared project layout.
