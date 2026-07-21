@@ -26,6 +26,7 @@ from src.retrieval.models import (
     RetrievalScope,
     RetrievedChunk,
 )
+from src.retrieval.retriever import ChromaRetriever
 from src.validation.schemas import ContentReference
 
 
@@ -322,3 +323,129 @@ class TestChunkIndex:
         assert len(index) == 1
         assert index.get_chunk("doc-a-c0000") is None
         assert index.remove_document("doc-a") == 0
+
+
+GIT_TEXT = "Git branches are lightweight pointers to commits in the repository."
+PHOTO_TEXT = "Photosynthesis converts light energy into chemical energy in plants."
+PHOTO_MORE = "Chlorophyll absorbs light energy during photosynthesis in leaves."
+
+
+def seeded_retriever() -> tuple[ChunkIndex, ChromaRetriever]:
+    """Index with two documents in two sessions, plus a retriever."""
+    index = make_index()
+    index.add_chunks(
+        [
+            Chunk(
+                chunk_id="git-notes-c0000",
+                document_id="git-notes",
+                session_id="session-1",
+                ordinal=0,
+                text=GIT_TEXT,
+            ),
+            Chunk(
+                chunk_id="bio-notes-c0000",
+                document_id="bio-notes",
+                session_id="session-2",
+                ordinal=0,
+                text=PHOTO_TEXT,
+            ),
+            Chunk(
+                chunk_id="bio-notes-c0001",
+                document_id="bio-notes",
+                session_id="session-2",
+                ordinal=1,
+                text=PHOTO_MORE,
+            ),
+        ]
+    )
+    return index, ChromaRetriever(index)
+
+
+class TestChromaRetriever:
+    def test_relevant_chunk_ranks_first_with_descending_scores(self) -> None:
+        _, retriever = seeded_retriever()
+        results = retriever.retrieve(
+            "photosynthesis light energy", RetrievalScope(session_id="session-2")
+        )
+        assert results
+        assert results[0].chunk.chunk_id == "bio-notes-c0000"
+        scores = [result.score for result in results]
+        assert scores == sorted(scores, reverse=True)
+        assert [result.rank for result in results] == list(range(1, len(results) + 1))
+
+    def test_document_scope_never_leaks_other_documents(self) -> None:
+        _, retriever = seeded_retriever()
+        # Query matches only bio-notes vocabulary; scoping to git-notes must
+        # return nothing rather than leak bio-notes chunks.
+        assert retriever.retrieve(
+            "photosynthesis chlorophyll light", RetrievalScope(document_id="git-notes")
+        ) == []
+        in_scope = retriever.retrieve(
+            "photosynthesis chlorophyll light", RetrievalScope(document_id="bio-notes")
+        )
+        assert in_scope
+        assert all(result.chunk.document_id == "bio-notes" for result in in_scope)
+
+    def test_session_scope_never_leaks_other_sessions(self) -> None:
+        _, retriever = seeded_retriever()
+        assert retriever.retrieve(
+            "photosynthesis light", RetrievalScope(session_id="session-1")
+        ) == []
+        in_scope = retriever.retrieve(
+            "photosynthesis light", RetrievalScope(session_id="session-2")
+        )
+        assert in_scope
+        assert all(result.chunk.session_id == "session-2" for result in in_scope)
+
+    def test_document_and_session_scope_intersect(self) -> None:
+        _, retriever = seeded_retriever()
+        # bio-notes lives in session-2; pinning it to session-1 matches nothing.
+        assert retriever.retrieve(
+            "photosynthesis light",
+            RetrievalScope(document_id="bio-notes", session_id="session-1"),
+        ) == []
+
+    def test_top_k_truncates_results(self) -> None:
+        _, retriever = seeded_retriever()
+        results = retriever.retrieve(
+            "photosynthesis light", RetrievalScope(session_id="session-2"), top_k=1
+        )
+        assert len(results) == 1
+        assert results[0].rank == 1
+
+    def test_top_k_defaults_from_config(self) -> None:
+        index = make_index()
+        index.add_chunks(
+            [make_chunk(doc="doc", ordinal=i, text=f"repeated term alpha {i}") for i in range(4)]
+        )
+        retriever = ChromaRetriever(index, RetrievalConfig(top_k=2))
+        results = retriever.retrieve("alpha term", RetrievalScope(document_id="doc"))
+        assert len(results) == 2
+
+    def test_blank_query_returns_empty(self) -> None:
+        _, retriever = seeded_retriever()
+        assert retriever.retrieve("", RetrievalScope(document_id="bio-notes")) == []
+        assert retriever.retrieve("   ", RetrievalScope(document_id="bio-notes")) == []
+
+    def test_empty_index_returns_empty(self) -> None:
+        retriever = ChromaRetriever(make_index())
+        assert retriever.retrieve("anything", RetrievalScope(document_id="doc")) == []
+
+    def test_min_score_filters_weak_matches(self) -> None:
+        index = make_index()
+        index.add_chunks([make_chunk(doc="doc", text="completely unrelated words here")])
+        strict = ChromaRetriever(index, RetrievalConfig(min_score=0.99))
+        assert strict.retrieve("photosynthesis light", RetrievalScope(document_id="doc")) == []
+
+    def test_tie_break_is_deterministic_by_ordinal(self) -> None:
+        index = make_index()
+        same_text = "identical chunk text for tie breaking"
+        index.add_chunks(
+            [
+                make_chunk(doc="doc", ordinal=1, text=same_text),
+                make_chunk(doc="doc", ordinal=0, text=same_text),
+            ]
+        )
+        retriever = ChromaRetriever(index)
+        results = retriever.retrieve("identical chunk text", RetrievalScope(document_id="doc"))
+        assert [result.chunk.chunk_id for result in results] == ["doc-c0000", "doc-c0001"]
