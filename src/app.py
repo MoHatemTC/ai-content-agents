@@ -1,4 +1,6 @@
 
+from __future__ import annotations
+
 import sys
 from pathlib import Path
 
@@ -8,7 +10,7 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 import streamlit as st
-from src.features.ingestion.loader import ContentLoader
+from src.ingestion.loader import ContentLoader
 from src.registry import AgentRegistry
 from src.generation import MockGenerator
 from src.schemas import FlashcardSet, StudyPlan, RevisionSession
@@ -50,15 +52,6 @@ if page == "🏠 Home":
     - **Study Plan Generator**: Build structured study plans
     - **Revision Plan Generator**: Generate spaced repetition revision plans
     """)
-    
-    st.subheader("Quick Start")
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Go to Upload Content"):
-            st.switch_page("📤 Upload Content")
-    with col2:
-        if st.button("Go to Generate Flashcards"):
-            st.switch_page("🃏 Generate Flashcards")
 
 # Page: Upload Content
 elif page == "📤 Upload Content":
@@ -119,8 +112,6 @@ elif page == "🃏 Generate Flashcards":
     
     if "current_doc" not in st.session_state:
         st.warning("Please upload or paste content first!")
-        if st.button("Go to Upload Content"):
-            st.switch_page("📤 Upload Content")
     else:
         doc = st.session_state.current_doc
         st.subheader(f"Using document: {doc.title}")
@@ -157,8 +148,6 @@ elif page == "📅 Study Plan":
     
     if "current_doc" not in st.session_state:
         st.warning("Please upload or paste content first!")
-        if st.button("Go to Upload Content"):
-            st.switch_page("📤 Upload Content")
     else:
         doc = st.session_state.current_doc
         st.subheader(f"Using document: {doc.title}")
@@ -205,8 +194,6 @@ elif page == "🔄 Revision Plan":
     
     if "current_doc" not in st.session_state:
         st.warning("Please upload or paste content first!")
-        if st.button("Go to Upload Content"):
-            st.switch_page("📤 Upload Content")
     else:
         doc = st.session_state.current_doc
         st.subheader(f"Using document: {doc.title}")

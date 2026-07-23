@@ -1,7 +1,8 @@
 
+from __future__ import annotations
+
 import io
-from typing import Optional, Tuple
-from pathlib import Path
+import re
 import markdown
 
 
@@ -9,7 +10,7 @@ class TextParser:
     @staticmethod
     def parse_txt(file_content: bytes) -> str:
         return file_content.decode('utf-8', errors='replace')
-    
+
     @staticmethod
     def parse_pdf(file_content: bytes) -> str:
         try:
@@ -21,7 +22,7 @@ class TextParser:
             return '\n'.join(text)
         except ImportError:
             raise ImportError("PyMuPDF is required for PDF parsing. Install it with 'pip install pymupdf'.")
-    
+
     @staticmethod
     def parse_docx(file_content: bytes) -> str:
         try:
@@ -33,17 +34,16 @@ class TextParser:
             return '\n'.join(text)
         except ImportError:
             raise ImportError("python-docx is required for DOCX parsing. Install it with 'pip install python-docx'.")
-    
+
     @staticmethod
     def parse_markdown(file_content: bytes) -> str:
         md_text = file_content.decode('utf-8', errors='replace')
         # Convert markdown to plain text by stripping HTML tags
         html = markdown.markdown(md_text)
         # Simple HTML tag stripping
-        import re
         plain_text = re.sub(r'<[^>]*>', '', html)
         return plain_text
-    
+
     @classmethod
     def parse(cls, file_content: bytes, file_type: str) -> str:
         parsers = {

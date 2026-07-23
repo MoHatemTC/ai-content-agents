@@ -1,27 +1,11 @@
+
 streamlit
 fastapi
 uvicorn
 pydantic
-Implement Content Ingestion & Processing feature
-
-# Conflicts:
-#       README.md
-#       requirements.txt
-
-# Please enter the commit message for your changes. Lines starting
-# with '#' will be ignored, and an empty message aborts the commit.
-#
-# interactive rebase in progress; onto be353f9
-# Last command done (1 command done):
-#    pick bcc3912 # Implement Content Ingestion & Processing feature
-# No commands remaining.
-
-.git/COMMIT_EDITMSG [unix] (22:54 22/07/2026)                                                    1,1 Top
-"/d/Sprint/Sprint_Task1/ai-content-agents/.git/COMMIT_EDITMSG" [unix] 36L, 1349BHEAD
 PyYAML
 python-dotenv
 openai
-
 pymupdf
 python-docx
 markdown

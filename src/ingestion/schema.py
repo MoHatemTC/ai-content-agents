@@ -1,6 +1,8 @@
 
+from __future__ import annotations
+
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import Optional
 from datetime import datetime
 
 
@@ -15,9 +17,10 @@ class Document(BaseModel):
 
 
 class Chunk(BaseModel):
-    id: Optional[str] = Field(None, description="Unique identifier for the chunk")
+    id: str = Field(..., description="Unique stable identifier for the chunk, formatted as {document_id}-c{ordinal:04d}")
     document_id: str = Field(..., description="ID of the parent document")
-    content: str = Field(..., description="Text content of the chunk")
-    chunk_index: int = Field(..., description="Index of the chunk within the document")
+    text: str = Field(..., description="Text content of the chunk")
+    ordinal: int = Field(..., description="0-based index of the chunk within the document")
     start_char: Optional[int] = Field(None, description="Start character position in original document")
     end_char: Optional[int] = Field(None, description="End character position in original document")
+    session_id: Optional[str] = Field(None, description="Optional session ID for session-scoped retrieval")

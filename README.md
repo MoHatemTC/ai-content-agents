@@ -1,12 +1,19 @@
+
 # Flashcards, Study Plan, Revision Tools & Content Ingestion
 
 This repository contains both Sprint 1 (Flashcards, Study Plan & Revision) and Sprint 2 (Content Ingestion & Processing) implementations.
+
+## Lane Documentation
+- [Content Ingestion & Processing](docs/content-ingestion-lane.md)
+- [Study Agent](docs/study-agent%20lane.md)
+- [Mentor Concept](docs/mentor-concept-lane.md)
+- [Validation](docs/validation-lane.md)
 
 ## Sprint 1: Flashcards, Study Plan & Revision
 Includes Pydantic schemas, YAML prompts, a shared agent registry, and baseline generation code.
 
 ## Sprint 2: Content Ingestion & Processing
-Adds content ingestion, multi‑format parsing, cleaning, chunking, deduplication, and Streamlit UI for uploading content.
+Adds content ingestion, multi-format parsing, cleaning, chunking, deduplication, and Streamlit UI for uploading content.
 
 ## Project Structure
 ```
@@ -15,6 +22,7 @@ Adds content ingestion, multi‑format parsing, cleaning, chunking, deduplicatio
 ├── test_suite.py
 ├── src/
 │   ├── __init__.py
+│   ├── app.py                # Combined AI Study Assistant UI
 │   ├── generation/
 │   │   ├── __init__.py
 │   │   ├── base_generator.py
@@ -31,8 +39,7 @@ Adds content ingestion, multi‑format parsing, cleaning, chunking, deduplicatio
 │   │   ├── flashcards.py
 │   │   ├── revision.py
 │   │   └── study_plan.py
-│   └── features/
-│       └── ingestion/
+│   └── ingestion/
 │           ├── README.md
 │           ├── __init__.py
 │           ├── schema.py
@@ -78,12 +85,12 @@ streamlit run src/app.py
 ### Sprint 2: Standalone Content Ingestion UI
 Launch only the content ingestion app:
 ```bash
-streamlit run src/features/ingestion/ui.py
+streamlit run src/ingestion/ui.py
 ```
 
 ### Sprint 2: Programmatic Usage
 ```python
-from src.features.ingestion.loader import ContentLoader
+from src.ingestion.loader import ContentLoader
 
 loader = ContentLoader()
 
@@ -110,12 +117,11 @@ The shared registry (`AgentRegistry`) manages three agents:
 3. `revision_plan_generator` - Build spaced repetition revision plans
 
 ## Sprint 2: Key Features
-- **Multi‑format parsing**: TXT, PDF, DOCX, Markdown
+- **Multi-format parsing**: TXT, PDF, DOCX, Markdown
 - **Text cleaning & normalization**
 - **Text chunking** (with configurable size/overlap)
 - **Content deduplication** (via SHA-256 hashing)
 - **SQLite persistence**
 - **Streamlit UI** for easy content upload/paste
 
-For more details, see [src/features/ingestion/README.md](file:///d:/Sprint/Sprint_Task1/ai-content-agents/src/features/ingestion/README.md)
-
+For more details, see [src/ingestion/README.md](src/ingestion/README.md)

@@ -1,13 +1,14 @@
 
-import pytest
+from __future__ import annotations
+
 import tempfile
 import os
-from src.features.ingestion.schema import Document, Chunk
-from src.features.ingestion.parser import TextParser
-from src.features.ingestion.cleaner import TextCleaner
-from src.features.ingestion.chunker import TextChunker
-from src.features.ingestion.dedupe import Deduplicator
-from src.features.ingestion.store import SQLiteStore
+from src.ingestion.schema import Document, Chunk
+from src.ingestion.parser import TextParser
+from src.ingestion.cleaner import TextCleaner
+from src.ingestion.chunker import TextChunker
+from src.ingestion.dedupe import Deduplicator
+from src.ingestion.store import SQLiteStore
 
 
 def test_text_cleaner():
@@ -22,8 +23,9 @@ def test_text_chunker():
     text = "1234567890abcdefghij"
     chunks = chunker.chunk(text, "test-doc-id")
     assert len(chunks) > 0
-    assert chunks[0].content == "1234567890"
-    assert chunks[1].content == "90abcdefgh"
+    assert chunks[0].text == "1234567890"
+    assert chunks[0].id == "test-doc-id-c0000"
+    assert chunks[1].text == "90abcdefgh"
 
 
 def test_deduplicator():
@@ -42,7 +44,7 @@ def test_parser_txt():
 def test_store():
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = f.name
-    
+
     try:
         store = SQLiteStore(db_path)
         doc = Document(
@@ -53,15 +55,25 @@ def test_store():
         saved_doc = store.add_document(doc)
         assert saved_doc.id is not None
         assert saved_doc.content_hash is not None
-        
+
         chunks = [
-            Chunk(document_id=saved_doc.id, content="chunk 1", chunk_index=0),
-            Chunk(document_id=saved_doc.id, content="chunk 2", chunk_index=1)
+            Chunk(
+                id=f"{saved_doc.id}-c0000",
+                document_id=saved_doc.id,
+                text="chunk 1",
+                ordinal=0
+            ),
+            Chunk(
+                id=f"{saved_doc.id}-c0001",
+                document_id=saved_doc.id,
+                text="chunk 2",
+                ordinal=1
+            )
         ]
         saved_chunks = store.add_chunks(chunks)
         assert len(saved_chunks) == 2
         assert all(c.id is not None for c in saved_chunks)
-        
+
         retrieved_chunks = store.get_chunks_by_document_id(saved_doc.id)
         assert len(retrieved_chunks) == 2
     finally:

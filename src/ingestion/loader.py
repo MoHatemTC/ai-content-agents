@@ -1,5 +1,7 @@
 
-from .schema import Document, Chunk
+from __future__ import annotations
+
+from .schema import Document
 from .parser import TextParser
 from .cleaner import TextCleaner
 from .chunker import TextChunker
@@ -11,17 +13,23 @@ class ContentLoader:
         self.store = SQLiteStore(db_path)
         self.cleaner = TextCleaner()
         self.chunker = TextChunker()
-    
-    def load_file(self, file_content: bytes, filename: str, source_type: str = "file") -> Document:
+
+    def load_file(
+        self,
+        file_content: bytes,
+        filename: str,
+        source_type: str = "file",
+        session_id: str | None = None
+    ) -> Document:
         # Determine file type
         file_type = filename.split('.')[-1].lower() if '.' in filename else None
-        
+
         # Parse file
         raw_text = TextParser.parse(file_content, file_type)
-        
+
         # Clean text
         cleaned_text = self.cleaner.clean(raw_text)
-        
+
         # Create document
         document = Document(
             title=filename,
@@ -29,36 +37,42 @@ class ContentLoader:
             source_type=source_type,
             file_type=file_type
         )
-        
+
         # Save document
         saved_doc = self.store.add_document(document)
-        
+
         # Create chunks
-        chunks = self.chunker.chunk(saved_doc.content, saved_doc.id)
-        
+        chunks = self.chunker.chunk(saved_doc.content, saved_doc.id, session_id)
+
         # Save chunks
         self.store.add_chunks(chunks)
-        
+
         return saved_doc
-    
-    def load_text(self, text: str, title: str = "Pasted Text", source_type: str = "paste") -> Document:
+
+    def load_text(
+        self,
+        text: str,
+        title: str = "Pasted Text",
+        source_type: str = "paste",
+        session_id: str | None = None
+    ) -> Document:
         # Clean text
         cleaned_text = self.cleaner.clean(text)
-        
+
         # Create document
         document = Document(
             title=title,
             content=cleaned_text,
             source_type=source_type
         )
-        
+
         # Save document
         saved_doc = self.store.add_document(document)
-        
+
         # Create chunks
-        chunks = self.chunker.chunk(saved_doc.content, saved_doc.id)
-        
+        chunks = self.chunker.chunk(saved_doc.content, saved_doc.id, session_id)
+
         # Save chunks
         self.store.add_chunks(chunks)
-        
+
         return saved_doc

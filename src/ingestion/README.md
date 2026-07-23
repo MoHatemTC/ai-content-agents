@@ -17,12 +17,12 @@ This module handles ingestion, parsing, cleaning, chunking, deduplication, and s
 ## Usage
 ### Streamlit UI
 ```bash
-streamlit run src/features/ingestion/ui.py
+streamlit run src/ingestion/ui.py
 ```
 
 ### Programmatic Usage
 ```python
-from src.features.ingestion.loader import ContentLoader
+from src.ingestion.loader import ContentLoader
 
 loader = ContentLoader()
 
