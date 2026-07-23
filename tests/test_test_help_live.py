@@ -6,8 +6,8 @@ from src.validation.schemas import TestHelpOutput
 
 
 pytestmark = pytest.mark.skipif(
-    not os.getenv("LITELLM_API_KEY"),
-    reason="Live API credentials are not configured.",
+    os.getenv("RUN_LIVE_TESTS", "").lower() != "true",
+    reason="Set RUN_LIVE_TESTS=true to run live API tests.",
 )
 
 

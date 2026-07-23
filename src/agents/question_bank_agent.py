@@ -13,7 +13,6 @@ import json
 import os
 from pathlib import Path
 from typing import Any, Optional
-from urllib import parse
 
 import yaml
 from dotenv import load_dotenv
