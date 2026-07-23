@@ -204,14 +204,32 @@ The project separates tests into two categories:
 ---
 
 ## Testing Strategy
-
-Run the full suite using `pytest`:
+hese tests are hermetic and do not require API credentials.
 
 ```bash
-# Run individual agent tests with stdout enabled
 python -m pytest tests/test_question_bank.py -s -v
 python -m pytest tests/test_test_help.py -s -v
 ```
+
+### Live API Integration Tests
+
+Live tests are **opt-in** and only run when explicitly enabled.
+
+```bash
+RUN_LIVE_TESTS=true python -m pytest tests/test_question_bank_live.py -s -v
+
+RUN_LIVE_TESTS=true python -m pytest tests/test_test_help_live.py -s -v
+```
+
+This prevents accidental API calls during normal development or CI while still allowing end-to-end validation against the configured LLM provider.
+
+### Run the Full Test Suite
+
+```bash
+python -m pytest tests -v
+```
+
+By default, the live integration tests are skipped. To include them, enable `RUN_LIVE_TESTS=true` before running pytest.
 
 ### Coverage Overview
 * **Agent Generation:** Verifies structural completeness, field validity, and grounding.
