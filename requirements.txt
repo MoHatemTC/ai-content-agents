@@ -1,3 +1,4 @@
+
 streamlit
 fastapi
 uvicorn
@@ -5,4 +6,7 @@ pydantic
 PyYAML
 python-dotenv
 openai
+pymupdf
+python-docx
+markdown
 chromadb
