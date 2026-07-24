@@ -14,9 +14,13 @@ from typing import Any
 
 from src.agents.concept_agent import ConceptAgent
 from src.agents.mentor_agent import MentorAgent
+from src.agents.question_bank_agent import QuestionBankAgent
+from src.agents.test_help_agent import TestHelpAgent
 from src.validation.schemas import (
     ConceptOutput,
     MentorOutput,
+    QuestionBankOutput,
+    TestHelpOutput,
 )
 
 
@@ -49,6 +53,14 @@ class AgentRegistry:
             "concept": {
                 "agent": ConceptAgent(mock_mode=mock_mode),
                 "schema": ConceptOutput,
+            },
+            "question_bank": {
+                "agent": QuestionBankAgent(mock_mode=mock_mode),
+                "schema": QuestionBankOutput,
+            },
+            "test_help": {
+                "agent": TestHelpAgent(mock_mode=mock_mode),
+                "schema": TestHelpOutput,
             },
         }
 
