@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from time import perf_counter
 from typing import Any, Optional
 
 import yaml
@@ -20,6 +21,14 @@ from openai import OpenAI
 from src.validation.schemas import MentorOutput
 
 from pydantic import ValidationError
+
+from src.retrieval.models import GroundedContext
+from src.retrieval.grounding import verify_references
+
+from src.validation.support_validator import validate_support
+from src.validation.review_schema import AgentRun, GeneratedOutput
+from src.validation.validator_base import ValidatorBase, build_generated_output
+from src.models.batch import BatchGenerationFailure, BatchGenerationResult
 
 load_dotenv()
 
@@ -113,7 +122,7 @@ class MentorAgent:
 
     def _build_prompt(
         self,
-        content: str,
+        content: str | GroundedContext,
         user_question: Optional[str] = None,
         difficulty: str = "beginner",
     ) -> str:
@@ -141,8 +150,13 @@ class MentorAgent:
 
         user_question = user_question or ""
 
+        if isinstance(content, GroundedContext):
+            content_text = content.as_prompt_content()
+        else:
+            content_text = content
+
         return template.format(
-            content=content,
+            content=content_text,
             user_question=user_question,
             difficulty=difficulty,
         )
@@ -187,6 +201,7 @@ class MentorAgent:
         content: str,
         user_question: Optional[str] = None,
         difficulty: str = "beginner",
+        context: GroundedContext | None = None,
     ) -> MentorOutput:
         """
         Generate a mentoring response.
@@ -205,8 +220,13 @@ class MentorAgent:
             Validated MentorOutput object.
         """
 
+        if context is not None:
+            content_text = context.as_prompt_content()
+        else:
+            content_text = content
+
         prompt = self._build_prompt(
-            content=content,
+            content=content_text,
             user_question=user_question,
             difficulty=difficulty,
         )
@@ -236,11 +256,6 @@ class MentorAgent:
         else:
             raw_response = self._call_llm(prompt)
 
-
-        # print("\n=== RAW LLM RESPONSE ===")
-        # print(raw_response) # to debug/check the raw response from the LLM
-        # print("========================\n")
-
         try:
             response_json = json.loads(raw_response)
         except json.JSONDecodeError as e:
@@ -248,9 +263,114 @@ class MentorAgent:
         
 
         try:
-            return MentorOutput.model_validate(response_json)
+            result = MentorOutput.model_validate(response_json)
 
         except ValidationError as e:
             raise ValueError(
                 "The LLM response does not match MentorOutput schema."
             ) from e
+
+        if context is not None:
+            verification = verify_references(
+                result.references,
+                context,
+            )
+
+            if not verification.valid:
+                raise ValueError(
+                    "The generated references are not grounded in the retrieved content."
+                )
+
+        if context is not None:
+            support = validate_support(
+                result.explanation,
+                context,
+            )
+
+            if not support.supported:
+                raise ValueError(
+                    "The generated explanation contains unsupported claims."
+                )
+
+
+        return result
+
+    def generate_reviewable(
+        self,
+        content: str,
+        user_question: Optional[str] = None,
+        difficulty: str = "beginner",
+        context: GroundedContext | None = None,
+    ) -> GeneratedOutput:
+        """Generate a mentoring response and prepare it for human review.
+
+        The returned record is always pending review. This method delegates all
+        generation, schema, grounding, and support checks to :meth:`generate`
+        before applying the shared validation and review-record pipeline.
+        """
+        agent_run = AgentRun(
+            agent_name="mentor_agent",
+            input_context=content,
+            source_chunk_ids=context.chunk_ids if context is not None else [],
+            model=self.model,
+        )
+        generated = self.generate(
+            content=content,
+            user_question=user_question,
+            difficulty=difficulty,
+            context=context,
+        )
+        payload = generated.model_dump()
+        validator = ValidatorBase()
+        validation_result, validated_output = validator.validate(
+            payload,
+            MentorOutput,
+        )
+
+        return build_generated_output(
+            agent_run_id=agent_run.id,
+            output_type="mentor_explanation",
+            output_schema=MentorOutput,
+            payload=(
+                validated_output.model_dump()
+                if validated_output is not None
+                else payload
+            ),
+            result=validation_result,
+        )
+
+    def generate_batch(
+        self,
+        items: list[dict[str, Any]],
+    ) -> BatchGenerationResult[MentorOutput]:
+        """Generate mentor responses for multiple inputs without stopping on errors.
+
+        Each item must contain the keyword arguments accepted by :meth:`generate`,
+        including required ``content`` and optional ``user_question``,
+        ``difficulty``, and ``context`` values. Successful outputs retain their
+        original input order.
+        """
+        started_at = perf_counter()
+        successful_outputs: list[MentorOutput] = []
+        failed_items: list[BatchGenerationFailure] = []
+
+        for index, item in enumerate(items):
+            try:
+                successful_outputs.append(self.generate(**item))
+            except Exception as error:
+                failed_items.append(
+                    BatchGenerationFailure(
+                        index=index,
+                        input_item=item,
+                        error=str(error),
+                    )
+                )
+
+        return BatchGenerationResult(
+            successful_outputs=successful_outputs,
+            failed_items=failed_items,
+            total_processed=len(items),
+            total_succeeded=len(successful_outputs),
+            total_failed=len(failed_items),
+            elapsed_seconds=perf_counter() - started_at,
+        )

@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from time import perf_counter
 from typing import Any, Optional
 
 import yaml
@@ -22,6 +23,14 @@ from openai import OpenAI
 from src.validation.schemas import ConceptOutput
 
 from pydantic import ValidationError
+
+from src.retrieval.models import GroundedContext
+from src.retrieval.grounding import verify_references
+
+from src.validation.support_validator import validate_support
+from src.validation.review_schema import AgentRun, GeneratedOutput
+from src.validation.validator_base import ValidatorBase, build_generated_output
+from src.models.batch import BatchGenerationFailure, BatchGenerationResult
 
 load_dotenv()
 
@@ -97,7 +106,6 @@ class ConceptAgent:
             )
 
         try:
-            # print(prompt_path) # to debug/check the path to the YAML file temporarily
             with open(prompt_path, "r", encoding="utf-8") as file:
                 data = yaml.safe_load(file)
 
@@ -121,7 +129,7 @@ class ConceptAgent:
 
     def _build_prompt(
         self,
-        content: str,
+        content: str | GroundedContext,
         user_question: Optional[str] = None,
         difficulty: str = "beginner",
     ) -> str:
@@ -148,9 +156,14 @@ class ConceptAgent:
             raise KeyError("'prompt_template' not found in concept.yaml")
 
         user_question = user_question or ""
+
+        if isinstance(content, GroundedContext):
+            content_text = content.as_prompt_content()
+        else:
+            content_text = content
         
         return template.format(
-            content=content,
+            content=content_text,
             user_question=user_question,
             difficulty=difficulty,
         )
@@ -167,6 +180,11 @@ class ConceptAgent:
             Raw LLM response.
         """
 
+        if self.client is None:
+            raise RuntimeError(
+                "LLM client is not initialized because mock mode is enabled."
+            )
+
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
@@ -177,10 +195,6 @@ class ConceptAgent:
             ],
             temperature=0.3,
         )
-
-
-
-        # print(response.model_dump_json(indent=2))
 
         content = response.choices[0].message.content
 
@@ -196,6 +210,7 @@ class ConceptAgent:
         content: str,
         user_question: Optional[str] = None,
         difficulty: str = "beginner",
+        context: GroundedContext | None = None,
     ) -> ConceptOutput:
         """
         Generate a concept explanation.
@@ -210,12 +225,18 @@ class ConceptAgent:
             difficulty:
                 Difficulty level.
 
+            context:
+                Optional retrieved content used to ground the explanation.
+                When supplied, generated references and the explanation are
+                validated against this context.
+
         Returns:
             Validated ConceptOutput object.
         """
 
+        prompt_content = context if context is not None else content
         prompt = self._build_prompt(
-            content=content,
+            content=prompt_content,
             user_question=user_question,
             difficulty=difficulty,
         )
@@ -243,11 +264,6 @@ class ConceptAgent:
         else:
             raw_response = self._call_llm(prompt)
 
-
-        # print("\n=== RAW LLM RESPONSE ===")
-        # print(raw_response) # to debug/check the raw response from the LLM
-        # print("========================\n")
-
         try:
             response_json = json.loads(raw_response)
         except json.JSONDecodeError as e:
@@ -255,9 +271,113 @@ class ConceptAgent:
         
 
         try:
-            return ConceptOutput.model_validate(response_json)
+            result = ConceptOutput.model_validate(response_json)
 
         except ValidationError as e:
             raise ValueError(
                 "The LLM response does not match ConceptOutput schema."
             ) from e
+
+        if context is not None:
+            verification = verify_references(
+                result.references,
+                context,
+            )
+
+            if not verification.valid:
+                raise ValueError(
+                    "The generated references are not grounded in the retrieved content."
+                )
+
+        if context is not None:
+            support = validate_support(
+                result.explanation,
+                context,
+            )
+
+            if not support.supported:
+                raise ValueError(
+                    "The generated explanation contains unsupported claims."
+                )
+
+        return result
+
+    def generate_reviewable(
+        self,
+        content: str,
+        user_question: Optional[str] = None,
+        difficulty: str = "beginner",
+        context: GroundedContext | None = None,
+    ) -> GeneratedOutput:
+        """Generate a concept explanation and prepare it for human review.
+
+        The returned record is always pending review. This method delegates all
+        generation, schema, grounding, and support checks to :meth:`generate`
+        before applying the shared validation and review-record pipeline.
+        """
+        agent_run = AgentRun(
+            agent_name="concept_agent",
+            input_context=content,
+            source_chunk_ids=context.chunk_ids if context is not None else [],
+            model=self.model,
+        )
+        generated = self.generate(
+            content=content,
+            user_question=user_question,
+            difficulty=difficulty,
+            context=context,
+        )
+        payload = generated.model_dump()
+        validator = ValidatorBase()
+        validation_result, validated_output = validator.validate(
+            payload,
+            ConceptOutput,
+        )
+
+        return build_generated_output(
+            agent_run_id=agent_run.id,
+            output_type="concept_explanation",
+            output_schema=ConceptOutput,
+            payload=(
+                validated_output.model_dump()
+                if validated_output is not None
+                else payload
+            ),
+            result=validation_result,
+        )
+
+    def generate_batch(
+        self,
+        items: list[dict[str, Any]],
+    ) -> BatchGenerationResult[ConceptOutput]:
+        """Generate concept explanations for multiple inputs without stopping on errors.
+
+        Each item must contain the keyword arguments accepted by :meth:`generate`,
+        including required ``content`` and optional ``user_question``,
+        ``difficulty``, and ``context`` values. Successful outputs retain their
+        original input order.
+        """
+        started_at = perf_counter()
+        successful_outputs: list[ConceptOutput] = []
+        failed_items: list[BatchGenerationFailure] = []
+
+        for index, item in enumerate(items):
+            try:
+                successful_outputs.append(self.generate(**item))
+            except Exception as error:
+                failed_items.append(
+                    BatchGenerationFailure(
+                        index=index,
+                        input_item=item,
+                        error=str(error),
+                    )
+                )
+
+        return BatchGenerationResult(
+            successful_outputs=successful_outputs,
+            failed_items=failed_items,
+            total_processed=len(items),
+            total_succeeded=len(successful_outputs),
+            total_failed=len(failed_items),
+            elapsed_seconds=perf_counter() - started_at,
+        )

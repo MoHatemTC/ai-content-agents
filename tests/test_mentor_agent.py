@@ -23,7 +23,7 @@ def test_mentor_agent_generation():
 # This ignores the MOCK_MODE value in .env.
 # Uncomment when the API is working.
 # ==========================================
-# agent = MentorAgent(mock_mode=False)
+    agent = MentorAgent(mock_mode=True)
 
 
 # ==========================================
@@ -33,7 +33,7 @@ def test_mentor_agent_generation():
 # If MOCK_MODE=false -> uses LiteLLM.
 # ==========================================
 
-    agent = MentorAgent()
+    # agent = MentorAgent()
 
     result = agent.generate(
         content="""
@@ -44,6 +44,17 @@ There are for loops and while loops.
         user_question="Explain loops.",
         difficulty="beginner",
     )
+
+#    result = agent.generate(
+#    content="Python has two loop types: for and while.",
+#    user_question="Explain loops",
+#    difficulty="beginner",
+#)
+
+#    print("\n=== LIVE GENERATED OUTPUT ===")
+#    print(result.model_dump_json(indent=2))
+#    print("=============================\n")
+
 
     assert isinstance(result, MentorOutput)
 
