@@ -17,18 +17,15 @@ from typing import Any, Optional
 import yaml
 from dotenv import load_dotenv
 from openai import OpenAI
-
-from src.validation.schemas import MentorOutput
-
 from pydantic import ValidationError
 
+from src.models.batch import BatchGenerationFailure, BatchGenerationResult
 from src.retrieval.models import GroundedContext
 from src.retrieval.grounding import verify_references
-
-from src.validation.support_validator import validate_support
 from src.validation.review_schema import AgentRun, GeneratedOutput
+from src.validation.schemas import DifficultyLevel, MentorOutput, validate_difficulty
+from src.validation.support_validator import extract_claim_text, validate_support
 from src.validation.validator_base import ValidatorBase, build_generated_output
-from src.models.batch import BatchGenerationFailure, BatchGenerationResult
 
 load_dotenv()
 
@@ -47,7 +44,6 @@ class MentorAgent:
     def __init__(self, mock_mode: Optional[bool] = None) -> None:
         """Initialize the Mentor Agent."""
 
-        # Configure mock mode first.
         if mock_mode is None:
             self.mock_mode = (
                 os.getenv("MOCK_MODE", "true").lower() == "true"
@@ -55,7 +51,6 @@ class MentorAgent:
         else:
             self.mock_mode = mock_mode
 
-        # Load prompt.
         self.prompt = self._load_prompt()
 
         if not self.mock_mode:
@@ -92,7 +87,6 @@ class MentorAgent:
             / "mentor.yaml"
         )
 
-        # Check if the YAML file exists
         if not prompt_path.exists():
             raise FileNotFoundError(
                 f"Prompt file not found: {prompt_path}"
@@ -107,11 +101,9 @@ class MentorAgent:
                 "Invalid YAML syntax in mentor.yaml."
             ) from e
 
-        # Check if the YAML file is empty
         if data is None:
             raise ValueError("mentor.yaml is empty.")
 
-        # Ensure the YAML content is a dictionary
         if not isinstance(data, dict):
             raise TypeError(
                 "mentor.yaml must contain a YAML dictionary."
@@ -189,10 +181,18 @@ class MentorAgent:
             temperature=0.3,
         )
 
-        content = response.choices[0].message.content
+        if response is None:
+            raise RuntimeError("LLM returned no response.")
+        choices = getattr(response, "choices", None)
+        if not choices:
+            raise RuntimeError("LLM returned no choices.")
+        message = getattr(choices[0], "message", None)
+        if message is None:
+            raise RuntimeError("LLM returned an empty message.")
+        content = getattr(message, "content", None)
 
         if not content:
-            raise ValueError("The LLM returned an empty response.")
+            raise RuntimeError("LLM returned an empty response.")
 
         return content.strip()
 
@@ -200,7 +200,7 @@ class MentorAgent:
         self,
         content: str,
         user_question: Optional[str] = None,
-        difficulty: str = "beginner",
+        difficulty: str | DifficultyLevel = DifficultyLevel.BEGINNER,
         context: GroundedContext | None = None,
     ) -> MentorOutput:
         """
@@ -225,13 +225,13 @@ class MentorAgent:
         else:
             content_text = content
 
+        difficulty = validate_difficulty(difficulty)
         prompt = self._build_prompt(
             content=content_text,
             user_question=user_question,
-            difficulty=difficulty,
+            difficulty=difficulty.value,
         )
-        
-        # Temporary mocked response used while LiteLLM is unavailable.
+
         MOCK_RESPONSE = """
         {
         "explanation": "Python has two loop types: for and while.",
@@ -240,14 +240,15 @@ class MentorAgent:
             "while loops"
         ],
         "next_steps": [
-            "Practice writing loops."
+            "Practice loops."
         ],
         "references": [
             {
                 "segment_id": "chunk_001",
                 "text": "Relevant content excerpt."
             }
-        ]
+        ],
+        "requires_human_review": true
         }
         """
 
@@ -282,10 +283,7 @@ class MentorAgent:
                 )
 
         if context is not None:
-            support = validate_support(
-                result.explanation,
-                context,
-            )
+            support = validate_support(extract_claim_text(result), context)
 
             if not support.supported:
                 raise ValueError(

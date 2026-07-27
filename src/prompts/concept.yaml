@@ -30,6 +30,7 @@ output_schema:
   references:
     - segment_id: "seg1"
       text: "Relevant content excerpt"
+  requires_human_review: true
 
 notes:
   - Always return structured JSON matching the ConceptOutput schema.
@@ -57,6 +58,8 @@ prompt_template: |
     - explanation
     - key_points
     - references
+    - requires_human_review
+  - Set requires_human_review to true.
   - If the uploaded content does not contain enough information for a field,
     state that the information is unavailable instead of omitting the field.
   - Do not mentor or give study advice.
@@ -77,7 +80,8 @@ prompt_template: |
         "segment_id": "seg1",
         "text": "Relevant content excerpt"
       }}
-    ]
+    ],
+    "requires_human_review": true
   }}
 
   Do not wrap the JSON in Markdown.
