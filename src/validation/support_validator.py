@@ -25,6 +25,7 @@ _CLAIM_FIELDS = (
     "next_steps",
 )
 _WORD_PATTERN = re.compile(r"[a-z0-9]+")
+_NEGATION_PATTERN = re.compile(r"\b(?:no|not|never|without)\b", re.IGNORECASE)
 _STOP_WORDS = {
     "a",
     "an",
@@ -65,6 +66,18 @@ def _content_tokens(text: str) -> set[str]:
         for word in _WORD_PATTERN.findall(text.lower())
         if word not in _STOP_WORDS
     }
+
+
+def _token_overlap_score(claim_tokens: set[str], source_tokens: set[str]) -> float:
+    """Return the share of claim tokens also present in the source."""
+    if not claim_tokens:
+        return 1.0
+    return len(claim_tokens & source_tokens) / len(claim_tokens)
+
+
+def _contains_negation(text: str) -> bool:
+    """Detect simple negation terms so overlap cannot hide contradictions."""
+    return bool(_NEGATION_PATTERN.search(text))
 
 
 def extract_claim_text(
@@ -110,11 +123,13 @@ def validate_support(
     )
     source_text = " ".join(chunk.chunk.text for chunk in context.chunks)
     source_tokens = _content_tokens(source_text)
-    unsupported = [
-        claim
-        for claim in claim_list
-        if not _content_tokens(claim).issubset(source_tokens)
-    ]
+    source_has_negation = _contains_negation(source_text)
+    unsupported = []
+    for claim in claim_list:
+        overlap = _token_overlap_score(_content_tokens(claim), source_tokens)
+        contradictory = _contains_negation(claim) and not source_has_negation
+        if overlap < 0.6 or contradictory:
+            unsupported.append(claim)
     return SupportValidationResult(
         supported=not unsupported,
         unsupported_claims=unsupported,

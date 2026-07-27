@@ -14,6 +14,7 @@ from src.ingestion.loader import ContentLoader
 from src.registry import AgentRegistry
 from src.generation import MockGenerator
 from src.schemas import FlashcardSet, StudyPlan, RevisionSession
+from src.services.mentor_concept import MentorConceptService
 
 # Initialize services
 @st.cache_resource
@@ -28,6 +29,10 @@ def get_registry():
 def get_generator():
     return MockGenerator(get_registry())
 
+@st.cache_resource
+def get_mentor_concept_service():
+    return MentorConceptService()
+
 # Set page config
 st.set_page_config(page_title="AI Study Assistant", page_icon="📚", layout="wide")
 
@@ -35,12 +40,21 @@ st.set_page_config(page_title="AI Study Assistant", page_icon="📚", layout="wi
 st.sidebar.title("📚 AI Study Assistant")
 page = st.sidebar.radio(
     "Choose a page",
-    ["🏠 Home", "📤 Upload Content", "🃏 Generate Flashcards", "📅 Study Plan", "🔄 Revision Plan"]
+    [
+        "🏠 Home",
+        "📤 Upload Content",
+        "🃏 Generate Flashcards",
+        "📅 Study Plan",
+        "🔄 Revision Plan",
+        "🧭 Mentor",
+        "💡 Concept Explanation",
+    ]
 )
 
 loader = get_loader()
 registry = get_registry()
 generator = get_generator()
+mentor_concept_service = get_mentor_concept_service()
 
 # Page: Home
 if page == "🏠 Home":
@@ -229,3 +243,88 @@ elif page == "🔄 Revision Plan":
                                 st.write(f"Difficulty: {item.difficulty}")
                     except Exception as e:
                         st.error(f"Error generating revision plan: {str(e)}")
+
+# Page: Mentor
+elif page == "🧭 Mentor":
+    st.title("Mentor")
+    st.caption("Generate a grounded mentoring response for human review.")
+
+    with st.form("mentor_form"):
+        content = st.text_area("Content", height=220)
+        user_question = st.text_input("User question")
+        difficulty = st.selectbox(
+            "Difficulty",
+            ["beginner", "intermediate", "advanced"],
+            key="mentor_difficulty",
+        )
+        submitted = st.form_submit_button("Generate Mentor Response")
+
+    if submitted:
+        if not content.strip():
+            st.warning("Enter educational content before generating a response.")
+        else:
+            try:
+                with st.spinner("Generating mentor response..."):
+                    reviewable = mentor_concept_service.generate_mentor_reviewable(
+                        content=content,
+                        user_question=user_question or None,
+                        difficulty=difficulty,
+                    )
+                payload = reviewable.payload
+                st.warning("⚠️ Requires Human Review")
+                st.write(f"Review status: **{reviewable.status.value.upper()}**")
+                st.subheader("Explanation")
+                st.write(payload.get("explanation", ""))
+                st.subheader("Key points")
+                for point in payload.get("key_points", []):
+                    st.markdown(f"- {point}")
+                st.subheader("Next steps")
+                for step in payload.get("next_steps", []):
+                    st.markdown(f"- {step}")
+                st.subheader("Provenance references")
+                for reference in payload.get("references", []):
+                    st.write(f"**{reference['segment_id']}**: {reference['text']}")
+            except Exception as error:
+                st.error(f"Error generating mentor response: {error}")
+
+# Page: Concept Explanation
+elif page == "💡 Concept Explanation":
+    st.title("Concept Explanation")
+    st.caption("Generate a grounded concept explanation for human review.")
+
+    with st.form("concept_form"):
+        content = st.text_area("Content", height=220)
+        user_question = st.text_input("Concept question")
+        difficulty = st.selectbox(
+            "Difficulty",
+            ["beginner", "intermediate", "advanced"],
+            key="concept_difficulty",
+        )
+        submitted = st.form_submit_button("Generate Concept Explanation")
+
+    if submitted:
+        if not content.strip():
+            st.warning("Enter educational content before generating an explanation.")
+        else:
+            try:
+                with st.spinner("Generating concept explanation..."):
+                    reviewable = mentor_concept_service.generate_concept_reviewable(
+                        content=content,
+                        user_question=user_question or None,
+                        difficulty=difficulty,
+                    )
+                payload = reviewable.payload
+                st.warning("⚠️ Requires Human Review")
+                st.write(f"Review status: **{reviewable.status.value.upper()}**")
+                st.subheader("Definition")
+                st.write(payload.get("definition", ""))
+                st.subheader("Explanation")
+                st.write(payload.get("explanation", ""))
+                st.subheader("Key points")
+                for point in payload.get("key_points", []):
+                    st.markdown(f"- {point}")
+                st.subheader("Provenance references")
+                for reference in payload.get("references", []):
+                    st.write(f"**{reference['segment_id']}**: {reference['text']}")
+            except Exception as error:
+                st.error(f"Error generating concept explanation: {error}")

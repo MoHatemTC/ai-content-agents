@@ -5,12 +5,38 @@ from __future__ import annotations
 from src.evaluation.models import EvaluationResult
 from src.retrieval.grounding import verify_references
 from src.retrieval.models import GroundedContext
-from src.validation.schemas import ConceptOutput, MentorOutput
+from src.validation.schemas import (
+    ConceptOutput,
+    DifficultyLevel,
+    MentorOutput,
+    validate_difficulty,
+)
 from src.validation.support_validator import extract_claim_text, validate_support
 from src.validation.validator_base import ValidatorBase
 
 
 EvaluatedOutput = MentorOutput | ConceptOutput
+
+
+def _difficulty_alignment_score(
+    claims: list[str],
+    difficulty: str | DifficultyLevel | None,
+) -> float | None:
+    """Score claim length against simple deterministic difficulty bands."""
+    if difficulty is None:
+        return None
+    level = validate_difficulty(difficulty)
+    if not claims:
+        return 0.0
+
+    average_words = sum(len(claim.split()) for claim in claims) / len(claims)
+    if level is DifficultyLevel.BEGINNER:
+        return max(0.0, 1.0 - max(average_words - 12.0, 0.0) / 12.0)
+    if level is DifficultyLevel.INTERMEDIATE:
+        if average_words < 8.0:
+            return max(0.0, average_words / 8.0)
+        return max(0.0, 1.0 - max(average_words - 24.0, 0.0) / 24.0)
+    return min(1.0, average_words / 16.0)
 
 
 def _quality_score(output: EvaluatedOutput) -> float:
@@ -39,6 +65,7 @@ def _quality_score(output: EvaluatedOutput) -> float:
 def evaluate_output(
     output: EvaluatedOutput,
     context: GroundedContext | None = None,
+    difficulty: str | DifficultyLevel | None = None,
 ) -> EvaluationResult:
     """Evaluate a Mentor or Concept output using existing project utilities.
 
@@ -59,6 +86,8 @@ def evaluate_output(
         for violation in validation_result.guardrail_violations
     )
     quality_score = _quality_score(output)
+    claims = extract_claim_text(output)
+    difficulty_alignment_score = _difficulty_alignment_score(claims, difficulty)
 
     if context is None:
         notes.append("No grounded context was supplied for evaluation.")
@@ -69,15 +98,22 @@ def evaluate_output(
             validation_passed=validation_result.passed,
             unsupported_claims=0,
             groundedness_score=None,
+            groundedness_ratio=None,
+            difficulty_alignment_score=difficulty_alignment_score,
             quality_score=quality_score,
             notes=notes,
         )
 
     reference_result = verify_references(output.references, context)
-    support_result = validate_support(extract_claim_text(output), context)
+    support_result = validate_support(claims, context)
     references_valid = reference_result.valid
     supported = support_result.supported
     unsupported_claims = len(support_result.unsupported_claims)
+    groundedness_ratio = (
+        (len(claims) - unsupported_claims) / len(claims)
+        if claims
+        else None
+    )
 
     if reference_result.unknown_segment_ids:
         notes.append(
@@ -109,6 +145,8 @@ def evaluate_output(
         validation_passed=validation_result.passed,
         unsupported_claims=unsupported_claims,
         groundedness_score=groundedness_score,
+        groundedness_ratio=groundedness_ratio,
+        difficulty_alignment_score=difficulty_alignment_score,
         quality_score=quality_score,
         notes=notes,
     )

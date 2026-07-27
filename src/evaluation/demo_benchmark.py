@@ -47,6 +47,16 @@ def format_benchmark_summary(
         if summary.average_groundedness_score is None
         else f"{summary.average_groundedness_score:.2f}"
     )
+    groundedness_ratio = (
+        "not evaluated"
+        if summary.average_groundedness_ratio is None
+        else f"{summary.average_groundedness_ratio:.2f}"
+    )
+    difficulty_alignment = (
+        "not evaluated"
+        if summary.average_difficulty_alignment_score is None
+        else f"{summary.average_difficulty_alignment_score:.2f}"
+    )
     return "\n".join(
         [
             f"{agent_name.title()} benchmark",
@@ -54,6 +64,8 @@ def format_benchmark_summary(
             f"  succeeded: {summary.total_succeeded}",
             f"  failed: {summary.total_failed}",
             f"  average groundedness: {groundedness}",
+            f"  average groundedness ratio: {groundedness_ratio}",
+            f"  average difficulty alignment: {difficulty_alignment}",
             f"  average quality: {summary.average_quality_score:.2f}",
             f"  reference validity: {summary.reference_validity_rate:.2f}",
             f"  support rate: {summary.support_rate:.2f}",

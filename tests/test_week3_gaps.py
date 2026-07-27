@@ -94,6 +94,17 @@ def test_support_validation_accepts_fully_supported_output() -> None:
     assert result.unsupported_claims == []
 
 
+def test_support_validation_accepts_paraphrased_supported_claim() -> None:
+    """Meaning-preserving wording with sufficient token overlap remains supported."""
+    result = validate_support(
+        ["A loop repeats commands."],
+        _context("A loop repeats instructions."),
+    )
+
+    assert result.supported is True
+    assert result.unsupported_claims == []
+
+
 @pytest.mark.parametrize("agent_class", [MentorAgent, ConceptAgent])
 def test_agents_accept_supported_difficulty(agent_class: type) -> None:
     result = agent_class(mock_mode=True).generate(

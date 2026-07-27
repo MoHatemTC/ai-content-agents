@@ -99,6 +99,7 @@ def test_evaluate_output_flags_unsupported_explanations():
     assert result.supported is False
     assert result.validation_passed is True
     assert result.unsupported_claims == 1
+    assert result.groundedness_ratio == 2 / 3
     assert result.groundedness_score == 0.5
     assert "Unsupported claims detected: 1." in result.notes
 
@@ -120,3 +121,19 @@ def test_evaluate_output_reports_validation_failure():
     assert result.validation_passed is False
     assert result.groundedness_score == 0.0
     assert any("no source references" in note.lower() for note in result.notes)
+
+
+def test_evaluate_output_scores_difficulty_alignment() -> None:
+    """Short claims align with beginner difficulty under the deterministic heuristic."""
+    output = ConceptOutput(
+        definition="A loop repeats instructions.",
+        explanation="A loop repeats instructions.",
+        key_points=["Loops repeat instructions."],
+        references=[ContentReference(segment_id="chunk-1", text="Loops.")],
+    )
+
+    beginner = evaluate_output(output, _context(), difficulty="beginner")
+    advanced = evaluate_output(output, _context(), difficulty="advanced")
+
+    assert beginner.difficulty_alignment_score == 1.0
+    assert advanced.difficulty_alignment_score < beginner.difficulty_alignment_score

@@ -68,6 +68,8 @@ def test_run_benchmark_all_success():
     assert report.summary.total_succeeded == 2
     assert report.summary.total_failed == 0
     assert report.summary.average_groundedness_score == 1.0
+    assert report.summary.average_groundedness_ratio == 1.0
+    assert report.summary.average_difficulty_alignment_score is not None
     assert report.summary.average_quality_score == 1.0
     assert report.summary.reference_validity_rate == 1.0
     assert report.summary.support_rate == 1.0
