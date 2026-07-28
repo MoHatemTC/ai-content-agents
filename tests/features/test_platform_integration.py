@@ -18,6 +18,7 @@ shared per process, so same-named indexes see each other's chunks (see
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from uuid import uuid4
@@ -29,6 +30,10 @@ from src.exports import ExportFormat, export_approved_run, export_outputs
 from src.retrieval.config import RetrievalConfig
 from src.retrieval.index import ChunkIndex
 from src.retrieval.models import RetrievalScope
+from src.validation.automation import DEMO_DATASET, load_dataset
+from src.validation.automation import main as automation_main
+from src.validation.automation import run_batch
+from src.validation.history import BATCH_COMPLETED, BATCH_STARTED
 from src.validation.integration import Pipeline, to_retrieval_chunks
 from src.validation.review_schema import ExportBlockedError, OutputStatus, RunStatus
 from src.validation.review_service import ReviewService
@@ -272,6 +277,146 @@ def test_rejected_output_never_reaches_an_export(pipeline: Pipeline) -> None:
         output.agent_run_id, ExportFormat.JSON, pipeline.platform_store
     )
     assert b'"count": 0' in exported
+
+
+# --------------------------------------------------------------------------- #
+# Batch automation
+# --------------------------------------------------------------------------- #
+
+
+def _batch_pipeline(tmp_path: Path, agent: object | None = None) -> Pipeline:
+    """A pipeline for batch tests, wired to a stub agent."""
+    return Pipeline.build(
+        db_path=str(tmp_path / "batch.db"),
+        index=_index(),
+        agents={"mentor": agent or _StubAgent()},
+    )
+
+
+def test_batch_processes_every_document(tmp_path: Path) -> None:
+    pipe = _batch_pipeline(tmp_path)
+
+    report = run_batch(DEMO_DATASET, pipeline=pipe, limit=2)
+
+    assert len(report.items) == 2
+    assert report.failed_items == []
+    assert len(report.output_ids) == 2
+    assert report.elapsed_seconds >= 0
+
+
+def test_batch_leaves_everything_pending_review(tmp_path: Path) -> None:
+    """A batch must never bypass the gate by approving its own work."""
+    pipe = _batch_pipeline(tmp_path)
+
+    run_batch(DEMO_DATASET, pipeline=pipe, limit=2)
+
+    outputs = pipe.platform_store.list_outputs()
+    assert outputs
+    assert all(output.status is OutputStatus.PENDING for output in outputs)
+    assert pipe.platform_store.list_reviews() == []
+
+
+def test_batch_scores_only_its_own_runs(tmp_path: Path) -> None:
+    pipe = _batch_pipeline(tmp_path)
+    pipe.ingest_and_run(PHYSICS_NOTES, "what is force", title="earlier work")
+
+    report = run_batch(DEMO_DATASET, pipeline=pipe, limit=1)
+
+    assert report.evaluation is not None
+    assert report.evaluation.overall.outputs == 1
+
+
+def test_one_failing_document_does_not_stop_the_batch(tmp_path: Path) -> None:
+    class _Exploding:
+        name, schema, model = "mentor", MentorOutput, "stub"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def run_raw(self, content: str, **params: object) -> str:
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("upstream is down")
+            return _StubAgent().run_raw(content, **params)
+
+    pipe = Pipeline.build(
+        db_path=str(tmp_path / "batch.db"),
+        index=_index(),
+        agents={"mentor": _Exploding()},
+        max_retries=0,
+    )
+
+    report = run_batch(DEMO_DATASET, pipeline=pipe, limit=2)
+
+    assert len(report.items) == 2
+    assert len(report.output_ids) == 1  # the second document still ran
+
+
+def test_batch_report_renders_readably(tmp_path: Path) -> None:
+    report = run_batch(DEMO_DATASET, pipeline=_batch_pipeline(tmp_path), limit=1)
+
+    rendered = report.render()
+
+    assert "Batch run" in rendered
+    assert "pending human review" in rendered
+    assert "Evaluation" in rendered
+
+
+def test_batch_logs_its_start_and_finish(tmp_path: Path) -> None:
+    pipe = _batch_pipeline(tmp_path)
+
+    run_batch(DEMO_DATASET, pipeline=pipe, limit=1)
+
+    logged = {event.event_type for event in pipe.platform_store.list_events()}
+    assert {BATCH_STARTED, BATCH_COMPLETED} <= logged
+
+
+def test_dataset_can_be_loaded_from_a_file(tmp_path: Path) -> None:
+    path = tmp_path / "dataset.json"
+    path.write_text(
+        json.dumps([{"title": "t", "text": "some material", "query": "a question"}]),
+        encoding="utf-8",
+    )
+
+    dataset = load_dataset(path)
+
+    assert len(dataset) == 1
+    assert dataset[0].query == "a question"
+
+
+def test_malformed_dataset_is_rejected_clearly(tmp_path: Path) -> None:
+    path = tmp_path / "dataset.json"
+    path.write_text(json.dumps([{"title": "missing the rest"}]), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="title"):
+        load_dataset(path)
+
+
+def test_cli_reports_success_for_a_clean_batch(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    dataset = tmp_path / "dataset.json"
+    dataset.write_text(
+        json.dumps(
+            [{"title": "Physics", "text": PHYSICS_NOTES, "query": "what is force"}]
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = automation_main(
+        [
+            "--dataset",
+            str(dataset),
+            "--db",
+            str(tmp_path / "cli.db"),
+            "--offline",
+            "--agents",
+            "mentor",
+        ]
+    )
+
+    assert exit_code == 0
+    assert "Batch run" in capsys.readouterr().out
 
 
 # --------------------------------------------------------------------------- #
