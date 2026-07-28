@@ -15,6 +15,8 @@ from src.registry import AgentRegistry
 from src.generation import MockGenerator
 from src.schemas import FlashcardSet, StudyPlan, RevisionSession
 from src.services.mentor_concept import MentorConceptService
+from src.services.question_bank import QuestionBankService
+from src.retrieval.models import Chunk, GroundedContext, RetrievedChunk, RetrievalScope
 
 # Initialize services
 @st.cache_resource
@@ -33,6 +35,10 @@ def get_generator():
 def get_mentor_concept_service():
     return MentorConceptService()
 
+@st.cache_resource
+def get_question_bank_service():
+    return QuestionBankService()
+
 # Set page config
 st.set_page_config(page_title="AI Study Assistant", page_icon="📚", layout="wide")
 
@@ -48,6 +54,7 @@ page = st.sidebar.radio(
         "🔄 Revision Plan",
         "🧭 Mentor",
         "💡 Concept Explanation",
+        "📝 Question Bank & Test Help",
     ]
 )
 
@@ -55,6 +62,7 @@ loader = get_loader()
 registry = get_registry()
 generator = get_generator()
 mentor_concept_service = get_mentor_concept_service()
+question_bank_service = get_question_bank_service()
 
 # Page: Home
 if page == "🏠 Home":
@@ -328,3 +336,95 @@ elif page == "💡 Concept Explanation":
                     st.write(f"**{reference['segment_id']}**: {reference['text']}")
             except Exception as error:
                 st.error(f"Error generating concept explanation: {error}")
+
+# Page: Question Bank & Test Help
+elif page == "📝 Question Bank & Test Help":
+    st.title("Question Bank & Test Help")
+    st.caption("Generate grounded assessment questions for human review.")
+
+    if "current_doc" not in st.session_state:
+        st.warning("Please upload or paste content first!")
+    else:
+        doc = st.session_state.current_doc
+        source_chunks = st.session_state.current_chunks
+        st.subheader(f"Using document: {doc.title}")
+
+        with st.form("question_bank_form"):
+            mode = st.selectbox("Mode", ["Question Bank", "Test Help"])
+            question_type = st.selectbox(
+                "Question type", ["mcq", "true_false", "short_answer"]
+            )
+            difficulty = st.selectbox(
+                "Difficulty", ["beginner", "intermediate", "advanced"],
+                key="question_bank_difficulty",
+            )
+            count = st.number_input("Number of questions", min_value=1, max_value=20, value=5)
+            submitted = st.form_submit_button("Generate Review Preview")
+
+        if submitted:
+            retrieval_chunks = [
+                RetrievedChunk(
+                    chunk=Chunk(
+                        chunk_id=chunk.id,
+                        document_id=chunk.document_id,
+                        session_id=chunk.session_id,
+                        ordinal=chunk.ordinal,
+                        text=chunk.text,
+                    ),
+                    score=1.0,
+                    rank=index + 1,
+                )
+                for index, chunk in enumerate(source_chunks)
+            ]
+            context = GroundedContext(
+                query=f"{question_type} {difficulty} questions for {doc.title}",
+                scope=RetrievalScope(document_id=doc.id),
+                chunks=retrieval_chunks,
+            )
+            try:
+                with st.spinner("Generating grounded questions..."):
+                    if mode == "Question Bank":
+                        reviewable = question_bank_service.generate_question_bank_reviewable(
+                            content=doc.content,
+                            question_type=question_type,
+                            difficulty=difficulty,
+                            num_questions=int(count),
+                            context=context,
+                        )
+                    else:
+                        reviewable = question_bank_service.generate_test_help_reviewable(
+                            content=doc.content,
+                            question_type=question_type,
+                            difficulty=difficulty,
+                            num_questions=int(count),
+                            context=context,
+                        )
+                st.warning("⚠️ Requires Human Review — preview only")
+                st.write(f"Review status: **{reviewable.status.value.upper()}**")
+                if not reviewable.validation_passed:
+                    st.error("Validation flagged this output for reviewer attention.")
+                    violations = (reviewable.validation_report or {}).get("guardrail_violations", []) or []
+                    for violation in violations:
+                        msg = violation.get("message", str(violation)) if isinstance(violation, dict) else str(violation)
+                        st.write(f"- {msg}")
+                questions = (reviewable.payload or {}).get("questions") or []
+                for index, question in enumerate(questions, start=1):
+                    if not isinstance(question, dict):
+                        continue
+                    with st.expander(f"Question {index}"):
+                        st.write("**Question:**", question.get("question", ""))
+                        options = question.get("options")
+                        if options is not None and isinstance(options, list):
+                            valid_options = [str(opt) for opt in options if opt is not None]
+                            if valid_options:
+                                st.write("**Options:**", ", ".join(valid_options))
+                        st.write("**Answer key:**", question.get("correct_answer", ""))
+                        st.write("**Rationale:**", question.get("rationale", ""))
+                        st.write("**Sources:**")
+                        references = question.get("references") or []
+                        if isinstance(references, list):
+                            for reference in references:
+                                if isinstance(reference, dict):
+                                    st.write(f"**{reference.get('segment_id', '')}**: {reference.get('text', '')}")
+            except Exception as error:
+                st.error(f"Error generating questions: {error}")

@@ -94,11 +94,13 @@ def verify_references(
         The verification result, listing any segment ids that were never
         retrieved.
     """
+    if references is None:
+        return GroundingVerification(valid=False, unknown_segment_ids=["<None>"])
     known_ids = set(context.chunk_ids)
     unknown = [
-        reference.segment_id
+        getattr(reference, "segment_id", "<invalid>")
         for reference in references
-        if reference.segment_id not in known_ids
+        if reference is None or getattr(reference, "segment_id", None) not in known_ids
     ]
     if unknown:
         logger.warning("Citations reference unknown segment ids: %s", unknown)

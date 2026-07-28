@@ -1,19 +1,22 @@
 """
 Question Bank UI
 
-Placeholder UI module for the Question Bank feature.
+This module was originally created as a placeholder for the
+Question Bank UI layer during the early project structure.
 
-The complete interactive interface will be implemented
-in a future sprint.
+The interactive Question Bank interface is now implemented
+directly in `src/app.py` to follow the existing Streamlit
+application architecture. This file is retained for
+backward compatibility and to preserve the original project
+structure.
 """
 
 
 def render():
     """
-    Render the Question Bank interface.
+    Placeholder entry point.
 
-    This placeholder exists to preserve the project
-    structure until the UI layer is implemented.
+    The active Question Bank UI is implemented in `src/app.py`.
+    This function intentionally performs no action.
     """
-
     pass

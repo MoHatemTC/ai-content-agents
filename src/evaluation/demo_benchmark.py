@@ -9,11 +9,16 @@ from typing import Sequence
 
 from src.agents.concept_agent import ConceptAgent
 from src.agents.mentor_agent import MentorAgent
+from src.agents.question_bank_agent import QuestionBankAgent
+from src.agents.test_help_agent import TestHelpAgent
 from src.evaluation import BenchmarkInput, BenchmarkReport, run_benchmark
 
 
 DEFAULT_DATASET_PATH = (
     Path(__file__).resolve().parents[2] / "data" / "demo_benchmark.json"
+)
+QUESTION_BANK_DATASET_PATH = (
+    Path(__file__).resolve().parents[2] / "data" / "question_bank_demo_benchmark.json"
 )
 
 
@@ -33,6 +38,17 @@ def run_demo_benchmark(
     return {
         "mentor": run_benchmark(MentorAgent(mock_mode=True), inputs),
         "concept": run_benchmark(ConceptAgent(mock_mode=True), inputs),
+    }
+
+
+def run_question_demo_benchmark(
+    inputs: list[BenchmarkInput] | None = None,
+) -> dict[str, BenchmarkReport]:
+    """Run the Question Bank and Test Help demo dataset in offline mock mode."""
+    question_inputs = inputs if inputs is not None else load_demo_inputs(QUESTION_BANK_DATASET_PATH)
+    return {
+        "question_bank": run_benchmark(QuestionBankAgent(mock_mode=True), question_inputs),
+        "test_help": run_benchmark(TestHelpAgent(mock_mode=True), question_inputs),
     }
 
 

@@ -9,13 +9,18 @@ from src.validation.schemas import (
     ConceptOutput,
     DifficultyLevel,
     MentorOutput,
+    QuestionBankOutput,
+    QuestionType,
+    TestHelpOutput,
     validate_difficulty,
 )
 from src.validation.support_validator import extract_claim_text, validate_support
 from src.validation.validator_base import ValidatorBase
+from src.validation.guardrails import DEFAULT_RULES
+from src.validation.question_rules import QuestionItemQualityRule
 
 
-EvaluatedOutput = MentorOutput | ConceptOutput
+EvaluatedOutput = MentorOutput | ConceptOutput | QuestionBankOutput | TestHelpOutput
 
 
 def _difficulty_alignment_score(
@@ -41,6 +46,17 @@ def _difficulty_alignment_score(
 
 def _quality_score(output: EvaluatedOutput) -> float:
     """Score the presence of the four required content fields equally."""
+    if isinstance(output, (QuestionBankOutput, TestHelpOutput)):
+        if not output.questions:
+            return 0.0
+        complete = sum(
+            bool(question.question.strip())
+            and bool(question.correct_answer.strip())
+            and bool(question.rationale.strip())
+            and bool(question.references)
+            for question in output.questions
+        )
+        return complete / len(output.questions)
     fields = (
         ("explanation", "key_points", "next_steps", "references")
         if isinstance(output, MentorOutput)
@@ -76,9 +92,15 @@ def evaluate_output(
     0.5 for supported generated claims.
     """
     validator = ValidatorBase()
+    rules = (
+        [*DEFAULT_RULES, QuestionItemQualityRule()]
+        if isinstance(output, (QuestionBankOutput, TestHelpOutput))
+        else None
+    )
     validation_result, _ = validator.validate(
         output.model_dump(),
         type(output),
+        rules=rules,
     )
     notes = list(validation_result.schema_errors)
     notes.extend(
@@ -86,6 +108,9 @@ def evaluate_output(
         for violation in validation_result.guardrail_violations
     )
     quality_score = _quality_score(output)
+    if isinstance(output, (QuestionBankOutput, TestHelpOutput)):
+        return _evaluate_question_output(output, context, validation_result.passed, notes)
+
     claims = extract_claim_text(output)
     difficulty_alignment_score = _difficulty_alignment_score(claims, difficulty)
 
@@ -147,6 +172,74 @@ def evaluate_output(
         groundedness_score=groundedness_score,
         groundedness_ratio=groundedness_ratio,
         difficulty_alignment_score=difficulty_alignment_score,
+        quality_score=quality_score,
+        notes=notes,
+    )
+
+
+def _evaluate_question_output(
+    output: QuestionBankOutput | TestHelpOutput,
+    context: GroundedContext | None,
+    validation_passed: bool,
+    notes: list[str],
+) -> EvaluationResult:
+    """Evaluate question-level citations and answer/rationale support."""
+    quality_score = _quality_score(output)
+    if context is None:
+        notes.append("No grounded context was supplied for evaluation.")
+        return EvaluationResult(
+            grounded=False,
+            references_valid=False,
+            supported=False,
+            validation_passed=validation_passed,
+            unsupported_claims=0,
+            groundedness_score=None,
+            groundedness_ratio=None,
+            quality_score=quality_score,
+            notes=notes,
+        )
+
+    valid_references = True
+    supported_questions = 0
+    unsupported_claims = 0
+    for index, question in enumerate(output.questions or [], start=1):
+        verification = verify_references(question.references, context)
+        valid_references = valid_references and verification.valid
+        cited_ids = {
+            reference.segment_id
+            for reference in (question.references or [])
+            if reference is not None and getattr(reference, "segment_id", None) is not None
+        }
+        cited_context = context.model_copy(
+            update={
+                "chunks": [
+                    chunk for chunk in context.chunks
+                    if chunk.chunk.chunk_id in cited_ids
+                ]
+            }
+        )
+        claims = [q for q in [question.rationale] if q]
+        if question.type is not QuestionType.TRUE_FALSE and question.correct_answer:
+            claims.insert(0, question.correct_answer)
+        support = validate_support(claims, cited_context)
+        if support.supported and verification.valid:
+            supported_questions += 1
+        else:
+            unsupported_claims += len(support.unsupported_claims)
+            notes.append(f"Question {index} is not fully grounded.")
+
+    total = len(output.questions)
+    ratio = supported_questions / total if total else 0.0
+    grounded = validation_passed and valid_references and supported_questions == total
+    score = ratio if validation_passed else 0.0
+    return EvaluationResult(
+        grounded=grounded,
+        references_valid=valid_references,
+        supported=supported_questions == total,
+        validation_passed=validation_passed,
+        unsupported_claims=unsupported_claims,
+        groundedness_score=score,
+        groundedness_ratio=ratio,
         quality_score=quality_score,
         notes=notes,
     )

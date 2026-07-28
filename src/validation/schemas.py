@@ -53,6 +53,17 @@ class QuestionType(str, Enum):
     SHORT_ANSWER = "short_answer"
 
 
+def validate_question_type(value: str | QuestionType) -> QuestionType:
+    """Validate and normalize a supported question type."""
+    try:
+        return QuestionType(value)
+    except ValueError as exc:
+        allowed = ", ".join(item.value for item in QuestionType)
+        raise ValueError(
+            f"Invalid question type {value!r}; expected one of: {allowed}."
+        ) from exc
+
+
 class QuestionItem(BaseModel):
     """
     Represents a single generated question.
@@ -110,8 +121,9 @@ class QuestionBankOutput(BaseModel):
         description="List of generated questions."
     )
 
-    requires_human_review: bool = Field(
+    requires_human_review: Literal[True] = Field(
         default=True,
+        frozen=True,
         description=(
             "Indicates that the generated questions must be "
             "reviewed by a human before being presented."
@@ -135,8 +147,9 @@ class TestHelpOutput(BaseModel):
         description="List of generated questions."
     )
 
-    requires_human_review: bool = Field(
+    requires_human_review: Literal[True] = Field(
         default=True,
+        frozen=True,
         description=(
             "Indicates that the generated questions must be "
             "reviewed by a human before being presented."

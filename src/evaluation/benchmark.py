@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from src.evaluation.evaluator import EvaluatedOutput, evaluate_output
 from src.evaluation.models import EvaluationResult
 from src.retrieval.models import GroundedContext
+from src.validation.schemas import QuestionBankOutput, TestHelpOutput
 
 
 class BenchmarkAgent(Protocol):
@@ -32,6 +33,9 @@ class BenchmarkInput(BaseModel):
     user_question: str | None = None
     difficulty: str = "beginner"
     context: GroundedContext | None = None
+    question_type: str | None = None
+    num_questions: int | None = Field(default=None, ge=1)
+    expected_answers: list[str] | None = None
 
 
 class BenchmarkItemResult(BaseModel):
@@ -42,6 +46,8 @@ class BenchmarkItemResult(BaseModel):
     output: EvaluatedOutput | None = None
     evaluation: EvaluationResult | None = None
     error: str | None = None
+    answer_key_sample_total: int = Field(default=0, ge=0)
+    answer_key_sample_correct: int = Field(default=0, ge=0)
 
 
 class BenchmarkSummary(BaseModel):
@@ -62,6 +68,12 @@ class BenchmarkSummary(BaseModel):
     support_rate: float = Field(ge=0.0, le=1.0)
     validation_pass_rate: float = Field(ge=0.0, le=1.0)
     elapsed_seconds: float = Field(ge=0.0)
+    grounded_question_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    answer_key_sample_total: int = Field(default=0, ge=0)
+    answer_key_sample_correct: int = Field(default=0, ge=0)
+    answer_key_sample_correctness_rate: float | None = Field(
+        default=None, ge=0.0, le=1.0
+    )
 
 
 class BenchmarkReport(BaseModel):
@@ -88,23 +100,42 @@ def run_benchmark(
 
     for index, input_item in enumerate(inputs):
         try:
-            output = agent.generate(
-                content=input_item.content,
-                user_question=input_item.user_question,
-                difficulty=input_item.difficulty,
-                context=input_item.context,
-            )
+            generate_args: dict[str, object] = {
+                "content": input_item.content,
+                "user_question": input_item.user_question,
+                "difficulty": input_item.difficulty,
+                "context": input_item.context,
+            }
+            if input_item.question_type is not None:
+                generate_args["question_type"] = input_item.question_type
+            if input_item.num_questions is not None:
+                generate_args["num_questions"] = input_item.num_questions
+            output = agent.generate(**generate_args)
             evaluation = evaluate_output(
                 output,
                 input_item.context,
                 difficulty=input_item.difficulty,
             )
+            sample_total = 0
+            sample_correct = 0
+            if isinstance(output, (QuestionBankOutput, TestHelpOutput)) and input_item.expected_answers:
+                sample_total = min(len(output.questions), len(input_item.expected_answers))
+                sample_correct = sum(
+                    generated.correct_answer.strip().casefold()
+                    == expected.strip().casefold()
+                    for generated, expected in zip(
+                        output.questions[:sample_total],
+                        input_item.expected_answers[:sample_total],
+                    )
+                )
             item_results.append(
                 BenchmarkItemResult(
                     index=index,
                     input_item=input_item,
                     output=output,
                     evaluation=evaluation,
+                    answer_key_sample_total=sample_total,
+                    answer_key_sample_correct=sample_correct,
                 )
             )
         except Exception as error:
@@ -139,6 +170,14 @@ def run_benchmark(
     ]
     succeeded = len(evaluations)
     elapsed_seconds = perf_counter() - started_at
+    answer_sample_total = sum(item.answer_key_sample_total for item in item_results)
+    answer_sample_correct = sum(item.answer_key_sample_correct for item in item_results)
+    question_evaluations = [
+        item.evaluation
+        for item in item_results
+        if isinstance(item.output, (QuestionBankOutput, TestHelpOutput))
+        and item.evaluation is not None
+    ]
 
     summary = BenchmarkSummary(
         total_processed=len(inputs),
@@ -166,5 +205,16 @@ def run_benchmark(
             [evaluation.validation_passed for evaluation in evaluations]
         ),
         elapsed_seconds=elapsed_seconds,
+        grounded_question_rate=(
+            sum(evaluation.groundedness_ratio or 0.0 for evaluation in question_evaluations)
+            / len(question_evaluations)
+            if question_evaluations
+            else None
+        ),
+        answer_key_sample_total=answer_sample_total,
+        answer_key_sample_correct=answer_sample_correct,
+        answer_key_sample_correctness_rate=(
+            answer_sample_correct / answer_sample_total if answer_sample_total else None
+        ),
     )
     return BenchmarkReport(item_results=item_results, summary=summary)

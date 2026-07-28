@@ -1,0 +1,23 @@
+[
+  {
+    "content": "Python provides two loop types: for and while.",
+    "difficulty": "beginner",
+    "question_type": "mcq",
+    "num_questions": 1,
+    "expected_answers": ["while"],
+    "context": {
+      "query": "Python loop types",
+      "scope": {"document_id": "question-demo"},
+      "chunks": [{
+        "chunk": {
+          "chunk_id": "chunk_001",
+          "document_id": "question-demo",
+          "ordinal": 0,
+          "text": "Python provides two loop types: for and while."
+        },
+        "score": 1.0,
+        "rank": 1
+      }]
+    }
+  }
+]

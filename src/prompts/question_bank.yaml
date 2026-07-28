@@ -17,7 +17,7 @@ instructions:
   - Match the requested difficulty level.
   - Include the correct answer.
   - Include a rationale explaining why the answer is correct.
-  - Include grounding references using stable identifiers such as segment_id.
+  - Include grounding references using the EXACT chunk ID (segment_id) from the supplied content.
   - Mark every generated output as requiring human review.
   - If the provided content is insufficient, clearly indicate that instead of guessing.
 
@@ -34,7 +34,7 @@ output_schema:
       difficulty: "beginner"
       type: "mcq"
       references:
-        - segment_id: "seg1"
+        - segment_id: "<exact_chunk_id_from_content>"
           text: "Relevant content excerpt"
 
   requires_human_review: true
@@ -69,6 +69,10 @@ prompt_template: |
   - Use ONLY the supplied educational content.
   - Never invent facts.
   - Generate only questions that can be answered directly from the provided content.
+  - For the "segment_id" field in references, you MUST use the EXACT chunk ID (e.g. chunk_001, doc1_chunk0) specified in the Educational Content headers. NEVER invent placeholder IDs like "seg1".
+  - For short_answer questions, set "options" to null.
+  - For mcq questions, set "options" to a list of at least 4 unique choices including the correct_answer.
+  - For true_false questions, set "options" to ["True", "False"].
   - Every question must include:
       - question
       - options (null for short_answer)
@@ -76,7 +80,7 @@ prompt_template: |
       - rationale
       - difficulty
       - type
-      - references
+      - references (non-empty list)
   - Every question must contain at least one grounding reference.
   - Set requires_human_review to true.
   - If the content is insufficient, explain that instead of guessing.
@@ -99,7 +103,7 @@ prompt_template: |
         "type": "mcq",
         "references": [
           {{
-            "segment_id": "seg1",
+            "segment_id": "<exact_chunk_id_from_content>",
             "text": "Relevant content excerpt"
           }}
         ]
