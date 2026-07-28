@@ -52,13 +52,32 @@ from src.validation.validator_base import (
 logger = logging.getLogger(__name__)
 
 
+class UpstreamResponseError(RuntimeError):
+    """The gateway returned a success status carrying an error payload.
+
+    OpenAI-compatible gateways do not always signal upstream failure with an
+    HTTP error. OpenRouter, for instance, answers ``200`` with
+    ``{"choices": null, "error": {...}}`` when the backing provider is
+    saturated. The SDK sees a success and does not raise, so the agent's
+    ``response.choices[0]`` dereferences ``None`` and surfaces as
+    ``TypeError: 'NoneType' object is not subscriptable`` — an error that says
+    nothing about the real cause and is not recognisably retryable.
+
+    This translates that into something legible and retryable. The proper fix
+    belongs in the agents' ``_call_llm``, which should check for the error
+    payload; until then this keeps a transient provider limit from being
+    recorded as a permanent, inscrutable failure.
+    """
+
+
 def _default_transient_errors() -> tuple[type[BaseException], ...]:
     """Return the upstream error types worth retrying.
 
-    Connection failures, timeouts, rate limits and 5xx responses are transient;
-    everything else (a bad request, an auth failure) will fail again identically
-    and is not retried. Falls back to an empty tuple when the OpenAI client is
-    not installed, which makes retry a no-op rather than an import error.
+    Connection failures, timeouts, rate limits, 5xx responses and error-shaped
+    success responses are transient; everything else (a bad request, an auth
+    failure) will fail again identically and is not retried. Falls back to the
+    gateway-specific case alone when the OpenAI client is not installed, which
+    makes SDK-level retry a no-op rather than an import error.
     """
     try:
         from openai import (
@@ -68,8 +87,14 @@ def _default_transient_errors() -> tuple[type[BaseException], ...]:
             RateLimitError,
         )
     except ImportError:  # pragma: no cover - openai is a declared dependency
-        return ()
-    return (APIConnectionError, APITimeoutError, InternalServerError, RateLimitError)
+        return (UpstreamResponseError,)
+    return (
+        APIConnectionError,
+        APITimeoutError,
+        InternalServerError,
+        RateLimitError,
+        UpstreamResponseError,
+    )
 
 
 @runtime_checkable
@@ -142,7 +167,20 @@ class RegistryAgentAdapter:
             return self._agent.generate(content=content, **call_params).model_dump_json()
 
         prompt = self._agent._build_prompt(content=content, **call_params)
-        return self._agent._call_llm(prompt)
+        try:
+            return self._agent._call_llm(prompt)
+        except TypeError as exc:
+            # `_call_llm` indexes response.choices[0] unconditionally. When the
+            # gateway answers 200 with an error payload, choices is None and the
+            # dereference fails here rather than anywhere meaningful. Translate
+            # it so the run record says what happened and the retry policy can
+            # act on it. See UpstreamResponseError.
+            raise UpstreamResponseError(
+                "The gateway returned a response without choices, which usually "
+                "means an error payload delivered with a success status "
+                "(provider saturated or rate limited). "
+                f"Original error: {exc}"
+            ) from exc
 
 
 # Generation arguments each agent needs when the caller does not specify any.

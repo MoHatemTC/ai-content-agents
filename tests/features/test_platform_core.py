@@ -31,7 +31,11 @@ from src.validation.history import (
     RUN_STARTED,
     VALIDATION_FAILED,
 )
-from src.validation.orchestrator import Orchestrator
+from src.validation.orchestrator import (
+    Orchestrator,
+    RegistryAgentAdapter,
+    UpstreamResponseError,
+)
 from src.validation.review_service import ReviewService
 from src.validation.review_schema import (
     AgentRun,
@@ -638,6 +642,60 @@ def test_non_transient_error_is_not_retried(store: PlatformStore) -> None:
     orchestrator.run_agent("mentor", content="...")
 
     assert len(agent.calls) == 1
+
+
+class _FakeAgentModule:
+    """Stands in for a real agent, exposing the private methods the adapter uses."""
+
+    def __init__(self, response: str | Exception) -> None:
+        self.mock_mode = False
+        self.model = "fake"
+        self._response = response
+
+    def _build_prompt(self, **kwargs: object) -> str:
+        return "prompt"
+
+    def _call_llm(self, prompt: str) -> str:
+        if isinstance(self._response, Exception):
+            raise self._response
+        return self._response
+
+
+def test_error_shaped_success_response_becomes_a_legible_error() -> None:
+    """A gateway 200 carrying an error payload must not surface as a TypeError.
+
+    Reproduces OpenRouter answering 200 with {"choices": null, "error": {...}}
+    when the provider is saturated: the agent's response.choices[0] dereferences
+    None, and the resulting TypeError says nothing useful and is not retryable.
+    """
+    adapter = RegistryAgentAdapter(
+        name="mentor",
+        agent=_FakeAgentModule(
+            TypeError("'NoneType' object is not subscriptable")
+        ),
+        schema=MentorOutput,
+    )
+
+    with pytest.raises(UpstreamResponseError, match="without choices"):
+        adapter.run_raw("content")
+
+
+def test_error_shaped_response_is_retried(store: PlatformStore) -> None:
+    """It is a transient provider limit, so it belongs in the retry policy."""
+    assert UpstreamResponseError in Orchestrator(store, agents={"a": _StubAgent()}).transient_errors
+
+    agent = _StubAgent(
+        UpstreamResponseError("provider saturated"),
+        _valid_raw("physics-notes-c0000"),
+    )
+    orchestrator = Orchestrator(
+        store, agents={"mentor": agent}, max_retries=2, retry_backoff=0.0
+    )
+
+    result = orchestrator.run_agent("mentor", content="...")
+
+    assert result.error is None
+    assert len(agent.calls) == 2
 
 
 def test_grounded_run_records_provenance(store: PlatformStore) -> None:
