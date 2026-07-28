@@ -119,12 +119,18 @@ class GuardrailContext(BaseModel):
         grounded_context: The retrieval payload the agent was given, when the
             output was produced through the grounded pipeline. Supplies
             :class:`GroundedReferencesRule` with the set of chunk ids that were
-            genuinely retrieved; when absent that rule does not apply.
+            genuinely retrieved.
+        retrieved_chunk_ids: The same information reduced to the ids alone, for
+            callers that no longer hold the full payload — re-validating a
+            reviewer's edit long after the run, from
+            ``AgentRun.source_chunk_ids``. Ignored when ``grounded_context`` is
+            set; when neither is set the grounding rule does not apply.
     """
 
     min_text_length: int = 1
     required_text_fields: list[str] | None = None
     grounded_context: GroundedContext | None = None
+    retrieved_chunk_ids: list[str] | None = None
 
 
 class GuardrailRule(ABC):
@@ -186,9 +192,12 @@ class GroundedReferencesRule(GuardrailRule):
     classic grounding failure — is caught here rather than reaching a reviewer
     with fabricated provenance.
 
-    The rule does not apply when ``context.grounded_context`` is unset, so
-    ungrounded callers (tests, ad-hoc generation) are not penalised for a
-    comparison that cannot be made.
+    The rule accepts its evidence in either of two shapes: the full
+    :class:`GroundedContext` at generation time, or just the retrieved chunk ids
+    when re-validating a reviewer's edit later, by which point only
+    ``AgentRun.source_chunk_ids`` survives. It does not apply when neither is
+    available, so ungrounded callers (tests, ad-hoc generation) are not
+    penalised for a comparison that cannot be made.
     """
 
     name = "grounded_references"
@@ -196,22 +205,33 @@ class GroundedReferencesRule(GuardrailRule):
     def check(
         self, output: BaseModel, context: GuardrailContext
     ) -> GuardrailViolation | None:
-        grounded_context = context.grounded_context
-        if grounded_context is None:
+        references = collect_content_references(output)
+
+        if context.grounded_context is not None:
+            # Delegate to the retrieval lane's own verification.
+            unknown_ids = verify_references(
+                references, context.grounded_context
+            ).unknown_segment_ids
+        elif context.retrieved_chunk_ids is not None:
+            known = set(context.retrieved_chunk_ids)
+            unknown_ids = [
+                reference.segment_id
+                for reference in references
+                if reference.segment_id not in known
+            ]
+        else:
             return None  # Nothing to verify against.
 
-        references = collect_content_references(output)
-        verification = verify_references(references, grounded_context)
-        if verification.valid:
+        if not unknown_ids:
             return None
 
-        unknown = ", ".join(repr(i) for i in verification.unknown_segment_ids)
+        unknown = ", ".join(repr(i) for i in unknown_ids)
         return GuardrailViolation(
             rule_name=self.name,
             message=(
-                f"Output cites {len(verification.unknown_segment_ids)} segment "
-                f"id(s) that were never retrieved: {unknown}. The citation is "
-                "fabricated or points outside the retrieved scope."
+                f"Output cites {len(unknown_ids)} segment id(s) that were never "
+                f"retrieved: {unknown}. The citation is fabricated or points "
+                "outside the retrieved scope."
             ),
         )
 
