@@ -1,0 +1,168 @@
+# Deployment Guide
+
+How to configure and run Content Agents — the review platform in particular —
+outside a developer's checkout. Written for whoever deploys or demos it next.
+
+---
+
+## 1. Requirements
+
+- **Python 3.10+** (developed and tested on 3.14)
+- No system packages. Every dependency is pure Python or ships wheels; the PDF
+  exporter uses `fpdf2` specifically to avoid a system PDF toolchain.
+- Roughly 500 MB of disk for the virtual environment, mostly `chromadb`.
+- Network access **only** for the LiteLLM gateway. With `MOCK_MODE=true` the app
+  makes no outbound calls at all.
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate         # Windows
+source .venv/bin/activate      # macOS / Linux
+
+pip install -r requirements.txt
+```
+
+---
+
+## 2. Configuration
+
+All configuration is environment variables, read from a `.env` file at the project
+root. Copy the template and fill it in:
+
+```bash
+copy .env.example .env         # Windows
+cp .env.example .env           # macOS / Linux
+```
+
+| Variable | Default | What it does |
+|---|---|---|
+| `LITELLM_BASE_URL` | — | Gateway base URL. Required when `MOCK_MODE=false`. |
+| `LITELLM_API_KEY` | — | Gateway key. Required when `MOCK_MODE=false`. |
+| `DEFAULT_MODEL` | `kimi-k2.5` | Model name to request from the gateway. |
+| `MOCK_MODE` | `true` | `true` makes every agent return a canned response and never touch the network. |
+| `PLATFORM_DB_PATH` | `ingestion.db` | SQLite file holding documents, chunks, runs, outputs, reviews and events. |
+
+**`.env` is the first line of `.gitignore` and must stay that way.** `*.db` is
+ignored too, so the database never lands in a commit. Never put a real key in
+`.env.example`.
+
+To discover which models a gateway actually serves:
+
+```python
+from openai import OpenAI
+client = OpenAI(api_key=..., base_url=...)
+print([m.id for m in client.models.list().data])
+```
+
+---
+
+## 3. Running
+
+```bash
+# The review, history, export and metrics UI
+streamlit run src/validation/ui.py
+
+# The combined study-assistant app (other lanes)
+streamlit run src/app.py
+
+# Batch generation over the demo dataset, then the quality report
+python -m src.validation.automation                 # live
+python -m src.validation.automation --offline       # no API calls
+python -m src.validation.automation --limit 1 --agents mentor
+```
+
+`streamlit run` binds `localhost:8501` by default. For a shared demo:
+
+```bash
+streamlit run src/validation/ui.py \
+  --server.address 0.0.0.0 --server.port 8501 --server.headless true
+```
+
+The UI and the CLI share state through `PLATFORM_DB_PATH`, so a batch run shows up
+in the Review queue immediately. Point both at the same file.
+
+---
+
+## 4. Data and state
+
+Everything lives in one SQLite file:
+
+| Table | Owner | Contents |
+|---|---|---|
+| `documents`, `chunks` | ingestion lane | uploaded material |
+| `agent_runs` | this lane | one row per agent invocation, including failures |
+| `generated_outputs` | this lane | one row per artifact, with its verdict and status |
+| `reviews` | this lane | append-only human audit trail |
+| `system_events` | this lane | operational log |
+
+Tables are created on first use with `CREATE TABLE IF NOT EXISTS`, so there is no
+migration step and either store may initialise the file first.
+
+**The Chroma retrieval index is in-memory and dies with the process.** Re-ingest
+documents after a restart, or set `RetrievalConfig.persist_directory` to make it
+durable (task 6 of [retrieval-handoff.md](retrieval-handoff.md)). The SQLite data
+does survive restarts.
+
+Back up by copying the `.db` file while the app is stopped.
+
+---
+
+## 5. Health checks
+
+```bash
+# Everything green? Live tests skip without a key rather than failing.
+python -m pytest tests/ -q
+
+# Is the gateway actually reachable?
+RUN_LIVE_TESTS=true python -m pytest tests/test_question_bank_live.py -v
+
+# Does the pipeline work end to end with no network at all?
+python -m src.validation.automation --offline --limit 1
+```
+
+That last command is the most useful single check: if it prints a batch report,
+ingestion, retrieval, orchestration, validation, persistence and evaluation are all
+working.
+
+---
+
+## 6. Troubleshooting
+
+**`500 ... AzureException APIConnectionError ... Received Model Group=<model>`**
+The gateway authenticated you but cannot reach its own backend. This is upstream,
+not configuration — `client.models.list()` will still succeed while every
+completion fails. Confirm with a direct `curl`, then contact whoever runs the
+gateway. The platform records these as failed `agent_runs`, so they show up in
+History rather than crashing a batch.
+
+**`ValueError: Missing LITELLM_API_KEY environment variable`**
+`MOCK_MODE=false` with no key. Either set the key or set `MOCK_MODE=true`.
+
+**Live tests skip.** Expected without `LITELLM_API_KEY`. They skip rather than
+falling back to mocks on purpose — a green integration test that never called a
+model would be misleading.
+
+**Everything is flagged ungrounded in offline mode.** Correct behaviour. The
+agents' hardcoded mock responses cite `chunk_001`, while real chunks are
+`<document-id>-c0000`, so the `grounded_references` guardrail flags every one. That
+is the hallucination check working. Use `MOCK_MODE=false` to measure real
+groundedness.
+
+**Two Chroma indexes see each other's chunks.** `EphemeralClient` is shared per
+process; give each index a distinct `collection_name`.
+
+**`ExportBlockedError` on export.** Working as designed — the output has not been
+approved. Approve it on the Review page first.
+
+---
+
+## 7. Security notes
+
+- Secrets live only in `.env`. Nothing reads a key from code or from the database.
+- There is **no authentication** on the Streamlit UI: anyone who can reach the port
+  can approve content. Do not bind it to a public address without putting an
+  authenticating proxy in front.
+- The reviewer name is self-declared and recorded verbatim; it is an audit label,
+  not an identity claim.
+- Uploaded material and generated content are stored unencrypted in SQLite. Treat
+  the `.db` file as sensitive as the material that went into it.
