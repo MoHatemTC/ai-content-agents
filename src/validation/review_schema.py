@@ -3,7 +3,8 @@
 This module defines the data contract every agent output flows through before it
 can reach a user or be exported:
 
-* the output status lifecycle (``pending`` -> ``edited`` -> ``approved``),
+* the output status lifecycle (``pending`` -> ``edited`` -> ``approved`` /
+  ``rejected``),
 * the ``AgentRun`` / ``GeneratedOutput`` / ``Review`` domain models,
 * the pure review-action logic (:func:`apply_review`) that produces an immutable
   ``Review`` record and advances an output's status, and
@@ -42,14 +43,16 @@ def _new_id() -> str:
 class OutputStatus(str, Enum):
     """Lifecycle state of a generated output.
 
-    ``approved`` is terminal for Sprint 1 — there is no re-open path and no
-    further approve/edit action. Status-neutral audit comments may still be
-    appended to an approved output's review history.
+    ``approved`` and ``rejected`` are both **terminal**: there is no re-open
+    path and no further approve/edit/reject action once an output reaches
+    either. Status-neutral audit comments may still be appended to a terminal
+    output's review history.
     """
 
     PENDING = "pending"
     EDITED = "edited"
     APPROVED = "approved"
+    REJECTED = "rejected"
 
 
 class RunStatus(str, Enum):
@@ -64,24 +67,38 @@ class ReviewAction(str, Enum):
 
     APPROVE = "approve"
     EDIT = "edit"
+    REJECT = "reject"
     COMMENT = "comment"
 
 
 # Legal status *changes* (same-status "no-op" actions such as COMMENT are handled
 # in apply_review and do not go through this table).
 _LEGAL_TRANSITIONS: dict[OutputStatus, set[OutputStatus]] = {
-    OutputStatus.PENDING: {OutputStatus.EDITED, OutputStatus.APPROVED},
-    OutputStatus.EDITED: {OutputStatus.APPROVED},
+    OutputStatus.PENDING: {
+        OutputStatus.EDITED,
+        OutputStatus.APPROVED,
+        OutputStatus.REJECTED,
+    },
+    OutputStatus.EDITED: {OutputStatus.APPROVED, OutputStatus.REJECTED},
     OutputStatus.APPROVED: set(),
+    OutputStatus.REJECTED: set(),
 }
+
+# States from which no further status change is permitted. Only status-neutral
+# COMMENT actions remain available, so the audit trail never closes.
+_TERMINAL_STATUSES: frozenset[OutputStatus] = frozenset(
+    {OutputStatus.APPROVED, OutputStatus.REJECTED}
+)
 
 
 def is_legal_transition(old: OutputStatus, new: OutputStatus) -> bool:
     """Return whether changing an output's status from ``old`` to ``new`` is allowed.
 
-    Only genuine status changes are considered. ``pending -> edited``,
-    ``pending -> approved`` and ``edited -> approved`` are legal; anything out of
-    ``approved`` (re-open) and any backward move is illegal.
+    Only genuine status changes are considered. ``pending`` may move to
+    ``edited``, ``approved`` or ``rejected``; ``edited`` may move to ``approved``
+    or ``rejected``. Anything out of a terminal state (``approved``,
+    ``rejected``) and any backward move is illegal — in particular a rejected
+    output can never be approved, and so can never become exportable.
     """
     return new in _LEGAL_TRANSITIONS.get(old, set())
 
@@ -196,21 +213,24 @@ def apply_review(
 
     Raises:
         IllegalTransitionError: If the action is not permitted from the output's
-            current status. ``approved`` is terminal: approve/edit actions on an
-            already-approved output are rejected, while status-neutral
-            :attr:`ReviewAction.COMMENT` actions remain allowed for the audit trail.
+            current status. ``approved`` and ``rejected`` are terminal:
+            approve/edit/reject actions on an output in either state are refused,
+            while status-neutral :attr:`ReviewAction.COMMENT` actions remain
+            allowed for the audit trail.
         ValueError: If ``action`` is :attr:`ReviewAction.EDIT` without an
             ``edited_payload``.
     """
     previous = output.status
 
-    if previous == OutputStatus.APPROVED and action is not ReviewAction.COMMENT:
-        # Approved is terminal for status changes; only audit comments may still
-        # be appended.
+    if previous in _TERMINAL_STATUSES and action is not ReviewAction.COMMENT:
+        # Approved and rejected are terminal for status changes; only audit
+        # comments may still be appended.
         raise IllegalTransitionError(previous, previous)
 
     if action is ReviewAction.APPROVE:
         new_status = OutputStatus.APPROVED
+    elif action is ReviewAction.REJECT:
+        new_status = OutputStatus.REJECTED
     elif action is ReviewAction.EDIT:
         if edited_payload is None:
             raise ValueError("An 'edit' review action requires an edited_payload.")
