@@ -11,6 +11,13 @@ from pathlib import Path
 
 import pytest
 
+from src.retrieval.models import Chunk, GroundedContext, RetrievalScope, RetrievedChunk
+from src.validation.guardrails import (
+    GroundedReferencesRule,
+    GuardrailContext,
+    ReferencesPresentRule,
+    Severity,
+)
 from src.validation.review_schema import (
     AgentRun,
     GeneratedOutput,
@@ -24,7 +31,16 @@ from src.validation.review_schema import (
     assert_exportable,
     is_legal_transition,
 )
+from src.validation.schemas import (
+    ContentReference,
+    DifficultyLevel,
+    MentorOutput,
+    QuestionBankOutput,
+    QuestionItem,
+    QuestionType,
+)
 from src.validation.store import PlatformStore
+from src.validation.validator_base import ValidatorBase
 
 
 def _make_output(status: OutputStatus = OutputStatus.PENDING) -> GeneratedOutput:
@@ -310,3 +326,143 @@ def test_saved_review_is_returned_unchanged(store: PlatformStore) -> None:
     assert isinstance(saved, Review)
     assert saved.notes == "looks fine"
     assert saved.action is ReviewAction.COMMENT
+
+
+# --------------------------------------------------------------------------- #
+# GroundedReferencesRule: the hallucinated-citation check
+# --------------------------------------------------------------------------- #
+
+
+def _grounded_context(*chunk_ids: str) -> GroundedContext:
+    """Build a GroundedContext whose retrieved chunks have the given ids."""
+    return GroundedContext(
+        query="what is newton's second law",
+        scope=RetrievalScope(document_id="physics-notes"),
+        chunks=[
+            RetrievedChunk(
+                chunk=Chunk(
+                    chunk_id=chunk_id,
+                    document_id="physics-notes",
+                    ordinal=index,
+                    text=f"content of {chunk_id}",
+                ),
+                score=1.0 - index / 10,
+                rank=index + 1,
+            )
+            for index, chunk_id in enumerate(chunk_ids)
+        ],
+    )
+
+
+def _mentor_output(*segment_ids: str) -> MentorOutput:
+    """A schema-valid MentorOutput citing the given segment ids."""
+    return MentorOutput(
+        explanation="Force equals mass times acceleration.",
+        key_points=["F = ma"],
+        next_steps=["Practice a worked example."],
+        references=[
+            ContentReference(segment_id=segment_id, text="excerpt")
+            for segment_id in segment_ids
+        ],
+    )
+
+
+def test_grounding_rule_is_a_no_op_without_a_grounded_context() -> None:
+    """Ungrounded callers are not penalised; the rule simply does not apply."""
+    rule = GroundedReferencesRule()
+
+    assert rule.check(_mentor_output("anything"), GuardrailContext()) is None
+
+
+def test_grounding_rule_passes_when_every_citation_was_retrieved() -> None:
+    rule = GroundedReferencesRule()
+    context = GuardrailContext(
+        grounded_context=_grounded_context("physics-notes-c0000", "physics-notes-c0001")
+    )
+
+    assert rule.check(_mentor_output("physics-notes-c0000"), context) is None
+
+
+def test_grounding_rule_flags_a_fabricated_citation() -> None:
+    """The exact failure the mock agents exhibit: citing 'chunk_001'."""
+    rule = GroundedReferencesRule()
+    context = GuardrailContext(grounded_context=_grounded_context("physics-notes-c0000"))
+
+    violation = rule.check(_mentor_output("chunk_001"), context)
+
+    assert violation is not None
+    assert violation.rule_name == "grounded_references"
+    assert violation.severity is Severity.ERROR
+    assert "chunk_001" in violation.message
+
+
+def test_grounding_rule_reaches_nested_references() -> None:
+    """QuestionBankOutput cites per question, not at the top level."""
+    rule = GroundedReferencesRule()
+    context = GuardrailContext(grounded_context=_grounded_context("physics-notes-c0000"))
+    output = QuestionBankOutput(
+        questions=[
+            QuestionItem(
+                question="What is F = ma?",
+                options=["a", "b"],
+                correct_answer="a",
+                rationale="because",
+                difficulty=DifficultyLevel.BEGINNER,
+                type=QuestionType.MCQ,
+                references=[ContentReference(segment_id="invented-id", text="x")],
+            )
+        ]
+    )
+
+    violation = rule.check(output, context)
+
+    assert violation is not None
+    assert "invented-id" in violation.message
+
+
+def test_ungrounded_output_fails_validation_end_to_end() -> None:
+    """Wired into DEFAULT_RULES, a fabricated citation fails the whole verdict."""
+    validator = ValidatorBase()
+    context = GuardrailContext(grounded_context=_grounded_context("physics-notes-c0000"))
+
+    result, model = validator.validate(
+        _mentor_output("chunk_001").model_dump(), MentorOutput, context=context
+    )
+
+    assert model is not None  # schema was fine; grounding was not
+    assert result.passed is False
+    assert any(v.rule_name == "grounded_references" for v in result.guardrail_violations)
+
+
+def test_grounded_output_passes_validation_end_to_end() -> None:
+    validator = ValidatorBase()
+    context = GuardrailContext(grounded_context=_grounded_context("physics-notes-c0000"))
+
+    result, _ = validator.validate(
+        _mentor_output("physics-notes-c0000").model_dump(),
+        MentorOutput,
+        context=context,
+    )
+
+    assert result.passed is True
+    assert result.guardrail_violations == []
+
+
+def test_references_present_rule_covers_nested_citations() -> None:
+    """A question with no references is ungrounded even with no top-level field."""
+    rule = ReferencesPresentRule()
+    output = QuestionBankOutput(
+        questions=[
+            QuestionItem(
+                question="What is F = ma?",
+                options=["a", "b"],
+                correct_answer="a",
+                rationale="because",
+                difficulty=DifficultyLevel.BEGINNER,
+                type=QuestionType.MCQ,
+                references=[],
+            )
+        ]
+    )
+
+    assert rule.check(output, GuardrailContext()) is not None

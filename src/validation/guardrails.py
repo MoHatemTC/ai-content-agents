@@ -6,12 +6,15 @@ already schema-valid output. This module provides:
 * :class:`GuardrailViolation` — the structured result of a failed check,
 * :class:`GuardrailContext` — per-run configuration/context a rule may consult,
 * :class:`GuardrailRule` — the rule interface every guardrail implements, and
-* two concrete Sprint 1 rules plus :data:`DEFAULT_RULES`.
+* three concrete rules plus :data:`DEFAULT_RULES`.
 
-This is a **foundation**, not a full rule library: it proves the mechanism with a
-couple of rules. Deep, semantic hallucination checking against source content is a
-later-sprint concern; the Sprint 1 grounding rule only verifies that provenance
-references are present.
+The rules answer three different questions about a schema-valid output:
+:class:`NonEmptyTextRule` asks whether it says anything at all,
+:class:`ReferencesPresentRule` asks whether it cites its sources, and
+:class:`GroundedReferencesRule` asks whether those citations are **real** —
+whether each cited segment was actually retrieved, catching a model that
+fabricates provenance. Semantic entailment checking (does the source actually
+*support* the claim?) remains out of scope.
 """
 
 from __future__ import annotations
@@ -20,6 +23,70 @@ from abc import ABC, abstractmethod
 from enum import Enum
 
 from pydantic import BaseModel
+
+from src.retrieval.grounding import verify_references
+from src.retrieval.models import GroundedContext
+from src.validation.schemas import ContentReference
+
+
+def reference_field_values(output: BaseModel) -> list[object]:
+    """Return the value of every ``references`` field on an output, nested included.
+
+    Agent schemas cite in two different shapes: ``MentorOutput`` and
+    ``ConceptOutput`` carry a top-level ``references`` list, while
+    ``QuestionBankOutput`` and ``TestHelpOutput`` carry one per question inside
+    ``questions``. A rule that only looked at the top level would silently pass
+    half the agents, so this walks nested models and lists of models too.
+
+    Values are returned untyped because citation *presence* is meaningful for
+    any element type — a schema may legitimately cite bare id strings.
+
+    Args:
+        output: Any schema-valid agent output.
+
+    Returns:
+        One entry per ``references`` field found, in document order. Empty when
+        the output declares no citations anywhere, meaning citation rules do
+        not apply to it.
+    """
+    found: list[object] = []
+
+    def walk(value: object) -> None:
+        if isinstance(value, BaseModel):
+            for name in type(value).model_fields:
+                attribute = getattr(value, name, None)
+                if name == "references":
+                    found.append(attribute)
+                else:
+                    walk(attribute)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                walk(item)
+
+    walk(output)
+    return found
+
+
+def collect_content_references(output: BaseModel) -> list[ContentReference]:
+    """Gather every typed citation on an output, including nested ones.
+
+    Unlike :func:`reference_field_values` this keeps only real
+    :class:`~src.validation.schemas.ContentReference` objects, because verifying
+    a citation requires a ``segment_id`` to compare against retrieval.
+
+    Args:
+        output: Any schema-valid agent output.
+
+    Returns:
+        Every ``ContentReference`` found, in document order.
+    """
+    found: list[ContentReference] = []
+    for value in reference_field_values(output):
+        if isinstance(value, ContentReference):
+            found.append(value)
+        elif isinstance(value, (list, tuple)):
+            found.extend(item for item in value if isinstance(item, ContentReference))
+    return found
 
 
 class Severity(str, Enum):
@@ -49,10 +116,15 @@ class GuardrailContext(BaseModel):
             for :class:`NonEmptyTextRule`.
         required_text_fields: If set, restricts :class:`NonEmptyTextRule` to these
             fields; otherwise every string field on the output is checked.
+        grounded_context: The retrieval payload the agent was given, when the
+            output was produced through the grounded pipeline. Supplies
+            :class:`GroundedReferencesRule` with the set of chunk ids that were
+            genuinely retrieved; when absent that rule does not apply.
     """
 
     min_text_length: int = 1
     required_text_fields: list[str] | None = None
+    grounded_context: GroundedContext | None = None
 
 
 class GuardrailRule(ABC):
@@ -76,10 +148,13 @@ class GuardrailRule(ABC):
 class ReferencesPresentRule(GuardrailRule):
     """Grounding/provenance rule: outputs that declare references must carry some.
 
-    Agent output schemas in this project carry a ``references`` field listing the
-    source chunks used (e.g. ``MentorOutput``, ``ConceptOutput``). This rule fails
-    when such a schema produces an empty ``references`` list. Schemas that do not
-    declare a ``references`` field are not subject to this rule.
+    Agent output schemas in this project cite their sources in one of two
+    shapes — a top-level ``references`` list (``MentorOutput``,
+    ``ConceptOutput``) or one per question (``QuestionBankOutput``,
+    ``TestHelpOutput``). This rule fails when **any** declared ``references``
+    field is empty, so an individual ungrounded question is caught rather than
+    hidden behind its well-cited siblings. Schemas that declare no
+    ``references`` field are not subject to it.
     """
 
     name = "references_present"
@@ -87,10 +162,10 @@ class ReferencesPresentRule(GuardrailRule):
     def check(
         self, output: BaseModel, context: GuardrailContext
     ) -> GuardrailViolation | None:
-        if "references" not in type(output).model_fields:
+        values = reference_field_values(output)
+        if not values:
             return None  # Rule does not apply to this schema.
-        references = getattr(output, "references", None)
-        if not references:
+        if any(not value for value in values):
             return GuardrailViolation(
                 rule_name=self.name,
                 message=(
@@ -99,6 +174,46 @@ class ReferencesPresentRule(GuardrailRule):
                 ),
             )
         return None
+
+
+class GroundedReferencesRule(GuardrailRule):
+    """Hallucination check: cited segments must actually have been retrieved.
+
+    :class:`ReferencesPresentRule` only asks whether an output cites *anything*.
+    This rule asks whether those citations are **real**, comparing every cited
+    ``segment_id`` against the ids in the :class:`GroundedContext` the agent was
+    actually given. A model that invents a plausible-looking chunk id — the
+    classic grounding failure — is caught here rather than reaching a reviewer
+    with fabricated provenance.
+
+    The rule does not apply when ``context.grounded_context`` is unset, so
+    ungrounded callers (tests, ad-hoc generation) are not penalised for a
+    comparison that cannot be made.
+    """
+
+    name = "grounded_references"
+
+    def check(
+        self, output: BaseModel, context: GuardrailContext
+    ) -> GuardrailViolation | None:
+        grounded_context = context.grounded_context
+        if grounded_context is None:
+            return None  # Nothing to verify against.
+
+        references = collect_content_references(output)
+        verification = verify_references(references, grounded_context)
+        if verification.valid:
+            return None
+
+        unknown = ", ".join(repr(i) for i in verification.unknown_segment_ids)
+        return GuardrailViolation(
+            rule_name=self.name,
+            message=(
+                f"Output cites {len(verification.unknown_segment_ids)} segment "
+                f"id(s) that were never retrieved: {unknown}. The citation is "
+                "fabricated or points outside the retrieved scope."
+            ),
+        )
 
 
 class NonEmptyTextRule(GuardrailRule):
@@ -138,5 +253,11 @@ class NonEmptyTextRule(GuardrailRule):
         return None
 
 
-# The default set of rules every agent output runs through in Sprint 1.
-DEFAULT_RULES: list[GuardrailRule] = [ReferencesPresentRule(), NonEmptyTextRule()]
+# The default set of rules every agent output runs through. GroundedReferencesRule
+# is a no-op unless the caller supplies a GroundedContext, so it is safe here for
+# ungrounded callers while enforcing citation integrity on the real pipeline.
+DEFAULT_RULES: list[GuardrailRule] = [
+    ReferencesPresentRule(),
+    NonEmptyTextRule(),
+    GroundedReferencesRule(),
+]
