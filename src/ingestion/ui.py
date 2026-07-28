@@ -11,20 +11,53 @@ if __name__ == "__main__":
 
 import streamlit as st
 from .loader import ContentLoader
+from .batch import BatchIngestion
+from .library import ContentLibrary
+from .demo_data import DemoDataLoader
+
+
+@st.cache_resource
+def get_loader():
+    return ContentLoader()
+
+
+@st.cache_resource
+def get_batch():
+    return BatchIngestion()
+
+
+@st.cache_resource
+def get_library():
+    return ContentLibrary()
+
+
+@st.cache_resource
+def get_demo():
+    return DemoDataLoader()
 
 
 def render_upload_page():
     st.set_page_config(page_title="Upload Content", page_icon="📄")
     st.title("Upload Content")
 
-    loader = ContentLoader()
+    loader = get_loader()
+    batch = get_batch()
+    library = get_library()
+    demo = get_demo()
 
-    tab1, tab2 = st.tabs(["📁 Upload File", "📝 Paste Text"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📁 Upload File", 
+        "📝 Paste Text",
+        "📂 Batch Upload",
+        "📚 Content Library",
+        "🎓 Demo Dataset"
+    ])
 
     with tab1:
         uploaded_file = st.file_uploader(
             "Choose a file",
-            type=["txt", "pdf", "docx", "md"]
+            type=["txt", "pdf", "docx", "md"],
+            key="single_file_upload",
         )
 
         if uploaded_file is not None:
@@ -40,28 +73,147 @@ def render_upload_page():
 
                     with st.expander("View Document Content"):
                         st.text(document.content[:2000] + "..." if len(document.content) > 2000 else document.content)
+            except ValueError as e:
+                st.error(str(e))
+
             except Exception as e:
-                st.error(f"Error processing file: {str(e)}")
+                st.error(f"Unexpected error: {str(e)}")
 
     with tab2:
         title = st.text_input("Title (optional)", "Pasted Text")
         pasted_text = st.text_area("Paste your text here", height=200)
 
-        if st.button("Process Text") and pasted_text:
+        if st.button("Process Text",
+                     key="process_text_button"
+                     ):
+            if not pasted_text.strip():
+                st.warning("Please enter some text.")
+
+            else:    
+                try:
+                    with st.spinner("Processing text..."):
+                        document = loader.load_text(pasted_text, title)
+                        chunks = loader.store.get_chunks_by_document_id(document.id)
+
+                        st.success(f"Successfully processed {document.title}!")
+                        st.write(f"Document ID: {document.id}")
+                        st.write(f"Number of chunks: {len(chunks)}")
+
+                        with st.expander("View Document Content"):
+                            st.text(document.content[:2000] + "..." if len(document.content) > 2000 else document.content)
+                except ValueError as e:
+                    st.error(str(e))
+
+                except Exception as e:
+                    st.error(f"Unexpected error: {str(e)}")
+
+
+    with tab3:
+        uploaded_files = st.file_uploader(
+            "Choose multiple files",
+            type=["txt", "pdf", "docx", "md"],
+            accept_multiple_files=True,
+            key="batch_file_upload"
+        )  
+
+        if st.button("Upload Files",
+                      key="upload_files_button",
+                     ):
+
+            if not uploaded_files:
+                st.warning("Please select one or more files.")
+
+            else:    
+                files = [
+                    (file.name, file.read())
+                    for file in uploaded_files
+                ]
+
+                with st.spinner("Uploading files..."):
+                    result = batch.ingest_files(files)   
+
+                if result.documents:
+                    st.success(
+                        f"Successfully uploaded {len(result.documents)} file(s)."
+                    )   
+
+                if result.failed_files:
+                    st.warning(
+                        f"{len(result.failed_files)} file(s) could not be processed."
+                    )
+
+                    for failed in result.failed_files:
+                       st.error(f"{failed.filename}: {failed.error}") 
+
+
+
+    with tab4:
+
+        st.subheader("Content Library")
+
+        # Optional refresh button
+        st.button("Refresh Library", key="refresh_library_button")
+
+        # Always load the documents
+        documents = library.list_documents()
+
+        if not documents:
+            st.info("No documents have been uploaded yet.")
+
+        else:
+            for doc in documents:
+                col1, col2 = st.columns([5, 1])
+
+                with col1:
+                     st.markdown(f"### {doc.title}")
+                     st.write(f"**Source:** {doc.source_type}")
+                     st.write(f"**Type:** {doc.file_type}")
+                     st.write(f"**Size:** {doc.size}")
+                     st.write(f"**Chunks:** {doc.chunk_count}")
+                     st.write(
+                        f"**Created:** {doc.created_at.strftime('%Y-%m-%d %H:%M')}"
+                    )
+
+                with col2:
+                    if st.button(
+                        "🗑️ Delete",
+                        key=f"delete_{doc.id}"
+                    ):
+                        if library.delete_document(doc.id):
+                            st.success(f"{doc.title} deleted successfully!")
+                            st.rerun()
+                        else:
+                            st.error("Failed to delete document.")
+
+                st.divider()
+
+
+    with tab5:
+
+        st.subheader("Demo Dataset")
+
+        st.write(
+            "Load a sample educational dataset into the content library."
+        )
+
+        if st.button("Load Demo Dataset",
+                     key="load_demo_button"
+                     ):
+
             try:
-                with st.spinner("Processing text..."):
-                    document = loader.load_text(pasted_text, title)
-                    chunks = loader.store.get_chunks_by_document_id(document.id)
+                with st.spinner("Loading demo dataset..."):
 
-                    st.success(f"Successfully processed {document.title}!")
-                    st.write(f"Document ID: {document.id}")
-                    st.write(f"Number of chunks: {len(chunks)}")
+                    count = demo.load_demo_data()
 
-                    with st.expander("View Document Content"):
-                        st.text(document.content[:2000] + "..." if len(document.content) > 2000 else document.content)
+                st.success(
+                    f"Successfully loaded {count} demo document(s)."
+                )
+
+            except ValueError as e:
+                st.error(str(e))
+
             except Exception as e:
-                st.error(f"Error processing text: {str(e)}")
-
+                st.error(f"Failed to load demo dataset: {str(e)}")
 
 if __name__ == "__main__":
     render_upload_page()

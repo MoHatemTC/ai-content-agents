@@ -6,6 +6,7 @@ from .cleaner import TextCleaner
 from .parser import TextParser
 from .schema import Document
 from .store import SQLiteStore
+from .quality import QualityChecker
 
 
 class ContentLoader:
@@ -21,6 +22,7 @@ class ContentLoader:
         self.store = SQLiteStore(db_path)
         self.cleaner = TextCleaner()
         self.chunker = TextChunker()
+        self.quality = QualityChecker()
 
     def load_file(
         self,
@@ -48,6 +50,17 @@ class ContentLoader:
 
         raw_text = TextParser.parse(file_content, file_type)
         cleaned_text = self.cleaner.clean(raw_text)
+
+        print(f"RAW: {repr(raw_text)}")
+        print(f"CLEANED: {repr(cleaned_text)}")
+
+        result = self.quality.validate(cleaned_text)
+
+        if not result.passed:
+            raise ValueError(
+                "Quality check failed:\n" +
+                "\n".join(result.issues)
+            )
 
         document = Document(
             title=filename,
@@ -85,6 +98,13 @@ class ContentLoader:
             Saved document.
         """
         cleaned_text = self.cleaner.clean(text)
+        result = self.quality.validate(cleaned_text)
+
+        if not result.passed:
+            raise ValueError(
+                "Quality check failed:\n" +
+                "\n".join(result.issues)
+            )
 
         document = Document(
             title=title,
