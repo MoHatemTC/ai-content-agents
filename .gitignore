@@ -1,5 +1,6 @@
 .env
 docs/retrieval-handoff.md
+docs/week3-merge-plan.md
 __pycache__/
 *.py[cod]
 *$py.class
