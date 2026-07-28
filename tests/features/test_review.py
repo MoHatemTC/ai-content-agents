@@ -6,9 +6,11 @@ offline against a temporary SQLite file — no agent and no network.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from streamlit.testing.v1 import AppTest
 
 from src.retrieval.models import Chunk, GroundedContext, RetrievalScope, RetrievedChunk
 from src.validation.history import REVIEW_ACTION
@@ -23,6 +25,8 @@ from src.validation.review_service import OutputNotFoundError, ReviewService
 from src.validation.schemas import ContentReference, MentorOutput
 from src.validation.store import PlatformStore
 
+UI_PATH = Path(__file__).resolve().parents[2] / "src" / "validation" / "ui.py"
+
 
 @pytest.fixture()
 def store(tmp_path: Path) -> PlatformStore:
@@ -34,6 +38,26 @@ def store(tmp_path: Path) -> PlatformStore:
 def service(store: PlatformStore) -> ReviewService:
     """A ReviewService over the throwaway store."""
     return ReviewService(store)
+
+
+@pytest.fixture()
+def review_app(
+    store: PlatformStore, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[AppTest]:
+    """The Streamlit app driven headlessly against the throwaway store.
+
+    ``PLATFORM_DB_PATH`` points the page's cached store at the temporary file.
+    The whole resource cache is cleared around each test because Streamlit
+    executes the page as a fresh ``__main__`` module, so its ``get_store`` is a
+    different function object from ``src.validation.ui.get_store`` — clearing
+    that one would leave the previous test's database cached.
+    """
+    import streamlit as st
+
+    monkeypatch.setenv("PLATFORM_DB_PATH", store.db_path)
+    st.cache_resource.clear()
+    yield AppTest.from_file(str(UI_PATH), default_timeout=30)
+    st.cache_resource.clear()
 
 
 def _mentor_payload(*segment_ids: str) -> dict:
@@ -325,6 +349,110 @@ def test_review_actions_are_logged_as_events(
     events = store.list_events(event_type=REVIEW_ACTION)
     assert len(events) == 1
     assert events[0].output_id == output.id
+
+
+def test_review_page_lists_the_pending_queue(
+    store: PlatformStore, review_app: AppTest
+) -> None:
+    _seed(store)
+
+    review_app.run()
+
+    assert not review_app.exception
+    assert "Review queue" in review_app.title[0].value
+    assert any("1" in str(markdown.value) for markdown in review_app.markdown)
+
+
+def test_review_page_refuses_to_act_without_a_reviewer(
+    store: PlatformStore, review_app: AppTest
+) -> None:
+    """Every review record is attributed, so the buttons stay disabled."""
+    _seed(store)
+
+    review_app.run()
+
+    # Guard against a vacuous pass: an empty button list would satisfy all().
+    assert len(review_app.button) == 4
+    assert all(button.disabled for button in review_app.button)
+    assert any("sidebar" in str(w.value).lower() for w in review_app.warning)
+
+
+def test_approving_through_the_page_persists_the_decision(
+    store: PlatformStore, review_app: AppTest
+) -> None:
+    """The button really drives the service, not just the widget state."""
+    output = _seed(store)
+
+    review_app.run()
+    review_app.sidebar.text_input(key="reviewer").set_value("nour").run()
+    review_app.button[0].click().run()
+
+    assert not review_app.exception
+    assert store.get_output(output.id).status is OutputStatus.APPROVED
+    assert store.list_reviews(output_id=output.id)[0].reviewer == "nour"
+
+
+def test_rejecting_through_the_page_persists_the_decision(
+    store: PlatformStore, review_app: AppTest
+) -> None:
+    output = _seed(store)
+
+    review_app.run()
+    review_app.sidebar.text_input(key="reviewer").set_value("nour").run()
+    review_app.button[2].click().run()
+
+    assert store.get_output(output.id).status is OutputStatus.REJECTED
+
+
+def test_review_page_reports_a_failed_validation(
+    store: PlatformStore, review_app: AppTest
+) -> None:
+    _seed(store, validation_passed=False)
+
+    review_app.run()
+
+    assert any("Validation failed" in str(error.value) for error in review_app.error)
+
+
+def test_review_page_survives_invalid_edited_json(
+    store: PlatformStore, review_app: AppTest
+) -> None:
+    """A typo in the payload box must report an error, not crash the page."""
+    output = _seed(store)
+
+    review_app.run()
+    review_app.sidebar.text_input(key="reviewer").set_value("nour").run()
+    review_app.text_area(key=f"payload-{output.id}").set_value("{not json").run()
+    review_app.button[1].click().run()
+
+    assert not review_app.exception
+    assert any("not valid JSON" in str(error.value) for error in review_app.error)
+    assert store.get_output(output.id).status is OutputStatus.PENDING
+
+
+def test_review_page_explains_a_refused_action(
+    store: PlatformStore, review_app: AppTest
+) -> None:
+    _seed(store, status=OutputStatus.APPROVED)
+
+    review_app.run()
+    review_app.multiselect[0].set_value([OutputStatus.APPROVED]).run()
+    review_app.sidebar.text_input(key="reviewer").set_value("nour").run()
+    review_app.button[0].click().run()
+
+    assert not review_app.exception
+    assert any("final" in str(error.value) for error in review_app.error)
+
+
+def test_every_page_renders(store: PlatformStore, review_app: AppTest) -> None:
+    """History, Export and Metrics must all survive a real run."""
+    output = _seed(store)
+    ReviewService(store).approve(output.id, "nour")
+
+    for page in ("🕘 History", "📤 Export", "📊 Metrics"):
+        review_app.run()
+        review_app.sidebar.radio[0].set_value(page).run()
+        assert not review_app.exception, f"{page} raised {review_app.exception}"
 
 
 def test_grounded_context_from_the_run_is_reused_when_supplied(
