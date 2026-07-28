@@ -7,10 +7,14 @@ in ``tests/features/test_platform_integration.py``.
 
 from __future__ import annotations
 
+import csv
+import io
+import json
 from pathlib import Path
 
 import pytest
 
+from src.exports import ExportFormat, export_approved_run, export_outputs
 from src.retrieval.models import Chunk, GroundedContext, RetrievalScope, RetrievedChunk
 from src.validation.guardrails import (
     GroundedReferencesRule,
@@ -19,6 +23,8 @@ from src.validation.guardrails import (
     Severity,
 )
 from src.validation.history import (
+    EXPORT_BLOCKED,
+    EXPORT_COMPLETED,
     RUN_COMPLETED,
     RUN_FAILED,
     RUN_STARTED,
@@ -27,6 +33,7 @@ from src.validation.history import (
 from src.validation.orchestrator import Orchestrator
 from src.validation.review_schema import (
     AgentRun,
+    ExportBlockedError,
     GeneratedOutput,
     IllegalTransitionError,
     OutputStatus,
@@ -741,3 +748,175 @@ def test_agent_params_reach_the_agent(store: PlatformStore) -> None:
 
     assert agent.calls[0]["content"] == "body"
     assert agent.calls[0]["difficulty"] == "advanced"
+
+
+# --------------------------------------------------------------------------- #
+# Export: four formats, one gate
+# --------------------------------------------------------------------------- #
+
+
+def _approved(store: PlatformStore, **kwargs: object) -> GeneratedOutput:
+    """Persist an approved output ready to be exported."""
+    run = AgentRun(agent_name=str(kwargs.get("agent_name", "mentor")))
+    store.save_agent_run(run)
+    return store.save_output(
+        GeneratedOutput(
+            agent_run_id=run.id,
+            output_type="mentor",
+            payload=_mentor_output("physics-notes-c0000").model_dump(mode="json"),
+            schema_name="MentorOutput",
+            validation_passed=True,
+            status=OutputStatus.APPROVED,
+        )
+    )
+
+
+@pytest.mark.parametrize("fmt", list(ExportFormat))
+def test_every_format_produces_bytes(store: PlatformStore, fmt: ExportFormat) -> None:
+    data = export_outputs([_approved(store)], fmt)
+
+    assert isinstance(data, bytes)
+    assert data
+
+
+@pytest.mark.parametrize("status", [OutputStatus.PENDING, OutputStatus.EDITED])
+def test_unapproved_output_cannot_be_exported(
+    store: PlatformStore, status: OutputStatus
+) -> None:
+    output = _approved(store)
+    output.status = status
+    store.save_output(output)
+
+    with pytest.raises(ExportBlockedError):
+        export_outputs([output], ExportFormat.JSON)
+
+
+def test_rejected_output_cannot_be_exported(store: PlatformStore) -> None:
+    output = _approved(store)
+    output.status = OutputStatus.REJECTED
+    store.save_output(output)
+
+    with pytest.raises(ExportBlockedError):
+        export_outputs([output], ExportFormat.JSON)
+
+
+def test_one_unapproved_output_blocks_the_whole_export(store: PlatformStore) -> None:
+    """The gate runs over every output before a single byte is written."""
+    good = _approved(store)
+    bad = _approved(store)
+    bad.status = OutputStatus.PENDING
+    store.save_output(bad)
+
+    with pytest.raises(ExportBlockedError):
+        export_outputs([good, bad], ExportFormat.JSON)
+
+
+def test_blocked_export_is_logged(store: PlatformStore) -> None:
+    output = _approved(store)
+    output.status = OutputStatus.PENDING
+    store.save_output(output)
+
+    with pytest.raises(ExportBlockedError):
+        export_outputs([output], ExportFormat.JSON, store=store)
+
+    assert EXPORT_BLOCKED in {e.event_type for e in store.list_events()}
+
+
+def test_completed_export_is_logged(store: PlatformStore) -> None:
+    export_outputs([_approved(store)], ExportFormat.JSON, store=store)
+
+    assert EXPORT_COMPLETED in {e.event_type for e in store.list_events()}
+
+
+def test_json_export_round_trips(store: PlatformStore) -> None:
+    output = _approved(store)
+
+    data = json.loads(export_outputs([output], ExportFormat.JSON))
+
+    assert data["count"] == 1
+    exported = data["outputs"][0]
+    assert exported["id"] == output.id
+    assert exported["status"] == "approved"
+    assert exported["payload"]["explanation"]
+
+
+def test_csv_export_has_a_header_and_one_row_per_output(store: PlatformStore) -> None:
+    outputs = [_approved(store), _approved(store)]
+
+    text = export_outputs(outputs, ExportFormat.CSV).decode("utf-8")
+    rows = list(csv.DictReader(io.StringIO(text)))
+
+    assert len(rows) == 2
+    assert {"id", "agent_run_id", "output_type", "status", "payload"} <= set(rows[0])
+    assert rows[0]["status"] == "approved"
+    assert json.loads(rows[0]["payload"])["explanation"]
+
+
+def test_markdown_export_is_readable(store: PlatformStore) -> None:
+    text = export_outputs([_approved(store)], ExportFormat.MARKDOWN).decode("utf-8")
+
+    assert text.startswith("#")
+    assert "Force equals mass times acceleration." in text
+    assert "physics-notes-c0000" in text
+
+
+def test_pdf_export_is_a_real_pdf(store: PlatformStore) -> None:
+    data = export_outputs([_approved(store)], ExportFormat.PDF)
+
+    assert data[:5] == b"%PDF-"
+    assert data.rstrip().endswith(b"%%EOF")
+
+
+def test_pdf_export_survives_non_latin1_characters(store: PlatformStore) -> None:
+    """Core PDF fonts are latin-1; unsupported characters must not crash export."""
+    output = _approved(store)
+    output.payload["explanation"] = "Grounding — naïve “quotes” and 日本語"
+    store.save_output(output)
+
+    assert export_outputs([output], ExportFormat.PDF)[:5] == b"%PDF-"
+
+
+def test_export_approved_run_selects_only_approved_outputs(
+    store: PlatformStore,
+) -> None:
+    run = AgentRun(agent_name="mentor")
+    store.save_agent_run(run)
+    for status in (OutputStatus.APPROVED, OutputStatus.PENDING, OutputStatus.REJECTED):
+        store.save_output(
+            GeneratedOutput(
+                agent_run_id=run.id,
+                output_type="mentor",
+                payload=_mentor_output("physics-notes-c0000").model_dump(mode="json"),
+                schema_name="MentorOutput",
+                status=status,
+            )
+        )
+
+    data = json.loads(export_approved_run(run.id, ExportFormat.JSON, store))
+
+    assert data["count"] == 1
+    assert data["outputs"][0]["status"] == "approved"
+
+
+def test_exporting_a_run_with_nothing_approved_is_empty(store: PlatformStore) -> None:
+    run = AgentRun(agent_name="mentor")
+    store.save_agent_run(run)
+    store.save_output(
+        GeneratedOutput(
+            agent_run_id=run.id,
+            output_type="mentor",
+            payload={},
+            schema_name="MentorOutput",
+            status=OutputStatus.PENDING,
+        )
+    )
+
+    data = json.loads(export_approved_run(run.id, ExportFormat.JSON, store))
+
+    assert data["count"] == 0
+
+
+def test_export_format_carries_its_filename_metadata() -> None:
+    assert ExportFormat.MARKDOWN.extension == "md"
+    assert ExportFormat.PDF.media_type == "application/pdf"
+    assert ExportFormat("csv") is ExportFormat.CSV
