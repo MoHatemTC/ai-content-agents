@@ -36,7 +36,7 @@ cp .env.example .env           # macOS / Linux
 
 | Variable | Default | What it does |
 |---|---|---|
-| `LITELLM_BASE_URL` | — | Gateway base URL. Required when `MOCK_MODE=false`. |
+| `LITELLM_BASE_URL` | — | Gateway base URL. Required when `MOCK_MODE=false`. Any OpenAI-compatible endpoint works — the Sprints LiteLLM gateway or OpenRouter (`https://openrouter.ai/api/v1`) have both been run against. |
 | `LITELLM_API_KEY` | — | Gateway key. Required when `MOCK_MODE=false`. |
 | `DEFAULT_MODEL` | `kimi-k2.5` | Model name to request from the gateway. |
 | `MOCK_MODE` | `true` | `true` makes every agent return a canned response and never touch the network. |
@@ -134,6 +134,29 @@ not configuration — `client.models.list()` will still succeed while every
 completion fails. Confirm with a direct `curl`, then contact whoever runs the
 gateway. The platform records these as failed `agent_runs`, so they show up in
 History rather than crashing a batch.
+
+**`TypeError: 'NoneType' object is not subscriptable` from an agent.**
+The gateway returned **HTTP 200 carrying an error payload** — OpenRouter does this
+when the backing provider is saturated:
+
+```json
+{"choices": null,
+ "error": {"message": "Upstream error from Nvidia: ResourceExhausted:
+            Worker local total request limit reached (32/32)", "code": 502}}
+```
+
+Because the status is a success the SDK does not raise, and `_call_llm`'s
+`response.choices[0]` dereferences `None`. The orchestrator translates this into
+`UpstreamResponseError` and retries it, since it is transient — retrying the same
+prompt normally succeeds within a few attempts. Persisting across many retries
+means the provider is genuinely out of capacity: switch model, or wait.
+
+**Reasoning models and JSON output.** Some models (e.g. Nemotron) emit their
+chain-of-thought into `message.content`. The agent prompts demand bare JSON, so
+such a model can produce prose that fails the schema check — which the platform
+records as a flagged output rather than a crash. If schema pass rate is
+unexpectedly low, look at `payload["raw_output"]` on a failed output before
+blaming the prompt.
 
 **`ValueError: Missing LITELLM_API_KEY environment variable`**
 `MOCK_MODE=false` with no key. Either set the key or set `MOCK_MODE=true`.
