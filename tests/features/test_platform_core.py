@@ -1114,6 +1114,67 @@ def test_evaluation_can_be_scoped_to_specific_runs(store: PlatformStore) -> None
     assert report.overall.outputs == 1
 
 
+# --------------------------------------------------------------------------- #
+# Import hygiene
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "first_import",
+    [
+        "import src.retrieval",
+        "import src.validation",
+        "from src.validation.schemas import ContentReference",
+        "from src.retrieval.models import GroundedContext",
+        "from src.validation import Pipeline, ReviewService",
+    ],
+)
+def test_packages_import_in_any_order(first_import: str) -> None:
+    """`src.validation` and `src.retrieval` depend on each other, so neither may
+    force-load the other at import time.
+
+    Run in a subprocess because the module cache would hide the cycle: once any
+    test has imported these in a working order, a broken order still succeeds.
+    """
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, "-c", f"{first_import}; print('ok')"],
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).resolve().parents[2],
+    )
+
+    assert result.returncode == 0, (
+        f"`{first_import}` failed:\n{result.stderr[-1500:]}"
+    )
+
+
+def test_public_api_is_reachable_and_bounded() -> None:
+    import src.validation as validation
+
+    assert validation.Pipeline is not None
+    assert "ReviewService" in dir(validation)
+    with pytest.raises(AttributeError):
+        _ = validation.NoSuchThing
+
+
+def test_public_api_lists_agree() -> None:
+    """__all__ is spelled out for the linters; it must match the lazy map."""
+    import src.validation as validation
+
+    assert sorted(validation.__all__) == sorted(validation._EXPORTS)
+
+
+def test_every_public_name_actually_resolves() -> None:
+    """A typo in the lazy map would otherwise only surface on first access."""
+    import src.validation as validation
+
+    for name in validation.__all__:
+        assert getattr(validation, name) is not None, name
+
+
 def test_summary_rows_render_rates_readably(store: PlatformStore) -> None:
     _record(store, agent_name="mentor", validation_passed=True)
 
