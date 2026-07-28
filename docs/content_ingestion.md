@@ -90,24 +90,21 @@ Contains:
 - SQLite persistence
 - Content Library
 - Document deletion
+- Upload progress indicators
+- Demo dataset loading
 
 ---
 
-## Demo Execution
+## Demo Dataset
 
-Run the Streamlit application:
+The application includes a built-in educational sample dataset for demonstration and testing.
 
-```bash
-streamlit run src/app.py
-```
+To load the dataset:
 
-The application allows users to:
-
-- Upload supported documents
-- Paste text directly
-- Batch ingest multiple files
-- Browse the Content Library
-- Delete stored documents
+1. Open the **Demo Dataset** tab.
+2. Click **Load Demo Dataset**.
+3. Wait for the loading process to complete.
+4. Open the **Content Library** tab to view the imported documents and their metadata.
 
 ---
 
@@ -122,3 +119,12 @@ pytest
 Current status:
 
 - 132 tests passed
+- All ingestion, library, batch, quality, parsing, chunking, and deduplication tests pass successfully.
+
+## Getting Started
+
+Run the Streamlit application:
+
+```bash
+streamlit run src/app.py
+```

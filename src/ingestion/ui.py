@@ -62,17 +62,25 @@ def render_upload_page():
 
         if uploaded_file is not None:
             try:
-                with st.spinner("Processing file..."):
-                    file_content = uploaded_file.read()
-                    document = loader.load_file(file_content, uploaded_file.name)
-                    chunks = loader.store.get_chunks_by_document_id(document.id)
+                progress = st.progress(0, text="Starting upload...")
 
-                    st.success(f"Successfully uploaded {document.title}!")
-                    st.write(f"Document ID: {document.id}")
-                    st.write(f"Number of chunks: {len(chunks)}")
+                progress.progress(20, text="Reading file...")
+                file_content = uploaded_file.read()
 
-                    with st.expander("View Document Content"):
-                        st.text(document.content[:2000] + "..." if len(document.content) > 2000 else document.content)
+                progress.progress(50, text="Processing content...")
+                document = loader.load_file(file_content, uploaded_file.name)
+
+                progress.progress(80, text="Generating chunks...")
+                chunks = loader.store.get_chunks_by_document_id(document.id)
+
+                progress.progress(100, text="Upload complete!")
+                progress.empty()
+                st.success(f"Successfully uploaded {document.title}!")
+                st.write(f"Document ID: {document.id}")
+                st.write(f"Number of chunks: {len(chunks)}")
+
+                with st.expander("View Document Content"):
+                     st.text(document.content[:2000] + "..." if len(document.content) > 2000 else document.content)
             except ValueError as e:
                 st.error(str(e))
 
@@ -129,8 +137,13 @@ def render_upload_page():
                     for file in uploaded_files
                 ]
 
-                with st.spinner("Uploading files..."):
-                    result = batch.ingest_files(files)   
+                progress = st.progress(0, text="Preparing batch upload...")
+
+                progress.progress(25, text="Reading selected files...")
+                result = batch.ingest_files(files)
+
+                progress.progress(100, text="Batch upload complete!")
+                progress.empty()
 
                 if result.documents:
                     st.success(
@@ -201,14 +214,18 @@ def render_upload_page():
                      ):
 
             try:
-                with st.spinner("Loading demo dataset..."):
+                progress = st.progress(0, text="Loading demo dataset...")
 
-                    count = demo.load_demo_data()
+                count = demo.load_demo_data()
+
+                progress.progress(100, text="Demo dataset loaded!")
+                progress.empty()
 
                 st.success(
-                    f"Successfully loaded {count} demo document(s)."
+                       f"Successfully loaded {count} demo document(s)."
                 )
 
+                st.rerun()
             except ValueError as e:
                 st.error(str(e))
 

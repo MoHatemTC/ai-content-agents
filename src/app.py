@@ -116,19 +116,28 @@ elif page == "📤 Upload Content":
         
         if st.button("Process Text") and pasted_text:
             try:
-                with st.spinner("Processing text..."):
-                    doc = loader.load_text(pasted_text, title)
-                    chunks = loader.store.get_chunks_by_document_id(doc.id)
+                progress = st.progress(0, text="Starting upload...")
+
+                progress.progress(20, text="Reading file...")
+                file_content = uploaded_file.read()
+
+                progress.progress(50, text="Processing content...")
+                document = loader.load_file(file_content, uploaded_file.name)
+
+                progress.progress(80, text="Generating chunks...")
+                chunks = loader.store.get_chunks_by_document_id(document.id)
+
+                progress.progress(100, text="Upload complete!")
+                progress.empty()
+                st.success(f"Successfully processed {doc.title}!")
+                st.session_state.current_doc = doc
+                st.session_state.current_chunks = chunks
                     
-                    st.success(f"Successfully processed {doc.title}!")
-                    st.session_state.current_doc = doc
-                    st.session_state.current_chunks = chunks
+                st.write(f"Document ID: {doc.id}")
+                st.write(f"Number of chunks: {len(chunks)}")
                     
-                    st.write(f"Document ID: {doc.id}")
-                    st.write(f"Number of chunks: {len(chunks)}")
-                    
-                    with st.expander("View Document Content"):
-                        st.text(doc.content[:2000] + "..." if len(doc.content) > 2000 else doc.content)
+                with st.expander("View Document Content"):
+                      st.text(doc.content[:2000] + "..." if len(doc.content) > 2000 else doc.content)
             except Exception as e:
                 st.error(f"Error processing text: {str(e)}")
 
@@ -155,9 +164,13 @@ elif page == "📤 Upload Content":
                     for file in uploaded_files
                 ]
 
-                with st.spinner("Uploading files..."):
-                    result = batch.ingest_files(files)
+                progress = st.progress(0, text="Preparing batch upload...")
 
+                progress.progress(25, text="Reading selected files...")
+                result = batch.ingest_files(files)
+
+                progress.progress(100, text="Batch upload complete!")
+                progress.empty()
                 if result.documents:
                     st.success(
                         f"Successfully uploaded {len(result.documents)} file(s)."
@@ -220,12 +233,18 @@ elif page == "📤 Upload Content":
             if st.button("Load Demo Dataset", key="load_demo"):
     
                 try:
-                    with st.spinner("Loading demo dataset..."):
-                        count = demo.load_demo_data()
-    
+                    progress = st.progress(0, text="Loading demo dataset...")
+
+                    count = demo.load_demo_data()
+
+                    progress.progress(100, text="Demo dataset loaded!")
+                    progress.empty()
+
                     st.success(
-                        f"Successfully loaded {count} demo document(s)."
+                               f"Successfully loaded {count} demo document(s)."
                     )
+
+                    st.rerun()
     
                 except Exception as e:
                     st.error(f"Failed to load demo dataset: {e}")
