@@ -75,6 +75,21 @@ def to_retrieval_chunks(chunks: Iterable[IngestionChunk]) -> list[RetrievalChunk
     return converted
 
 
+def _saved_document_id(document: Document) -> str:
+    """Return a saved document's id, failing loudly if it has none.
+
+    ``Document.id`` is optional on the ingestion model because it is assigned at
+    save time. Anything downstream of the store should have one, so a missing id
+    is a bug worth surfacing rather than a ``None`` to thread onwards.
+    """
+    if not document.id:
+        raise ValueError(
+            f"Document {document.title!r} has no id after being saved; "
+            "ingestion did not persist it."
+        )
+    return document.id
+
+
 def index_document(
     document_id: str, ingestion_store: SQLiteStore, index: ChunkIndex
 ) -> int:
@@ -207,7 +222,9 @@ class Pipeline:
             The saved document.
         """
         document = self.loader.load_text(text, title, session_id=session_id)
-        indexed = index_document(document.id, self.loader.store, self.index)
+        indexed = index_document(
+            _saved_document_id(document), self.loader.store, self.index
+        )
         logger.info("ingested %r as %s (%d chunks)", title, document.id, indexed)
         return document
 
@@ -225,7 +242,9 @@ class Pipeline:
             The saved document.
         """
         document = self.loader.load_file(file_content, filename, session_id=session_id)
-        indexed = index_document(document.id, self.loader.store, self.index)
+        indexed = index_document(
+            _saved_document_id(document), self.loader.store, self.index
+        )
         logger.info("ingested %r as %s (%d chunks)", filename, document.id, indexed)
         return document
 
@@ -316,7 +335,7 @@ class Pipeline:
         document = self.ingest_text(text, title=title, session_id=session_id)
         return self.run(
             query,
-            RetrievalScope(document_id=document.id),
+            RetrievalScope(document_id=_saved_document_id(document)),
             agents,
             params=params,
         )
