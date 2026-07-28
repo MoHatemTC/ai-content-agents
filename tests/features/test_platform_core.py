@@ -22,6 +22,7 @@ from src.validation.guardrails import (
     ReferencesPresentRule,
     Severity,
 )
+from src.validation.evaluation import EvaluationHarness
 from src.validation.history import (
     EXPORT_BLOCKED,
     EXPORT_COMPLETED,
@@ -31,6 +32,7 @@ from src.validation.history import (
     VALIDATION_FAILED,
 )
 from src.validation.orchestrator import Orchestrator
+from src.validation.review_service import ReviewService
 from src.validation.review_schema import (
     AgentRun,
     ExportBlockedError,
@@ -920,3 +922,203 @@ def test_export_format_carries_its_filename_metadata() -> None:
     assert ExportFormat.MARKDOWN.extension == "md"
     assert ExportFormat.PDF.media_type == "application/pdf"
     assert ExportFormat("csv") is ExportFormat.CSV
+
+
+# --------------------------------------------------------------------------- #
+# Evaluation harness
+# --------------------------------------------------------------------------- #
+
+
+def _record(
+    store: PlatformStore,
+    *,
+    agent_name: str = "mentor",
+    run_status: RunStatus = RunStatus.SUCCESS,
+    source_chunk_ids: list[str] | None = None,
+    validation_passed: bool = True,
+    schema_errors: list[str] | None = None,
+    grounding_violation: bool = False,
+    status: OutputStatus = OutputStatus.PENDING,
+    with_output: bool = True,
+) -> GeneratedOutput | None:
+    """Persist one run and (optionally) its output, shaped for scoring."""
+    run = AgentRun(
+        agent_name=agent_name,
+        status=run_status,
+        source_chunk_ids=(
+            source_chunk_ids if source_chunk_ids is not None else ["doc-c0000"]
+        ),
+    )
+    store.save_agent_run(run)
+    if not with_output:
+        return None
+
+    violations = (
+        [{"rule_name": "grounded_references", "message": "fabricated", "severity": "error"}]
+        if grounding_violation
+        else []
+    )
+    return store.save_output(
+        GeneratedOutput(
+            agent_run_id=run.id,
+            output_type=agent_name,
+            payload={},
+            schema_name="MentorOutput",
+            validation_passed=validation_passed,
+            validation_report={
+                "passed": validation_passed,
+                "schema_errors": schema_errors or [],
+                "guardrail_violations": violations,
+            },
+            status=status,
+        )
+    )
+
+
+def test_evaluating_an_empty_store_reports_nothing_rather_than_zero(
+    store: PlatformStore,
+) -> None:
+    """'Never measured' must not be reported as 'measured and scored zero'."""
+    report = EvaluationHarness(store).evaluate()
+
+    assert report.overall.outputs == 0
+    assert report.overall.schema_pass_rate is None
+    assert report.overall.groundedness_rate is None
+    assert report.overall.review_edit_rate is None
+
+
+def test_schema_pass_rate_counts_validation_verdicts(store: PlatformStore) -> None:
+    _record(store, validation_passed=True)
+    _record(store, validation_passed=True)
+    _record(store, validation_passed=False, schema_errors=["bad"])
+    _record(store, validation_passed=False, schema_errors=["bad"])
+
+    report = EvaluationHarness(store).evaluate()
+
+    assert report.overall.outputs == 4
+    assert report.overall.schema_pass_rate == 0.5
+    assert report.overall.schema_only_pass_rate == 0.5
+
+
+def test_groundedness_rate_uses_the_guardrail_verdict(store: PlatformStore) -> None:
+    _record(store, grounding_violation=False)
+    _record(store, grounding_violation=False)
+    _record(store, grounding_violation=True, validation_passed=False)
+
+    report = EvaluationHarness(store).evaluate()
+
+    assert report.overall.grounding_checked == 3
+    assert report.overall.grounded == 2
+    assert report.overall.groundedness_rate == pytest.approx(2 / 3)
+
+
+def test_ungrounded_runs_are_excluded_from_groundedness(store: PlatformStore) -> None:
+    """A run with no retrieval had nothing to check; counting it would mislead."""
+    _record(store, source_chunk_ids=[])
+    _record(store, source_chunk_ids=["doc-c0000"], grounding_violation=False)
+
+    report = EvaluationHarness(store).evaluate()
+
+    assert report.overall.outputs == 2
+    assert report.overall.grounding_checked == 1
+    assert report.overall.groundedness_rate == 1.0
+
+
+def test_schema_failures_are_excluded_from_groundedness(store: PlatformStore) -> None:
+    """Guardrails never ran, so the citation check produced no verdict."""
+    _record(store, validation_passed=False, schema_errors=["invalid JSON"])
+
+    report = EvaluationHarness(store).evaluate()
+
+    assert report.overall.grounding_checked == 0
+    assert report.overall.groundedness_rate is None
+
+
+def test_review_edit_rate_counts_human_intervention(store: PlatformStore) -> None:
+    edited = _record(store)
+    approved_clean = _record(store)
+    _record(store)  # never reviewed, so outside the denominator
+    service = ReviewService(store)
+
+    service.edit(edited.id, "nour", {"explanation": "reworded"})
+    service.approve(edited.id, "nour")
+    service.approve(approved_clean.id, "nour")
+
+    report = EvaluationHarness(store).evaluate()
+
+    assert report.overall.reviewed == 2
+    assert report.overall.edited == 1
+    assert report.overall.review_edit_rate == 0.5
+
+
+def test_comments_alone_do_not_count_as_a_review(store: PlatformStore) -> None:
+    output = _record(store)
+
+    ReviewService(store).comment(output.id, "nour", notes="thinking about it")
+
+    assert EvaluationHarness(store).evaluate().overall.reviewed == 0
+
+
+def test_approval_and_rejection_rates(store: PlatformStore) -> None:
+    approved = _record(store)
+    rejected = _record(store)
+    service = ReviewService(store)
+    service.approve(approved.id, "nour")
+    service.reject(rejected.id, "nour")
+
+    report = EvaluationHarness(store).evaluate()
+
+    assert report.overall.approval_rate == 0.5
+    assert report.overall.rejection_rate == 0.5
+
+
+def test_failed_runs_lower_the_run_success_rate(store: PlatformStore) -> None:
+    _record(store)
+    _record(store, run_status=RunStatus.FAILURE, with_output=False)
+
+    report = EvaluationHarness(store).evaluate()
+
+    assert report.overall.runs == 2
+    assert report.overall.failed_runs == 1
+    assert report.overall.run_success_rate == 0.5
+
+
+def test_metrics_are_reported_per_agent(store: PlatformStore) -> None:
+    _record(store, agent_name="mentor", validation_passed=True)
+    _record(store, agent_name="concept", validation_passed=False, schema_errors=["x"])
+
+    report = EvaluationHarness(store).evaluate()
+
+    assert set(report.per_agent) == {"concept", "mentor"}
+    assert report.per_agent["mentor"].schema_pass_rate == 1.0
+    assert report.per_agent["concept"].schema_pass_rate == 0.0
+    assert report.overall.outputs == 2
+
+
+def test_evaluation_can_be_scoped_to_one_agent(store: PlatformStore) -> None:
+    _record(store, agent_name="mentor")
+    _record(store, agent_name="concept")
+
+    report = EvaluationHarness(store).evaluate(agent_name="mentor")
+
+    assert set(report.per_agent) == {"mentor"}
+    assert report.overall.outputs == 1
+
+
+def test_evaluation_can_be_scoped_to_specific_runs(store: PlatformStore) -> None:
+    first = _record(store)
+    _record(store)
+
+    report = EvaluationHarness(store).evaluate(run_ids=[first.agent_run_id])
+
+    assert report.overall.outputs == 1
+
+
+def test_summary_rows_render_rates_readably(store: PlatformStore) -> None:
+    _record(store, agent_name="mentor", validation_passed=True)
+
+    rows = EvaluationHarness(store).evaluate().summary_rows()
+
+    assert rows[-1]["agent"] == "overall"
+    assert rows[0]["schema pass"] == "100.0%"
+    assert rows[0]["review edit"] == "n/a"  # nothing reviewed yet
