@@ -41,6 +41,16 @@ from src.validation.validator_base import ValidatorBase
 logger = logging.getLogger(__name__)
 
 
+# Past tense per action, because appending "ed" to the action name gives
+# "approveed". Used only in the human-readable event message.
+_PAST_TENSE = {
+    ReviewAction.APPROVE: "approved",
+    ReviewAction.EDIT: "edited",
+    ReviewAction.REJECT: "rejected",
+    ReviewAction.COMMENT: "commented on",
+}
+
+
 class OutputNotFoundError(LookupError):
     """Raised when a review action names an output that does not exist."""
 
@@ -293,7 +303,7 @@ class ReviewService:
         self._store.save_review(review)
         self._store.log_event(
             REVIEW_ACTION,
-            f"{review.reviewer} {review.action.value}ed output "
+            f"{review.reviewer} {_PAST_TENSE[review.action]} output "
             f"({review.previous_status.value} -> {review.new_status.value})",
             output_id=output.id,
             details={"action": review.action.value, "reviewer": review.reviewer},

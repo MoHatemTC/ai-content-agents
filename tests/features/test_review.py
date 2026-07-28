@@ -349,6 +349,29 @@ def test_review_actions_are_logged_as_events(
     events = store.list_events(event_type=REVIEW_ACTION)
     assert len(events) == 1
     assert events[0].output_id == output.id
+    assert "nour approved output" in events[0].message
+
+
+@pytest.mark.parametrize(
+    ("action", "expected"),
+    [
+        ("approve", "nour approved output"),
+        ("reject", "nour rejected output"),
+        ("comment", "nour commented on output"),
+    ],
+)
+def test_event_messages_read_as_english(
+    store: PlatformStore, service: ReviewService, action: str, expected: str
+) -> None:
+    """Guards against the 'approveed' that naive suffixing produces."""
+    output = _seed(store)
+
+    if action == "comment":
+        service.comment(output.id, "nour", notes="n")
+    else:
+        getattr(service, action)(output.id, "nour")
+
+    assert expected in store.list_events(event_type=REVIEW_ACTION)[0].message
 
 
 def test_review_page_lists_the_pending_queue(
