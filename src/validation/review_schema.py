@@ -186,6 +186,24 @@ class Review(BaseModel):
     timestamp: datetime = Field(default_factory=_now)
 
 
+class SystemEvent(BaseModel):
+    """A single logged platform event (run started, export blocked, ...).
+
+    Events are the operational log behind the History page: unlike
+    :class:`Review` records, which are the *human* audit trail, these record
+    what the *system* did. ``details`` carries arbitrary structured context for
+    the event; the event-type vocabulary lives in :mod:`src.validation.history`.
+    """
+
+    id: str = Field(default_factory=_new_id)
+    event_type: str
+    message: str
+    run_id: str | None = None
+    output_id: str | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
+    timestamp: datetime = Field(default_factory=_now)
+
+
 def apply_review(
     output: GeneratedOutput,
     reviewer: str,

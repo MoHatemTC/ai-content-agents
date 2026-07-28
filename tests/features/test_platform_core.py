@@ -7,6 +7,8 @@ in ``tests/features/test_platform_integration.py``.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from src.validation.review_schema import (
@@ -14,11 +16,15 @@ from src.validation.review_schema import (
     GeneratedOutput,
     IllegalTransitionError,
     OutputStatus,
+    Review,
     ReviewAction,
+    RunStatus,
+    SystemEvent,
     apply_review,
     assert_exportable,
     is_legal_transition,
 )
+from src.validation.store import PlatformStore
 
 
 def _make_output(status: OutputStatus = OutputStatus.PENDING) -> GeneratedOutput:
@@ -31,6 +37,12 @@ def _make_output(status: OutputStatus = OutputStatus.PENDING) -> GeneratedOutput
         schema_name="DemoItem",
         status=status,
     )
+
+
+@pytest.fixture()
+def store(tmp_path: Path) -> PlatformStore:
+    """A PlatformStore backed by a throwaway database file."""
+    return PlatformStore(db_path=str(tmp_path / "platform.db"))
 
 
 # --------------------------------------------------------------------------- #
@@ -106,3 +118,195 @@ def test_rejected_output_is_not_exportable() -> None:
 
     with pytest.raises(ExportBlockedError):
         assert_exportable(_make_output(OutputStatus.REJECTED))
+
+
+# --------------------------------------------------------------------------- #
+# PlatformStore: persistence for agent_runs / generated_outputs / reviews
+# --------------------------------------------------------------------------- #
+
+
+def test_agent_run_round_trip(store: PlatformStore) -> None:
+    run = AgentRun(
+        agent_name="mentor",
+        input_context="[doc-c0000] Newton's second law...",
+        source_chunk_ids=["doc-c0000", "doc-c0001"],
+        model="kimi-k2.6",
+    )
+
+    store.save_agent_run(run)
+    loaded = store.get_agent_run(run.id)
+
+    assert loaded is not None
+    assert loaded.agent_name == "mentor"
+    assert loaded.source_chunk_ids == ["doc-c0000", "doc-c0001"]
+    assert loaded.status is RunStatus.SUCCESS
+    assert loaded.started_at == run.started_at
+
+
+def test_saving_a_run_twice_updates_it(store: PlatformStore) -> None:
+    """A run is written when it starts and rewritten when it finishes."""
+    run = AgentRun(agent_name="mentor")
+    store.save_agent_run(run)
+
+    run.status = RunStatus.FAILURE
+    run.error = "AzureException APIConnectionError"
+    store.save_agent_run(run)
+
+    loaded = store.get_agent_run(run.id)
+    assert loaded is not None
+    assert loaded.status is RunStatus.FAILURE
+    assert loaded.error == "AzureException APIConnectionError"
+    assert len(store.list_agent_runs()) == 1
+
+
+def test_generated_output_round_trip_preserves_verdict(store: PlatformStore) -> None:
+    run = AgentRun(agent_name="mentor")
+    store.save_agent_run(run)
+    output = GeneratedOutput(
+        agent_run_id=run.id,
+        output_type="mentor",
+        payload={"explanation": "...", "references": [{"segment_id": "doc-c0000"}]},
+        schema_name="MentorOutput",
+        validation_passed=False,
+        validation_report={"passed": False, "schema_errors": ["boom"]},
+    )
+
+    store.save_output(output)
+    loaded = store.get_output(output.id)
+
+    assert loaded is not None
+    assert loaded.payload == output.payload
+    assert loaded.validation_passed is False
+    assert loaded.validation_report == {"passed": False, "schema_errors": ["boom"]}
+    assert loaded.status is OutputStatus.PENDING
+
+
+def test_list_outputs_filters_by_status_and_run(store: PlatformStore) -> None:
+    run_a, run_b = AgentRun(agent_name="mentor"), AgentRun(agent_name="concept")
+    store.save_agent_run(run_a)
+    store.save_agent_run(run_b)
+    for run, status in [
+        (run_a, OutputStatus.PENDING),
+        (run_a, OutputStatus.APPROVED),
+        (run_b, OutputStatus.PENDING),
+    ]:
+        store.save_output(
+            GeneratedOutput(
+                agent_run_id=run.id,
+                output_type="demo",
+                payload={},
+                schema_name="DemoItem",
+                status=status,
+            )
+        )
+
+    assert len(store.list_outputs()) == 3
+    assert len(store.list_outputs(status=OutputStatus.PENDING)) == 2
+    assert len(store.list_outputs(agent_run_id=run_a.id)) == 2
+    assert len(store.list_outputs(agent_name="concept")) == 1
+    assert (
+        len(store.list_outputs(agent_run_id=run_a.id, status=OutputStatus.APPROVED))
+        == 1
+    )
+
+
+def test_reviews_are_append_only(store: PlatformStore) -> None:
+    """The audit trail can only grow — the store exposes no update or delete."""
+    output = _make_output()
+    store.save_output(output)
+
+    first = apply_review(output, "nour", ReviewAction.EDIT, edited_payload={"a": 1})
+    store.save_review(first)
+    second = apply_review(output, "nour", ReviewAction.APPROVE)
+    store.save_review(second)
+
+    assert not hasattr(store, "update_review")
+    assert not hasattr(store, "delete_review")
+
+    history = store.list_reviews(output_id=output.id)
+    assert [r.action for r in history] == [ReviewAction.EDIT, ReviewAction.APPROVE]
+    assert [r.new_status for r in history] == [
+        OutputStatus.EDITED,
+        OutputStatus.APPROVED,
+    ]
+    assert history[0].edited_payload == {"a": 1}
+
+
+def test_review_history_is_scoped_to_its_output(store: PlatformStore) -> None:
+    one, two = _make_output(), _make_output()
+    store.save_output(one)
+    store.save_output(two)
+    store.save_review(apply_review(one, "nour", ReviewAction.APPROVE))
+    store.save_review(apply_review(two, "nour", ReviewAction.REJECT))
+
+    assert [r.action for r in store.list_reviews(output_id=one.id)] == [
+        ReviewAction.APPROVE
+    ]
+    assert len(store.list_reviews()) == 2
+
+
+def test_status_change_is_persisted(store: PlatformStore) -> None:
+    output = _make_output()
+    store.save_output(output)
+
+    apply_review(output, "nour", ReviewAction.APPROVE)
+    store.save_output(output)
+
+    reloaded = store.get_output(output.id)
+    assert reloaded is not None
+    assert reloaded.status is OutputStatus.APPROVED
+
+
+def test_missing_records_return_none(store: PlatformStore) -> None:
+    assert store.get_output("nope") is None
+    assert store.get_agent_run("nope") is None
+
+
+def test_events_are_logged_and_queryable(store: PlatformStore) -> None:
+    store.log_event("run_started", "mentor run started", run_id="run-1")
+    store.log_event("export_blocked", "blocked", output_id="out-1", details={"n": 2})
+
+    assert len(store.list_events()) == 2
+    blocked = store.list_events(event_type="export_blocked")
+    assert len(blocked) == 1
+    assert isinstance(blocked[0], SystemEvent)
+    assert blocked[0].details == {"n": 2}
+    assert len(store.list_events(run_id="run-1")) == 1
+
+
+def test_store_reopens_an_existing_database(tmp_path: Path) -> None:
+    """State survives the process — the Streamlit page and the CLI share a file."""
+    db = str(tmp_path / "platform.db")
+    output = _make_output()
+    PlatformStore(db_path=db).save_output(output)
+
+    reloaded = PlatformStore(db_path=db).get_output(output.id)
+
+    assert reloaded is not None
+    assert reloaded.id == output.id
+
+
+def test_store_coexists_with_the_ingestion_tables(tmp_path: Path) -> None:
+    """Platform tables share the ingestion database without disturbing it."""
+    from src.ingestion.store import SQLiteStore
+
+    db = str(tmp_path / "shared.db")
+    ingestion = SQLiteStore(db_path=db)
+    platform = PlatformStore(db_path=db)
+
+    platform.save_agent_run(AgentRun(agent_name="mentor"))
+
+    assert ingestion.get_document_by_hash("does-not-exist") is None
+    assert len(platform.list_agent_runs()) == 1
+
+
+def test_saved_review_is_returned_unchanged(store: PlatformStore) -> None:
+    output = _make_output()
+    store.save_output(output)
+    review = apply_review(output, "nour", ReviewAction.COMMENT, notes="looks fine")
+
+    saved = store.save_review(review)
+
+    assert isinstance(saved, Review)
+    assert saved.notes == "looks fine"
+    assert saved.action is ReviewAction.COMMENT
