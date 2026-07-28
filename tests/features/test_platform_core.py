@@ -18,6 +18,13 @@ from src.validation.guardrails import (
     ReferencesPresentRule,
     Severity,
 )
+from src.validation.history import (
+    RUN_COMPLETED,
+    RUN_FAILED,
+    RUN_STARTED,
+    VALIDATION_FAILED,
+)
+from src.validation.orchestrator import Orchestrator
 from src.validation.review_schema import (
     AgentRun,
     GeneratedOutput,
@@ -448,6 +455,16 @@ def test_grounded_output_passes_validation_end_to_end() -> None:
     assert result.guardrail_violations == []
 
 
+def test_grounding_rule_reports_every_fabricated_id() -> None:
+    rule = GroundedReferencesRule()
+    context = GuardrailContext(grounded_context=_grounded_context("physics-notes-c0000"))
+
+    violation = rule.check(_mentor_output("fake-a", "fake-b"), context)
+
+    assert violation is not None
+    assert "fake-a" in violation.message and "fake-b" in violation.message
+
+
 def test_references_present_rule_covers_nested_citations() -> None:
     """A question with no references is ungrounded even with no top-level field."""
     rule = ReferencesPresentRule()
@@ -466,3 +483,261 @@ def test_references_present_rule_covers_nested_citations() -> None:
     )
 
     assert rule.check(output, GuardrailContext()) is not None
+
+
+# --------------------------------------------------------------------------- #
+# Orchestrator: run agents, persist runs and outputs, survive failures
+# --------------------------------------------------------------------------- #
+
+
+class _StubAgent:
+    """An AgentSpec stand-in returning canned raw responses, one per call.
+
+    Real agents are exercised live in ``test_platform_integration.py``; here we
+    only care that the orchestrator persists, validates and recovers correctly.
+    """
+
+    def __init__(self, *responses: str | Exception, name: str = "mentor") -> None:
+        self.name = name
+        self.schema = MentorOutput
+        self.model = "stub-model"
+        self._responses: list[str | Exception] = list(responses)
+        self.calls: list[dict[str, object]] = []
+
+    def run_raw(self, content: str, **params: object) -> str:
+        self.calls.append({"content": content, **params})
+        response = self._responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+
+def _valid_raw(*segment_ids: str) -> str:
+    """A schema-valid MentorOutput as raw JSON text, citing the given ids."""
+    return _mentor_output(*segment_ids).model_dump_json()
+
+
+def test_successful_run_persists_run_and_output(store: PlatformStore) -> None:
+    agent = _StubAgent(_valid_raw("physics-notes-c0000"))
+    orchestrator = Orchestrator(store, agents={"mentor": agent})
+
+    result = orchestrator.run_agent("mentor", content="Newtons second law...")
+
+    assert result.error is None
+    assert result.run.status is RunStatus.SUCCESS
+    assert result.run.finished_at is not None
+    assert store.get_agent_run(result.run.id) is not None
+
+    assert result.output is not None
+    stored = store.get_output(result.output.id)
+    assert stored is not None
+    assert stored.status is OutputStatus.PENDING
+    assert stored.validation_passed is True
+    assert stored.schema_name == "MentorOutput"
+    assert stored.agent_run_id == result.run.id
+
+
+def test_malformed_output_is_flagged_not_lost(store: PlatformStore) -> None:
+    """The reason the adapter captures raw text instead of calling generate()."""
+    agent = _StubAgent("this is not JSON at all")
+    orchestrator = Orchestrator(store, agents={"mentor": agent})
+
+    result = orchestrator.run_agent("mentor", content="...")
+
+    # The agent answered, so the run succeeded; the output is what failed.
+    assert result.run.status is RunStatus.SUCCESS
+    assert result.output is not None
+    stored = store.get_output(result.output.id)
+    assert stored is not None
+    assert stored.validation_passed is False
+    assert stored.validation_report["schema_errors"]
+    # The unparseable text is preserved for the reviewer to look at.
+    assert stored.payload["raw_output"] == "this is not JSON at all"
+    assert stored.status is OutputStatus.PENDING
+
+
+def test_schema_invalid_output_is_flagged(store: PlatformStore) -> None:
+    agent = _StubAgent('{"explanation": "missing the other required fields"}')
+    orchestrator = Orchestrator(store, agents={"mentor": agent})
+
+    result = orchestrator.run_agent("mentor", content="...")
+
+    assert result.output is not None
+    assert result.output.validation_passed is False
+    assert result.output.validation_report["schema_errors"]
+
+
+def test_agent_failure_is_recorded_never_raised(store: PlatformStore) -> None:
+    """A dead upstream must show up in History, not crash the batch."""
+    agent = _StubAgent(RuntimeError("AzureException APIConnectionError"))
+    orchestrator = Orchestrator(store, agents={"mentor": agent}, max_retries=0)
+
+    result = orchestrator.run_agent("mentor", content="...")
+
+    assert result.output is None
+    assert result.error is not None
+    assert "AzureException" in result.error
+    stored_run = store.get_agent_run(result.run.id)
+    assert stored_run is not None
+    assert stored_run.status is RunStatus.FAILURE
+    assert stored_run.finished_at is not None
+
+
+def test_transient_failure_is_retried(store: PlatformStore) -> None:
+    agent = _StubAgent(ConnectionError("transient"), _valid_raw("physics-notes-c0000"))
+    orchestrator = Orchestrator(
+        store,
+        agents={"mentor": agent},
+        max_retries=2,
+        retry_backoff=0.0,
+        transient_errors=(ConnectionError,),
+    )
+
+    result = orchestrator.run_agent("mentor", content="...")
+
+    assert result.error is None
+    assert len(agent.calls) == 2
+    assert len(store.list_agent_runs()) == 1  # one run, not one per attempt
+
+
+def test_retries_are_bounded(store: PlatformStore) -> None:
+    agent = _StubAgent(*[ConnectionError("down")] * 5)
+    orchestrator = Orchestrator(
+        store,
+        agents={"mentor": agent},
+        max_retries=2,
+        retry_backoff=0.0,
+        transient_errors=(ConnectionError,),
+    )
+
+    result = orchestrator.run_agent("mentor", content="...")
+
+    assert result.error is not None
+    assert len(agent.calls) == 3  # the initial attempt plus two retries
+
+
+def test_non_transient_error_is_not_retried(store: PlatformStore) -> None:
+    agent = _StubAgent(*[ValueError("bad prompt")] * 3)
+    orchestrator = Orchestrator(
+        store,
+        agents={"mentor": agent},
+        max_retries=2,
+        retry_backoff=0.0,
+        transient_errors=(ConnectionError,),
+    )
+
+    orchestrator.run_agent("mentor", content="...")
+
+    assert len(agent.calls) == 1
+
+
+def test_grounded_run_records_provenance(store: PlatformStore) -> None:
+    context = _grounded_context("physics-notes-c0000", "physics-notes-c0001")
+    agent = _StubAgent(_valid_raw("physics-notes-c0000"))
+    orchestrator = Orchestrator(store, agents={"mentor": agent})
+
+    result = orchestrator.run_agent("mentor", grounded_context=context)
+
+    stored_run = store.get_agent_run(result.run.id)
+    assert stored_run is not None
+    assert stored_run.source_chunk_ids == [
+        "physics-notes-c0000",
+        "physics-notes-c0001",
+    ]
+    assert "physics-notes-c0000" in (stored_run.input_context or "")
+    assert result.output is not None
+    assert result.output.validation_passed is True
+
+
+def test_grounded_run_flags_a_hallucinated_citation(store: PlatformStore) -> None:
+    """End to end: fabricated provenance reaches the reviewer marked as failed."""
+    context = _grounded_context("physics-notes-c0000")
+    agent = _StubAgent(_valid_raw("chunk_001"))
+    orchestrator = Orchestrator(store, agents={"mentor": agent})
+
+    result = orchestrator.run_agent("mentor", grounded_context=context)
+
+    assert result.output is not None
+    assert result.output.validation_passed is False
+    violations = result.output.validation_report["guardrail_violations"]
+    assert any(v["rule_name"] == "grounded_references" for v in violations)
+
+
+def test_run_without_content_or_grounding_is_refused(store: PlatformStore) -> None:
+    """An agent must never be invoked with nothing to work from."""
+    orchestrator = Orchestrator(store, agents={"mentor": _StubAgent()})
+
+    with pytest.raises(ValueError):
+        orchestrator.run_agent("mentor")
+
+
+def test_run_agents_runs_each_selected_agent(store: PlatformStore) -> None:
+    agents = {
+        "mentor": _StubAgent(_valid_raw("physics-notes-c0000"), name="mentor"),
+        "concept": _StubAgent(_valid_raw("physics-notes-c0000"), name="concept"),
+    }
+    orchestrator = Orchestrator(store, agents=agents)
+
+    results = orchestrator.run_agents(["mentor", "concept"], content="...")
+
+    assert len(results) == 2
+    assert {r.run.agent_name for r in results} == {"mentor", "concept"}
+    assert len(store.list_outputs()) == 2
+
+
+def test_one_failing_agent_does_not_stop_the_others(store: PlatformStore) -> None:
+    agents = {
+        "mentor": _StubAgent(RuntimeError("boom"), name="mentor"),
+        "concept": _StubAgent(_valid_raw("physics-notes-c0000"), name="concept"),
+    }
+    orchestrator = Orchestrator(store, agents=agents, max_retries=0)
+
+    results = orchestrator.run_agents(["mentor", "concept"], content="...")
+
+    assert [r.error is not None for r in results] == [True, False]
+    assert len(store.list_outputs()) == 1
+
+
+def test_unknown_agent_is_rejected(store: PlatformStore) -> None:
+    orchestrator = Orchestrator(store, agents={})
+
+    with pytest.raises(KeyError):
+        orchestrator.run_agent("nope", content="...")
+
+
+def test_run_logs_its_lifecycle_events(store: PlatformStore) -> None:
+    agent = _StubAgent(_valid_raw("physics-notes-c0000"))
+    orchestrator = Orchestrator(store, agents={"mentor": agent})
+
+    orchestrator.run_agent("mentor", content="...")
+
+    logged = {event.event_type for event in store.list_events()}
+    assert {RUN_STARTED, RUN_COMPLETED} <= logged
+
+
+def test_validation_failure_is_logged(store: PlatformStore) -> None:
+    agent = _StubAgent("not json")
+    orchestrator = Orchestrator(store, agents={"mentor": agent})
+
+    orchestrator.run_agent("mentor", content="...")
+
+    assert VALIDATION_FAILED in {e.event_type for e in store.list_events()}
+
+
+def test_failed_run_is_logged(store: PlatformStore) -> None:
+    agent = _StubAgent(RuntimeError("boom"))
+    orchestrator = Orchestrator(store, agents={"mentor": agent}, max_retries=0)
+
+    orchestrator.run_agent("mentor", content="...")
+
+    assert RUN_FAILED in {e.event_type for e in store.list_events()}
+
+
+def test_agent_params_reach_the_agent(store: PlatformStore) -> None:
+    agent = _StubAgent(_valid_raw("physics-notes-c0000"))
+    orchestrator = Orchestrator(store, agents={"mentor": agent})
+
+    orchestrator.run_agent("mentor", content="body", params={"difficulty": "advanced"})
+
+    assert agent.calls[0]["content"] == "body"
+    assert agent.calls[0]["difficulty"] == "advanced"
