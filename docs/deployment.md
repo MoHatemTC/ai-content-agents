@@ -100,8 +100,8 @@ migration step and either store may initialise the file first.
 
 **The Chroma retrieval index is in-memory and dies with the process.** Re-ingest
 documents after a restart, or set `RetrievalConfig.persist_directory` to make it
-durable (task 6 of [retrieval-handoff.md](retrieval-handoff.md)). The SQLite data
-does survive restarts.
+durable — that is open work in the retrieval lane. The SQLite data does survive
+restarts.
 
 Back up by copying the `.db` file while the app is stopped.
 

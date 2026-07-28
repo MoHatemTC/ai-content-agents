@@ -179,7 +179,7 @@ rather than raising.
 
 It also carries the ingestion→retrieval bridge (`to_retrieval_chunks`), which is a
 rename of `id` → `chunk_id` plus dropping the character offsets retrieval does not
-use. This closes task 1 of [retrieval-handoff.md](retrieval-handoff.md).
+use. This is the ingestion/retrieval join the retrieval lane had left open.
 
 ### `automation.py` — the batch
 
@@ -255,7 +255,7 @@ See [deployment.md](deployment.md) for configuration and running it for real.
 | Orchestrator captures raw text, not `generate()`'s parsed result | `generate()` raises on malformed JSON and throws the text away; you cannot flag what you did not keep. |
 | Agent failures become failed runs, not exceptions | A batch must survive a dead upstream, and the failure is itself information worth showing. |
 | Undefined metrics are `None`/`n/a`, never `0.0` | Never measured ≠ measured and scored zero. |
-| Every test index uses a unique Chroma collection name | Chroma's `EphemeralClient` is shared per process (see [retrieval-handoff.md](retrieval-handoff.md) §5). |
+| Every test index uses a unique Chroma collection name | Chroma's `EphemeralClient` is shared per process, so two same-named indexes see each other's chunks. |
 
 ---
 
@@ -270,8 +270,8 @@ See [deployment.md](deployment.md) for configuration and running it for real.
 - **No authentication.** The reviewer is a name typed into a box. Real identity
   belongs to whatever auth the deployment adds.
 - **No retrieval-quality measurement.** This lane measures whether citations are
-  *real*, not whether retrieval found the *best* chunks — still task 5 of
-  [retrieval-handoff.md](retrieval-handoff.md).
+  *real*, not whether retrieval found the *best* chunks. Recall and ranking
+  quality remain unmeasured, and are the retrieval lane's open work.
 - **No consolidation of the duplicate evaluation/batch modules** that other lanes
   ship (`src/evaluation/`, `src/study/`). Flagged for next sprint, not silently
   duplicated away.

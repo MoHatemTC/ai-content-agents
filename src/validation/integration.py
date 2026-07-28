@@ -5,11 +5,10 @@ module is the wiring: it takes uploaded material through ingestion, indexes it
 for retrieval, grounds a query against it, runs the selected agents, validates
 what they produce, and leaves everything in the store for a human to review.
 
-It also carries the small **ingestion-to-retrieval bridge** the two lanes needed
-(task 1 of ``docs/retrieval-handoff.md``). The two ``Chunk`` shapes were designed
-to line up and differ in one field name — ingestion's ``id`` is retrieval's
-``chunk_id`` — so the adapter is a rename plus dropping the character offsets
-retrieval does not use.
+It also carries the small **ingestion-to-retrieval bridge** the two lanes needed.
+The two ``Chunk`` shapes were designed to line up and differ in one field name —
+ingestion's ``id`` is retrieval's ``chunk_id`` — so the adapter is a rename plus
+dropping the character offsets retrieval does not use.
 
 Nothing here decides whether content is good; it decides what happens and in
 what order. Judgement stays with the validator and, ultimately, the reviewer.

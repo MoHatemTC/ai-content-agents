@@ -12,8 +12,7 @@ Two layers here, deliberately separated:
   green integration test that never called a model would be a lie.
 
 Every Chroma index here gets a unique collection name — ``EphemeralClient`` is
-shared per process, so same-named indexes see each other's chunks (see
-``docs/retrieval-handoff.md`` section 5).
+shared per process, so same-named indexes would see each other's chunks.
 """
 
 from __future__ import annotations
