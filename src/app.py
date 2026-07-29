@@ -118,26 +118,27 @@ elif page == "📤 Upload Content":
             try:
                 progress = st.progress(0, text="Starting upload...")
 
-                progress.progress(20, text="Reading file...")
-                file_content = uploaded_file.read()
-
-                progress.progress(50, text="Processing content...")
-                document = loader.load_file(file_content, uploaded_file.name)
+                progress.progress(30, text="Reading Text...")
+                document = loader.load_text(
+                    text=pasted_text,
+                    title=title,
+                )
 
                 progress.progress(80, text="Generating chunks...")
                 chunks = loader.store.get_chunks_by_document_id(document.id)
 
-                progress.progress(100, text="Upload complete!")
+                progress.progress(100, text="Text Upload complete!")
                 progress.empty()
-                st.success(f"Successfully processed {doc.title}!")
-                st.session_state.current_doc = doc
+
+                st.success(f"Successfully processed {document.title}!")
+                st.session_state.current_doc = document
                 st.session_state.current_chunks = chunks
                     
-                st.write(f"Document ID: {doc.id}")
+                st.write(f"Document ID: {document.id}")
                 st.write(f"Number of chunks: {len(chunks)}")
                     
                 with st.expander("View Document Content"):
-                      st.text(doc.content[:2000] + "..." if len(doc.content) > 2000 else doc.content)
+                      st.text(document.content[:2000] + "..." if len(document.content) > 2000 else document.content)
             except Exception as e:
                 st.error(f"Error processing text: {str(e)}")
 

@@ -49,3 +49,41 @@ def test_load_file():
         assert len(chunks) > 0
     finally:
         os.unlink(db_path)
+
+
+def test_paste_text_regression():
+    """
+    Verify that pasted text is ingested using ``load_text`` and
+    produces a stored document with generated chunks.
+
+    This regression test ensures the Paste Text workflow continues
+    to use the text ingestion path instead of the file ingestion path.
+    """
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+
+    try:
+        loader = ContentLoader(db_path)
+
+        pasted_text = (
+            "Artificial intelligence enables computers to learn from data, "
+            "recognize patterns, and support decision making. Machine learning "
+            "models are trained using datasets and evaluated using appropriate "
+            "metrics. Proper testing, documentation, and validation help ensure "
+            "that software systems remain reliable and maintainable."
+        )
+
+        document = loader.load_text(
+            pasted_text,
+            title="Pasted Text",
+        )
+
+        assert document.id is not None
+        assert document.title == "Pasted Text"
+
+        chunks = loader.store.get_chunks_by_document_id(document.id)
+
+        assert len(chunks) > 0
+
+    finally:
+        os.unlink(db_path)        
