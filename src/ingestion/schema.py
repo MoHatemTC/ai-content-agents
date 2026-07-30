@@ -1,6 +1,8 @@
 
 from __future__ import annotations
 
+
+from typing import List, Optional
 from datetime import datetime
 
 from pydantic import BaseModel, Field
@@ -40,6 +42,7 @@ class Document(BaseModel):
 
 
 class Chunk(BaseModel):
+
     """A stable, retrieval-ready chunk belonging to a Document."""
 
     id: str = Field(
@@ -70,3 +73,82 @@ class Chunk(BaseModel):
         None,
         description="Optional session ID for session-scoped retrieval.",
     )
+
+
+class DocumentMetadata(BaseModel):
+    """
+    Represents document metadata displayed in the content library.
+
+    Attributes:
+        id:
+            Unique document identifier.
+        title:
+            Document title.
+        source_type:
+            Source of the document.
+        file_type:
+            Document file extension.
+        size:
+            Size of the document in characters.
+        chunk_count:
+            Number of chunks generated for the document.
+        created_at:
+            Timestamp when the document was ingested.
+    """
+
+    id: str = Field(..., description="Unique document identifier")
+    title: str = Field(..., description="Document title")
+    source_type: str = Field(..., description="Source of the document")
+    file_type: Optional[str] = Field(
+        None,
+        description="Document file extension"
+    )
+    size: int = Field(
+        ...,
+        description="Document size measured in characters"
+    )
+    chunk_count: int = Field(
+        ...,
+        description="Number of chunks generated from the document"
+    )
+    created_at: datetime = Field(
+        ...,
+        description="Timestamp when the document was ingested"
+    )
+
+
+class FailedFile(BaseModel):
+    """
+    Represents a file that could not be ingested during a batch operation.
+
+    Attributes:
+        filename:
+            Name of the file that failed.
+        error:
+            Description of the reason the file could not be processed.
+    """
+
+    filename: str = Field(..., description="Name of the failed file")
+    error: str = Field(..., description="Reason why ingestion failed")
+
+
+class BatchResult(BaseModel):
+    """
+    Represents the outcome of a batch ingestion operation.
+
+    Attributes:
+        documents:
+            Successfully ingested documents.
+        failed_files:
+            Files that could not be processed.
+    """
+
+    documents: List[Document] = Field(
+        default_factory=list,
+        description="Successfully ingested documents"
+    )
+
+    failed_files: List[FailedFile] = Field(
+        default_factory=list,
+        description="Files that failed during batch ingestion"
+    )    
