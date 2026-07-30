@@ -75,6 +75,8 @@ def render_upload_page():
 
                 progress.progress(100, text="Upload complete!")
                 progress.empty()
+                st.session_state.current_doc = document
+                st.session_state.current_chunks = chunks
                 st.success(f"Successfully uploaded {document.title}!")
                 st.write(f"Document ID: {document.id}")
                 st.write(f"Number of chunks: {len(chunks)}")
@@ -103,6 +105,8 @@ def render_upload_page():
                         document = loader.load_text(pasted_text, title)
                         chunks = loader.store.get_chunks_by_document_id(document.id)
 
+                        st.session_state.current_doc = document
+                        st.session_state.current_chunks = chunks
                         st.success(f"Successfully processed {document.title}!")
                         st.write(f"Document ID: {document.id}")
                         st.write(f"Number of chunks: {len(chunks)}")
@@ -146,8 +150,10 @@ def render_upload_page():
                 progress.empty()
 
                 if result.documents:
+                    st.session_state.current_doc = result.documents[0]
+                    st.session_state.current_chunks = loader.store.get_chunks_by_document_id(result.documents[0].id)
                     st.success(
-                        f"Successfully uploaded {len(result.documents)} file(s)."
+                        f"Successfully uploaded {len(result.documents)} file(s). Set '{result.documents[0].title}' as active content."
                     )   
 
                 if result.failed_files:
@@ -174,11 +180,13 @@ def render_upload_page():
             st.info("No documents have been uploaded yet.")
 
         else:
+            current_id = getattr(st.session_state.get("current_doc"), "id", None)
             for doc in documents:
-                col1, col2 = st.columns([5, 1])
+                col1, col2 = st.columns([4, 2])
 
                 with col1:
-                     st.markdown(f"### {doc.title}")
+                     active_badge = " 🟢 **[ACTIVE]**" if current_id == doc.id else ""
+                     st.markdown(f"### {doc.title}{active_badge}")
                      st.write(f"**Source:** {doc.source_type}")
                      st.write(f"**Type:** {doc.file_type}")
                      st.write(f"**Size:** {doc.size}")
@@ -189,10 +197,24 @@ def render_upload_page():
 
                 with col2:
                     if st.button(
+                        "📌 Select Active",
+                        key=f"select_{doc.id}"
+                    ):
+                        loaded_doc = library.get_document(doc.id)
+                        if loaded_doc:
+                            chunks = loader.store.get_chunks_by_document_id(doc.id)
+                            st.session_state.current_doc = loaded_doc
+                            st.session_state.current_chunks = chunks
+                            st.success(f"Selected '{loaded_doc.title}' as active content!")
+                            st.rerun()
+                    if st.button(
                         "🗑️ Delete",
                         key=f"delete_{doc.id}"
                     ):
                         if library.delete_document(doc.id):
+                            if current_id == doc.id:
+                                st.session_state.current_doc = None
+                                st.session_state.current_chunks = []
                             st.success(f"{doc.title} deleted successfully!")
                             st.rerun()
                         else:
@@ -217,6 +239,14 @@ def render_upload_page():
                 progress = st.progress(0, text="Loading demo dataset...")
 
                 count = demo.load_demo_data()
+
+                docs = library.list_documents()
+                if docs:
+                    loaded_doc = library.get_document(docs[0].id)
+                    if loaded_doc:
+                        chunks = loader.store.get_chunks_by_document_id(loaded_doc.id)
+                        st.session_state.current_doc = loaded_doc
+                        st.session_state.current_chunks = chunks
 
                 progress.progress(100, text="Demo dataset loaded!")
                 progress.empty()
