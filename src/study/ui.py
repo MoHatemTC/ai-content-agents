@@ -95,7 +95,10 @@ def flashcards_page() -> None:
     if submitted:
         agent = FlashcardAgent(mock_mode=True)
         try:
-            chunk_ids = list(st.session_state.get("current_chunks", []) or [])
+            # current_chunks holds Chunk records; the agent wants their ids.
+            chunk_ids = [
+                chunk.id for chunk in st.session_state.get("current_chunks", []) or []
+            ]
             with st.spinner("Generating cards..."):
                 card_set = agent.generate(
                     content,
