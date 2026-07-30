@@ -51,9 +51,6 @@ class ContentLoader:
         raw_text = TextParser.parse(file_content, file_type)
         cleaned_text = self.cleaner.clean(raw_text)
 
-        print(f"RAW: {repr(raw_text)}")
-        print(f"CLEANED: {repr(cleaned_text)}")
-
         result = self.quality.validate(cleaned_text)
 
         if not result.passed:

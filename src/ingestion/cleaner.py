@@ -9,7 +9,11 @@ class TextCleaner:
 
     @staticmethod
     def clean(text: str) -> str:
-        """Collapse whitespace and normalize line breaks.
+        """Collapse all whitespace runs into single spaces.
+
+        Note this flattens the document onto one line: newlines are whitespace,
+        so paragraph structure does not survive. That is the established
+        behaviour and ``test_text_cleaner`` asserts it.
 
         Args:
             text:
@@ -18,10 +22,4 @@ class TextCleaner:
         Returns:
             Cleaned text.
         """
-        # Remove extra whitespace
-        text = re.sub(r"\s+", " ", text)
-        # Remove leading/trailing whitespace
-        text = text.strip()
-        # Normalize line breaks
-        text = re.sub(r"\n+", "\n", text)
-        return text
+        return re.sub(r"\s+", " ", text).strip()
