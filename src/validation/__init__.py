@@ -75,6 +75,11 @@ if TYPE_CHECKING:  # Static analysers get the real names; runtime stays lazy.
     )
     from src.validation.review_service import OutputNotFoundError, ReviewService
     from src.validation.store import PlatformStore
+    from src.validation.support_validator import (
+        SupportValidationResult,
+        extract_claim_text,
+        validate_support,
+    )
     from src.validation.validator_base import (
         ValidationResult,
         ValidatorBase,
@@ -117,6 +122,9 @@ _EXPORTS: dict[str, str] = {
     "OutputNotFoundError": "src.validation.review_service",
     "ReviewService": "src.validation.review_service",
     "PlatformStore": "src.validation.store",
+    "SupportValidationResult": "src.validation.support_validator",
+    "extract_claim_text": "src.validation.support_validator",
+    "validate_support": "src.validation.support_validator",
     "ValidationResult": "src.validation.validator_base",
     "ValidatorBase": "src.validation.validator_base",
     "build_generated_output": "src.validation.validator_base",
@@ -156,14 +164,17 @@ __all__ = [
     "RunResult",
     "RunStatus",
     "Severity",
+    "SupportValidationResult",
     "SystemEvent",
     "ValidationResult",
     "ValidatorBase",
     "apply_review",
     "assert_exportable",
     "build_generated_output",
+    "extract_claim_text",
     "is_legal_transition",
     "to_retrieval_chunks",
+    "validate_support",
 ]
 
 

@@ -7,7 +7,7 @@ outputs follow a consistent format.
 """
 
 from enum import Enum
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -30,6 +30,17 @@ class DifficultyLevel(str, Enum):
     BEGINNER = "beginner"
     INTERMEDIATE = "intermediate"
     ADVANCED = "advanced"
+
+
+def validate_difficulty(value: str | DifficultyLevel) -> DifficultyLevel:
+    """Validate and normalize a supported agent difficulty level."""
+    try:
+        return DifficultyLevel(value)
+    except ValueError as exc:
+        allowed = ", ".join(level.value for level in DifficultyLevel)
+        raise ValueError(
+            f"Invalid difficulty {value!r}; expected one of: {allowed}."
+        ) from exc
 
 
 class QuestionType(str, Enum):
@@ -161,6 +172,12 @@ class MentorOutput(BaseModel):
         description="Content chunks or references used to generate the response."
     )
 
+    requires_human_review: Literal[True] = Field(
+        default=True,
+        frozen=True,
+        description="Indicates that the response requires human review before use.",
+    )
+
 
 class ConceptOutput(BaseModel):
     """
@@ -188,5 +205,11 @@ class ConceptOutput(BaseModel):
     references: list[ContentReference] = Field(
         ...,
         description="Content chunks or references used to generate the explanation."
+    )
+
+    requires_human_review: Literal[True] = Field(
+        default=True,
+        frozen=True,
+        description="Indicates that the explanation requires human review before use.",
     )
     

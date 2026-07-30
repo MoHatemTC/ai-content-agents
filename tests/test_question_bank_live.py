@@ -34,10 +34,6 @@ There are two loop types:
         num_questions=1,
     )
 
-    print("\n=== LIVE GENERATED OUTPUT ===")
-    print(result.model_dump_json(indent=2))
-    print("=============================\n")
-
     assert isinstance(result, QuestionBankOutput)
 
     assert result.requires_human_review is True

@@ -1,0 +1,48 @@
+[
+  {
+    "content": "Python loops repeat instructions.",
+    "user_question": "Explain loops.",
+    "difficulty": "beginner",
+    "context": {
+      "query": "Explain loops.",
+      "scope": {
+        "document_id": "demo-document"
+      },
+      "chunks": [
+        {
+          "chunk": {
+            "chunk_id": "chunk_001",
+            "document_id": "demo-document",
+            "ordinal": 0,
+            "text": "Python has two loop types: for and while. Python provides two main loop types: for and while."
+          },
+          "score": 1.0,
+          "rank": 1
+        }
+      ]
+    }
+  },
+  {
+    "content": "Python loops support repeated work.",
+    "user_question": "What should I practice next?",
+    "difficulty": "intermediate",
+    "context": {
+      "query": "What should I practice next?",
+      "scope": {
+        "document_id": "demo-document"
+      },
+      "chunks": [
+        {
+          "chunk": {
+            "chunk_id": "chunk_001",
+            "document_id": "demo-document",
+            "ordinal": 0,
+            "text": "Python has two loop types: for and while. Python provides two main loop types: for and while."
+          },
+          "score": 1.0,
+          "rank": 1
+        }
+      ]
+    }
+  }
+]
