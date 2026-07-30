@@ -25,62 +25,6 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 
 
-class Flashcard(BaseModel):
-    """A single grounded flashcard.
-
-    Attributes:
-        front: Question, term, or cue depending on ``format``.
-        back: Answer, definition, or explanation.
-        format: One of ``term-definition`` or ``qa``.
-        source_topic: Real content topic this card drills (never fabricated).
-        source_chunk_id: Optional ingestion chunk id for traceability.
-        tags: Optional free tags.
-    """
-
-    front: str = Field(..., description="Card front (question or term).")
-    back: str = Field(..., description="Card back (answer or definition).")
-    format: str = Field(
-        "term-definition",
-        description="Card format: 'term-definition' or 'qa'.",
-    )
-    source_topic: str | None = Field(
-        None, description="Real topic from content that this card drills."
-    )
-    source_chunk_id: str | None = Field(
-        None, description="Optional ingestion chunk id for traceability."
-    )
-    tags: list[str] = Field(default_factory=list)
-
-
-class FlashcardSet(BaseModel):
-    """A validated, grounded, human-review-ready flashcard set.
-
-    Attributes:
-        title: Display title for the set.
-        description: Optional set-level description.
-        cards: List of grounded flashcards.
-        source_topics: Real content topics used (intersection w/ content).
-        source_chunk_ids: Optional chunk ids used to build the set.
-        needs_human_review: Always ``True`` - never present as final.
-    """
-
-    title: str
-    description: str | None = None
-    cards: list[Flashcard]
-    source_topics: list[str] = Field(
-        default_factory=list,
-        description="Real content topics cards were built from.",
-    )
-    source_chunk_ids: list[str] = Field(default_factory=list)
-    needs_human_review: bool = Field(
-        True, description="Gate flag: outputs are pending review, never final."
-    )
-
-
-# ---------------------------------------------------------------------------
-# Study plan schema
-# ---------------------------------------------------------------------------
-
 
 class TopicSchedule(BaseModel):
     """A single topic entry in a study plan.

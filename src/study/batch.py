@@ -16,9 +16,10 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
+from src.schemas import FlashcardSet
 from src.study.flashcard_agent import FlashcardAgent
 from src.study.revision_agent import RevisionAgent
-from src.study.schemas import FlashcardSet, RevisionSession, StudyPlan
+from src.study.schemas import RevisionSession, StudyPlan
 from src.study.study_plan_agent import StudyPlanAgent
 
 logger = logging.getLogger(__name__)

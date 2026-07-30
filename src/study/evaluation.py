@@ -33,8 +33,9 @@ from src.study.batch import (
     DemoDatasetItem,
     default_demo_dataset,
 )
+from src.schemas import FlashcardSet
 from src.study.flashcard_agent import FlashcardAgent
-from src.study.schemas import FlashcardSet, RevisionSession, StudyPlan
+from src.study.schemas import RevisionSession, StudyPlan
 
 
 @dataclass

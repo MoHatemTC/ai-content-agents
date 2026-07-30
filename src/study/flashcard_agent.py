@@ -36,7 +36,7 @@ from uuid import uuid4
 import yaml
 from dotenv import load_dotenv
 
-from src.study.schemas import Flashcard, FlashcardSet
+from src.schemas import Flashcard, FlashcardSet
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -404,4 +404,3 @@ class FlashcardAgent:
         return self._wrap_for_review_gate(
             raw, agent_run_id=run_id, extracted_topics=extracted_topics
         )
-

@@ -13,7 +13,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.study.schemas import FlashcardSet, RevisionSession, StudyPlan
+from src.schemas import FlashcardSet
+from src.study.schemas import RevisionSession, StudyPlan
 
 
 def _json_safe(value: Any) -> Any:
