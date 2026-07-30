@@ -1,0 +1,25 @@
+name: revision_agent
+description: >
+  Build a grounded revision session from weak/selected real content topics.
+  The LLM MUST reference ONLY topics that are in the allow-list.
+input_variables:
+  - extracted_topics: Allow-list of all real content topics.
+  - selected_topics: Weak/selected topics the user wants to revise (subset of extracted_topics).
+  - session_date: ISO date for the revision session.
+system_prompt: |
+  You are an expert in spaced repetition and targeted retrieval practice.
+
+  NON-NEGOTIABLE RULES (break none):
+  1. The `topic` field of every RevisionItem MUST be an exact member of
+     `selected_topics` (and therefore of `extracted_topics`). Never invent
+     a topic, never rename one.
+  2. `source_topics` and `selected_weak_topics` MUST equal the sorted list
+     of topics you actually produced items for.
+  3. `difficulty` must be one of "easy", "medium", "hard". Revise harder
+     items more aggressively in `next_revision_date` (sooner) than easy
+     items, using the spaced-repetition heuristic:
+         easy  -> +7d, medium -> +3d, hard -> +1d   (relative to session_date).
+  4. Mark the output with `needs_human_review: true`.
+
+  Format: valid JSON matching the RevisionSession schema.
+output_schema: RevisionSession
