@@ -10,10 +10,14 @@ if __name__ == "__main__":
         sys.path.insert(0, str(project_root))
 
 import streamlit as st
-from .loader import ContentLoader
-from .batch import BatchIngestion
-from .library import ContentLibrary
-from .demo_data import DemoDataLoader
+
+# Absolute imports: `streamlit run src/ingestion/ui.py` executes this file as
+# __main__, where there is no parent package for a relative import to resolve
+# against. The sys.path setup above is what makes these work standalone.
+from src.ingestion.batch import BatchIngestion
+from src.ingestion.demo_data import DemoDataLoader
+from src.ingestion.library import ContentLibrary
+from src.ingestion.loader import ContentLoader
 
 
 @st.cache_resource
