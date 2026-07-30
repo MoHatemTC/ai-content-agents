@@ -10,6 +10,10 @@ from .dedupe import Deduplicator
 
 
 class SQLiteStore:
+    """
+    SQLite-based persistence layer for storing and retrieving
+    ingested documents and their corresponding chunks.
+    """
     def __init__(self, db_path: str = "ingestion.db"):
         self.db_path = db_path
         self._init_db()
@@ -142,3 +146,147 @@ class SQLiteStore:
                 session_id=row[6]
             ))
         return chunks
+    
+    def get_all_documents(self) -> List[Document]:
+        """
+        Retrieve all stored documents ordered by creation date.
+
+        Returns:
+         A list of all documents in the database.
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT id, title, content, source_type,
+                   file_type, created_at, content_hash
+            FROM documents
+            ORDER BY created_at DESC
+        """)
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        documents = [
+            Document(
+                id=row[0],
+                title=row[1],
+                content=row[2],
+                source_type=row[3],
+                file_type=row[4],
+                created_at=datetime.fromisoformat(row[5]),
+                content_hash=row[6],
+            )
+            for row in rows
+        ]
+
+        return documents    
+
+    def get_document_by_id(self, document_id: str) -> Optional[Document]:
+        """
+        Retrieve a document by its unique identifier.
+
+        Args:
+            document_id:
+                The document ID.
+
+        Returns:
+            The matching document if found; otherwise ``None``.
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT id, title, content, source_type,
+                   file_type, created_at, content_hash
+            FROM documents
+            WHERE id = ?
+        """, (document_id,))
+
+        row = cursor.fetchone()
+        conn.close()
+
+        if row is None:
+            return None
+
+        return Document(
+            id=row[0],
+            title=row[1],
+            content=row[2],
+            source_type=row[3],
+            file_type=row[4],
+            created_at=datetime.fromisoformat(row[5]),
+            content_hash=row[6],
+        )
+
+    def count_chunks(self, document_id: str) -> int:
+        """
+        Count the number of chunks belonging to a document.
+
+        Args:
+            document_id:
+                The document identifier.
+
+        Returns:
+            The total number of chunks.
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM chunks
+            WHERE document_id = ?
+        """, (document_id,))
+  
+        result = cursor.fetchone()
+        count = result[0] if result else 0
+
+        conn.close()
+
+        return count
+
+    def delete_document(self, document_id: str) -> bool:
+        """
+        Delete a document and all of its chunks.
+
+        Args:
+            document_id:
+                The identifier of the document to delete.
+
+        Returns:
+            ``True`` if the document existed and was deleted,
+         otherwise ``False``.
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "DELETE FROM chunks WHERE document_id = ?",
+            (document_id,)
+        )
+
+        cursor.execute(
+            "DELETE FROM documents WHERE id = ?",
+            (document_id,)
+        )
+
+        deleted = cursor.rowcount > 0
+
+        conn.commit()
+        conn.close()
+
+        return deleted
+
+    def document_exists(self, document_id: str) -> bool:
+        """
+        Check whether a document exists.
+
+        Args:
+            document_id:
+                The document identifier.
+
+        Returns:
+            ``True`` if the document exists, otherwise ``False``.
+        """
+        return self.get_document_by_id(document_id) is not None

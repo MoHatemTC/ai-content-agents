@@ -15,6 +15,9 @@ import streamlit as st
 from src.study.batch import default_demo_dataset, run_full_batch
 from src.study.evaluation import benchmark_quality
 from src.ingestion.loader import ContentLoader
+from src.ingestion.batch import BatchIngestion
+from src.ingestion.library import ContentLibrary
+from src.ingestion.demo_data import DemoDataLoader
 from src.registry import AgentRegistry
 from src.generation import MockGenerator
 from src.study.flashcard_agent import FlashcardAgent
@@ -25,6 +28,8 @@ from src.study.formatters import (
 )
 from src.study.revision_agent import RevisionAgent
 from src.study.study_plan_agent import StudyPlanAgent
+from src.schemas import FlashcardSet, StudyPlan, RevisionSession
+from src.services.mentor_concept import MentorConceptService
 
 # ---------------------------------------------------------------------------
 # Initialize shared services
@@ -32,6 +37,20 @@ from src.study.study_plan_agent import StudyPlanAgent
 @st.cache_resource
 def get_loader():
     return ContentLoader()
+
+@st.cache_resource
+def get_batch():
+    return BatchIngestion()
+
+
+@st.cache_resource
+def get_library():
+    return ContentLibrary()
+
+
+@st.cache_resource
+def get_demo():
+    return DemoDataLoader()
 
 @st.cache_resource
 def get_registry():
@@ -82,6 +101,10 @@ def _get_doc():
 # ---------------------------------------------------------------------------
 # Page config + sidebar nav
 # ---------------------------------------------------------------------------
+def get_mentor_concept_service():
+    return MentorConceptService()
+
+# Set page config
 st.set_page_config(page_title="AI Study Assistant", page_icon="📚", layout="wide")
 
 st.sidebar.title("📚 AI Study Assistant")
@@ -94,15 +117,21 @@ page = st.sidebar.radio(
         "📅 Study Plan",
         "🔄 Revision Plan",
         "📦 Batch & Benchmark",
-    ],
+        "🧭 Mentor",
+        "💡 Concept Explanation",
+    ]
 )
 
 loader = get_loader()
+batch = get_batch()
+library = get_library()
+demo = get_demo()
 registry = get_registry()
 generator = get_generator()
 fc_agent = get_flashcard_agent()
 sp_agent = get_study_plan_agent()
 rv_agent = get_revision_agent()
+mentor_concept_service = get_mentor_concept_service()
 
 
 # ---------------------------------------------------------------------------
@@ -134,9 +163,15 @@ if page == "🏠 Home":
 # ---------------------------------------------------------------------------
 elif page == "📤 Upload Content":
     st.title("Upload Content")
-
-    tab1, tab2 = st.tabs(["📁 Upload File", "📝 Paste Text"])
-
+    
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "📁 Upload File",
+    "📝 Paste Text",
+    "📂 Batch Upload",
+    "📚 Content Library",
+    "🎓 Demo Dataset",
+    ])
+    
     with tab1:
         uploaded_file = st.file_uploader(
             "Choose a file", type=["txt", "pdf", "docx", "md"]
@@ -166,27 +201,142 @@ elif page == "📤 Upload Content":
         pasted_text = st.text_area("Paste your text here", height=200)
         if st.button("Process Text") and pasted_text:
             try:
-                with st.spinner("Processing text..."):
-                    doc = loader.load_text(pasted_text, title)
-                    chunks = loader.store.get_chunks_by_document_id(doc.id)
-                    st.success(f"Successfully processed {doc.title}!")
-                    st.session_state.current_doc = doc
-                    st.session_state.current_chunks = chunks
-                    st.write(f"Document ID: {doc.id}")
-                    st.write(f"Number of chunks: {len(chunks)}")
-                    with st.expander("View Document Content"):
-                        st.text(
-                            doc.content[:2000] + "..."
-                            if len(doc.content) > 2000
-                            else doc.content
-                        )
+                progress = st.progress(0, text="Starting upload...")
+
+                progress.progress(30, text="Reading Text...")
+                document = loader.load_text(
+                    text=pasted_text,
+                    title=title,
+                )
+
+                progress.progress(80, text="Generating chunks...")
+                chunks = loader.store.get_chunks_by_document_id(document.id)
+
+                progress.progress(100, text="Text Upload complete!")
+                progress.empty()
+
+                st.success(f"Successfully processed {document.title}!")
+                st.session_state.current_doc = document
+                st.session_state.current_chunks = chunks
+                    
+                st.write(f"Document ID: {document.id}")
+                st.write(f"Number of chunks: {len(chunks)}")
+                    
+                with st.expander("View Document Content"):
+                      st.text(document.content[:2000] + "..." if len(document.content) > 2000 else document.content)
             except Exception as e:
                 st.error(f"Error processing text: {str(e)}")
 
 
-# ---------------------------------------------------------------------------
-# Page: Flashcards (Sprint 3 polished agent)
-# ---------------------------------------------------------------------------
+
+    with tab3:
+        st.subheader("Batch Upload")
+
+        uploaded_files = st.file_uploader(
+            "Choose multiple files",
+            type=["txt", "pdf", "docx", "md"],
+            accept_multiple_files=True,
+            key="batch_upload",
+        )
+
+        if st.button("Upload Files", key="upload_files"):
+
+            if not uploaded_files:
+                st.warning("Please select one or more files.")
+
+            else:
+                files = [
+                    (file.name, file.read())
+                    for file in uploaded_files
+                ]
+
+                progress = st.progress(0, text="Preparing batch upload...")
+
+                progress.progress(25, text="Reading selected files...")
+                result = batch.ingest_files(files)
+
+                progress.progress(100, text="Batch upload complete!")
+                progress.empty()
+                if result.documents:
+                    st.success(
+                        f"Successfully uploaded {len(result.documents)} file(s)."
+                    )
+
+                if result.failed_files:
+                    st.warning(
+                        f"{len(result.failed_files)} file(s) could not be processed."
+                    )
+
+                    for failed in result.failed_files:
+                        st.error(f"{failed.filename}: {failed.error}")
+    with tab4:
+        st.subheader("Content Library")
+
+        # Optional refresh button
+        st.button("Refresh Library", key="refresh_library")
+
+        # Always load the documents
+        documents = library.list_documents()
+    
+        if not documents:
+            st.info("No documents have been uploaded yet.")
+    
+        else:
+            for doc in documents:
+                col1, col2 = st.columns([5, 1])
+                
+                with col1:
+                    st.markdown(f"### {doc.title}")
+                    st.write(f"**Source:** {doc.source_type}")
+                    st.write(f"**Type:** {doc.file_type}")
+                    st.write(f"**Size:** {doc.size}")
+                    st.write(f"**Chunks:** {doc.chunk_count}")
+                    st.write(
+                        f"**Created:** {doc.created_at.strftime('%Y-%m-%d %H:%M')}"
+                    )
+                
+                with col2:
+                    if st.button(
+                                 "🗑️ Delete",
+                                key=f"delete_{doc.id}"
+                                ):
+                        if library.delete_document(doc.id):
+                            st.success(f"{doc.title} deleted successfully!")
+                            st.rerun()
+                        else:
+                            st.error("Failed to delete document.")
+                
+                st.divider()
+                
+    
+    with tab5:
+            st.subheader("Demo Dataset")
+    
+            st.write(
+                "Load a sample educational dataset into the content library."
+            )
+    
+            if st.button("Load Demo Dataset", key="load_demo"):
+    
+                try:
+                    progress = st.progress(0, text="Loading demo dataset...")
+
+                    count = demo.load_demo_data()
+
+                    progress.progress(100, text="Demo dataset loaded!")
+                    progress.empty()
+
+                    st.success(
+                               f"Successfully loaded {count} demo document(s)."
+                    )
+
+                    st.rerun()
+    
+                except Exception as e:
+                    st.error(f"Failed to load demo dataset: {e}")
+    
+    
+# Page: Generate Flashcards
 elif page == "🃏 Generate Flashcards":
     st.title("🃏 Grounded Flashcard Generator")
     title, content = _get_doc()
@@ -395,3 +545,87 @@ elif page == "📦 Batch & Benchmark":
             for i, c in enumerate(first_fc.card_set.cards[:5], start=1):
                 st.write(f"**{i}.** {c.front}  →  {c.back}")
         st.caption(PENDING_BADGE)
+
+elif page == "🧭 Mentor":
+    st.title("Mentor")
+    st.caption("Generate a grounded mentoring response for human review.")
+
+    with st.form("mentor_form"):
+        content = st.text_area("Content", height=220)
+        user_question = st.text_input("User question")
+        difficulty = st.selectbox(
+            "Difficulty",
+            ["beginner", "intermediate", "advanced"],
+            key="mentor_difficulty",
+        )
+        submitted = st.form_submit_button("Generate Mentor Response")
+
+    if submitted:
+        if not content.strip():
+            st.warning("Enter educational content before generating a response.")
+        else:
+            try:
+                with st.spinner("Generating mentor response..."):
+                    reviewable = mentor_concept_service.generate_mentor_reviewable(
+                        content=content,
+                        user_question=user_question or None,
+                        difficulty=difficulty,
+                    )
+                payload = reviewable.payload
+                st.warning("⚠️ Requires Human Review")
+                st.write(f"Review status: **{reviewable.status.value.upper()}**")
+                st.subheader("Explanation")
+                st.write(payload.get("explanation", ""))
+                st.subheader("Key points")
+                for point in payload.get("key_points", []):
+                    st.markdown(f"- {point}")
+                st.subheader("Next steps")
+                for step in payload.get("next_steps", []):
+                    st.markdown(f"- {step}")
+                st.subheader("Provenance references")
+                for reference in payload.get("references", []):
+                    st.write(f"**{reference['segment_id']}**: {reference['text']}")
+            except Exception as error:
+                st.error(f"Error generating mentor response: {error}")
+
+# Page: Concept Explanation
+elif page == "💡 Concept Explanation":
+    st.title("Concept Explanation")
+    st.caption("Generate a grounded concept explanation for human review.")
+
+    with st.form("concept_form"):
+        content = st.text_area("Content", height=220)
+        user_question = st.text_input("Concept question")
+        difficulty = st.selectbox(
+            "Difficulty",
+            ["beginner", "intermediate", "advanced"],
+            key="concept_difficulty",
+        )
+        submitted = st.form_submit_button("Generate Concept Explanation")
+
+    if submitted:
+        if not content.strip():
+            st.warning("Enter educational content before generating an explanation.")
+        else:
+            try:
+                with st.spinner("Generating concept explanation..."):
+                    reviewable = mentor_concept_service.generate_concept_reviewable(
+                        content=content,
+                        user_question=user_question or None,
+                        difficulty=difficulty,
+                    )
+                payload = reviewable.payload
+                st.warning("⚠️ Requires Human Review")
+                st.write(f"Review status: **{reviewable.status.value.upper()}**")
+                st.subheader("Definition")
+                st.write(payload.get("definition", ""))
+                st.subheader("Explanation")
+                st.write(payload.get("explanation", ""))
+                st.subheader("Key points")
+                for point in payload.get("key_points", []):
+                    st.markdown(f"- {point}")
+                st.subheader("Provenance references")
+                for reference in payload.get("references", []):
+                    st.write(f"**{reference['segment_id']}**: {reference['text']}")
+            except Exception as error:
+                st.error(f"Error generating concept explanation: {error}")

@@ -32,6 +32,7 @@ output_schema:
   references:
     - segment_id: "seg1"
       text: "Relevant content excerpt"
+  requires_human_review: true
 
 notes:
   - Always return structured JSON matching the MentorOutput schema.
@@ -63,6 +64,8 @@ prompt_template: |
     - key_points
     - next_steps
     - references
+    - requires_human_review
+  - Set requires_human_review to true.
   - Ground every explanation in the provided educational content.
   - Every reference must use a stable identifier such as segment_id, chunk_id, or content_id.
   - If the provided content is insufficient, clearly explain what information is missing instead of inventing facts.
@@ -85,7 +88,8 @@ prompt_template: |
         "segment_id": "seg1",
         "text": "Relevant content excerpt"
       }}
-    ]
+    ],
+    "requires_human_review": true
   }}
 
   Do not add extra fields.
