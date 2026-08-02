@@ -65,14 +65,17 @@ All supported file formats were successfully uploaded, parsed, chunked, and stor
 
 Verify that document metadata is accurately stored and displayed in the Content Library after ingestion.
 
-**Metadata Verified**
+### Verification Evidence
 
-- Title
-- Source
-- File type
-- File size
-- Chunk count
-- Ingestion date
+| Metadata Field | Verified | Result |
+|---------------|----------|--------|
+| Title | Yes | Matches uploaded document |
+| Source | Yes | Correctly displayed |
+| File Type | Yes | Matches uploaded format |
+| File Size | Yes | Correctly stored |
+| Chunk Count | Yes | Matches generated chunks |
+| Ingestion Date | Yes | Correct timestamp recorded |
+
 
 **Steps**
 
@@ -104,6 +107,15 @@ All metadata fields were correctly stored and displayed in the Content Library. 
 **Objective**
 
 Verify that uploading an identical document multiple times does not create duplicate document or chunk records.
+
+
+### Verification Evidence
+
+| Upload | Documents Before | Documents After | Result |
+|---------|-----------------:|----------------:|--------|
+| First upload | 5 | 6 | Document added |
+| Second upload (identical file) | 6 | 6 | No duplicate created |
+
 
 **Steps**
 
@@ -208,8 +220,9 @@ Verify that selecting a document returns only the chunks belonging to that docum
 **Steps**
 
 1. Upload multiple documents containing different topics.
-2. Select each document individually.
-3. Verify the returned content.
+2. Retrieve the chunks for each document using its document ID.
+3. Compare the returned chunks with the original document content.
+4. Verify that no chunks from other documents are returned.
 
 **Expected Result**
 
@@ -255,6 +268,62 @@ Pass
 
 
 ---
+
+
+## Bug Log
+
+The following edge-case scenarios were tested to identify potential defects. All scenarios behaved as expected, and no functional defects were observed during testing.
+
+### BR-01 Empty File Upload
+
+**Status:** Expected Behavior (No Defect)
+
+**Steps to Reproduce**
+1. Open the Upload File page.
+2. Upload an empty TXT file.
+
+**Expected Result**
+The file is rejected with a user-friendly error message and is not stored.
+
+**Actual Result**
+The application displayed an error message and prevented ingestion.
+
+**Conclusion**
+No defect observed.
+
+### BR-02 Corrupted PDF
+
+**Status:** Expected Behavior (No Defect)
+
+**Steps to Reproduce**
+1. Rename a text file to `.pdf`.
+2. Upload it.
+
+**Expected Result**
+The upload is rejected and the document is not stored.
+
+**Actual Result**
+The application rejected the file and displayed an appropriate error message.
+
+**Conclusion**
+No defect observed.
+
+### BR-03 Near-Empty Document
+
+**Status:** Expected Behavior (No Defect)
+
+**Steps to Reproduce**
+1. Upload a document containing only a few words.
+
+**Expected Result**
+The quality validation blocks the upload.
+
+**Actual Result**
+The upload was rejected by the quality validation rules.
+
+**Conclusion**
+No defect observed.
+
 
 ## Summary
 
