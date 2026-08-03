@@ -10,3 +10,4 @@ pymupdf
 python-docx
 markdown
 chromadb
+fpdf2
