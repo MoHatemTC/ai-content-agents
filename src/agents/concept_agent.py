@@ -18,7 +18,6 @@ from typing import Any, Optional
 
 import yaml
 from dotenv import load_dotenv
-from openai import OpenAI
 from pydantic import ValidationError
 
 from src.models.batch import BatchGenerationFailure, BatchGenerationResult
@@ -56,6 +55,13 @@ class ConceptAgent:
         self.prompt = self._load_prompt()
 
         if not self.mock_mode:
+            try:
+                from openai import OpenAI
+            except ModuleNotFoundError as e:
+                raise ModuleNotFoundError(
+                    "openai is required when MOCK_MODE=false. Install it or enable mock mode."
+                ) from e
+
             api_key = os.getenv("LITELLM_API_KEY")
             base_url = os.getenv("LITELLM_BASE_URL")
             self.model = os.getenv("DEFAULT_MODEL", "FW-Kimi-K2.6")
@@ -242,26 +248,58 @@ class ConceptAgent:
             difficulty=difficulty.value,
         )
 
-        MOCK_RESPONSE = """
-        {
-            "definition": "Python provides two main loop types: for and while.",
-            "explanation": "Python provides two main loop types: for and while.",
-            "key_points": [
-                "for loops",
-                "while loops"
-            ],
-            "references": [
-                {
-                    "segment_id": "chunk_001",
-                    "text": "Relevant content excerpt."
-            }
-        ],
-        "requires_human_review": true
-        }
-        """
-
         if self.mock_mode:
-            raw_response = MOCK_RESPONSE
+            chunk_id = (
+                context.chunk_ids[0]
+                if context is not None and context.chunk_ids
+                else "chunk_001"
+            )
+            chunk_text = (
+                context.chunks[0].chunk.text
+                if context is not None and context.chunks
+                else "Relevant content excerpt."
+            )
+            if context is not None:
+                definition = chunk_text.strip()
+                explanation = chunk_text.strip()
+                key_points = ["for loops", "while loops"]
+            elif difficulty is DifficultyLevel.BEGINNER:
+                definition = "A loop repeats instructions."
+                explanation = "Python has for and while loops."
+                key_points = ["loops repeat instructions", "for loops", "while loops"]
+            elif difficulty is DifficultyLevel.INTERMEDIATE:
+                definition = "A loop repeats a block of code according to a rule."
+                explanation = "Python has for and while loops."
+                key_points = ["for loops iterate over iterables", "while loops are condition-based"]
+            else:
+                definition = (
+                    "A loop is a control-flow construct that repeats a block based on iteration "
+                    "over an iterable or evaluation of a condition."
+                )
+                explanation = (
+                    "Python typically uses for loops for iteration over iterables and while loops "
+                    "for condition-driven repetition. The choice depends on whether you are iterating "
+                    "over a known collection or continuing until a stopping condition is reached."
+                )
+                key_points = [
+                    "for loops iterate over iterables",
+                    "while loops repeat based on a condition",
+                    "choose based on iteration vs condition control",
+                ]
+            raw_response = json.dumps(
+                {
+                    "definition": definition,
+                    "explanation": explanation,
+                    "key_points": key_points,
+                    "references": [
+                        {
+                            "segment_id": chunk_id,
+                            "text": chunk_text[:240],
+                        }
+                    ],
+                    "requires_human_review": True,
+                }
+            )
         else:
             raw_response = self._call_llm(prompt)
 

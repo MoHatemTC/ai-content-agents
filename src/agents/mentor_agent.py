@@ -16,7 +16,6 @@ from typing import Any, Optional
 
 import yaml
 from dotenv import load_dotenv
-from openai import OpenAI
 from pydantic import ValidationError
 
 from src.models.batch import BatchGenerationFailure, BatchGenerationResult
@@ -54,6 +53,13 @@ class MentorAgent:
         self.prompt = self._load_prompt()
 
         if not self.mock_mode:
+            try:
+                from openai import OpenAI
+            except ModuleNotFoundError as e:
+                raise ModuleNotFoundError(
+                    "openai is required when MOCK_MODE=false. Install it or enable mock mode."
+                ) from e
+
             api_key = os.getenv("LITELLM_API_KEY")
             base_url = os.getenv("LITELLM_BASE_URL")
             self.model = os.getenv("DEFAULT_MODEL", "FW-Kimi-K2.6")
@@ -232,28 +238,58 @@ class MentorAgent:
             difficulty=difficulty.value,
         )
 
-        MOCK_RESPONSE = """
-        {
-        "explanation": "Python has two loop types: for and while.",
-        "key_points": [
-            "for loops",
-            "while loops"
-        ],
-        "next_steps": [
-            "Practice loops."
-        ],
-        "references": [
-            {
-                "segment_id": "chunk_001",
-                "text": "Relevant content excerpt."
-            }
-        ],
-        "requires_human_review": true
-        }
-        """
-
         if self.mock_mode:
-            raw_response = MOCK_RESPONSE
+            chunk_id = (
+                context.chunk_ids[0]
+                if context is not None and context.chunk_ids
+                else "chunk_001"
+            )
+            chunk_text = (
+                context.chunks[0].chunk.text
+                if context is not None and context.chunks
+                else "Relevant content excerpt."
+            )
+            if context is not None:
+                explanation = chunk_text.strip()
+                key_points = ["for loops", "while loops"]
+                next_steps = ["Practice loops."]
+            elif difficulty is DifficultyLevel.BEGINNER:
+                explanation = "Python has two loop types: for and while."
+                key_points = ["for loops", "while loops"]
+                next_steps = ["Practice loops."]
+            elif difficulty is DifficultyLevel.INTERMEDIATE:
+                explanation = (
+                    "Python supports for and while loops. Use for loops to iterate over a "
+                    "sequence and while loops to repeat until a condition changes."
+                )
+                key_points = ["for loops iterate over sequences", "while loops repeat on a condition"]
+                next_steps = ["Practice loops."]
+            else:
+                explanation = (
+                    "Python supports for and while loops. A for loop iterates over an iterable, "
+                    "while a while loop repeats until its condition becomes false. Choosing between them "
+                    "depends on whether you have a natural iterable or an explicit condition-driven process."
+                )
+                key_points = [
+                    "for loops iterate over iterables",
+                    "while loops repeat on a condition",
+                    "choose the loop type based on the control structure you need",
+                ]
+                next_steps = ["Practice loops."]
+            raw_response = json.dumps(
+                {
+                    "explanation": explanation,
+                    "key_points": key_points,
+                    "next_steps": next_steps,
+                    "references": [
+                        {
+                            "segment_id": chunk_id,
+                            "text": chunk_text[:240],
+                        }
+                    ],
+                    "requires_human_review": True,
+                }
+            )
         else:
             raw_response = self._call_llm(prompt)
 

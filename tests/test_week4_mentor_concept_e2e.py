@@ -1,0 +1,163 @@
+import json
+
+import pytest
+
+from src.agents.concept_agent import ConceptAgent
+from src.agents.mentor_agent import MentorAgent
+from src.retrieval.models import Chunk, GroundedContext, RetrievedChunk, RetrievalScope
+
+
+def _context(*, chunk_id: str = "chunk-1", text: str = "Python has for and while loops.") -> GroundedContext:
+    return GroundedContext(
+        query="loops",
+        scope=RetrievalScope(document_id="doc-1"),
+        chunks=[
+            RetrievedChunk(
+                chunk=Chunk(
+                    chunk_id=chunk_id,
+                    document_id="doc-1",
+                    ordinal=0,
+                    text=text,
+                ),
+                score=1.0,
+                rank=1,
+            )
+        ],
+    )
+
+
+def test_week4_mentor_grounding_requires_valid_references_and_supported_claims() -> None:
+    context = _context(chunk_id="chunk-mentor", text="Python has for and while loops.")
+    agent = MentorAgent(mock_mode=True)
+
+    prompt = agent._build_prompt(context, user_question="Explain loops.", difficulty="beginner")
+    result = agent.generate(
+        content="Raw content remains supported.",
+        user_question="Explain loops.",
+        difficulty="beginner",
+        context=context,
+    )
+
+    assert "[chunk-mentor]" in prompt
+    assert context.chunks[0].chunk.text in prompt
+    assert result.references[0].segment_id == "chunk-mentor"
+
+
+def test_week4_concept_grounding_requires_valid_references_and_supported_claims() -> None:
+    context = _context(chunk_id="chunk-concept", text="Python has for and while loops.")
+    agent = ConceptAgent(mock_mode=True)
+
+    prompt = agent._build_prompt(context, user_question="What is a loop?", difficulty="beginner")
+    result = agent.generate(
+        content="Raw content remains supported.",
+        user_question="What is a loop?",
+        difficulty="beginner",
+        context=context,
+    )
+
+    assert "[chunk-concept]" in prompt
+    assert context.chunks[0].chunk.text in prompt
+    assert result.references[0].segment_id == "chunk-concept"
+
+
+@pytest.mark.parametrize("agent_class", [MentorAgent, ConceptAgent])
+def test_week4_difficulty_control_changes_explanation_depth(agent_class: type) -> None:
+    agent = agent_class(mock_mode=True)
+    beginner = agent.generate(content="Python has for and while loops.", difficulty="beginner")
+    advanced = agent.generate(content="Python has for and while loops.", difficulty="advanced")
+
+    assert len(advanced.explanation) > len(beginner.explanation)
+
+
+def test_week4_support_check_blocks_off_content_mentor_claims(monkeypatch) -> None:
+    context = _context(chunk_id="chunk-mentor", text="Python has for loops.")
+    agent = MentorAgent(mock_mode=True)
+    agent.mock_mode = False
+
+    def fake_call_llm(_: str) -> str:
+        return json.dumps(
+            {
+                "explanation": "Python has for loops.",
+                "key_points": ["Python has for loops."],
+                "next_steps": ["Python automatically parallelizes loops."],
+                "references": [{"segment_id": "chunk-mentor", "text": "Python has for loops."}],
+                "requires_human_review": True,
+            }
+        )
+
+    monkeypatch.setattr(agent, "_call_llm", fake_call_llm)
+
+    with pytest.raises(ValueError, match="unsupported claims"):
+        agent.generate(
+            content="content",
+            user_question="Explain loops.",
+            difficulty="beginner",
+            context=context,
+        )
+
+
+def test_week4_support_check_blocks_off_content_concept_claims(monkeypatch) -> None:
+    context = _context(chunk_id="chunk-concept", text="Python has for loops.")
+    agent = ConceptAgent(mock_mode=True)
+    agent.mock_mode = False
+
+    def fake_call_llm(_: str) -> str:
+        return json.dumps(
+            {
+                "definition": "Loops are compiled into machine code automatically.",
+                "explanation": "Python has for loops.",
+                "key_points": ["for loops"],
+                "references": [{"segment_id": "chunk-concept", "text": "Python has for loops."}],
+                "requires_human_review": True,
+            }
+        )
+
+    monkeypatch.setattr(agent, "_call_llm", fake_call_llm)
+
+    with pytest.raises(ValueError, match="unsupported claims"):
+        agent.generate(
+            content="content",
+            user_question="What is a loop?",
+            difficulty="beginner",
+            context=context,
+        )
+
+
+@pytest.mark.parametrize("agent_class", [MentorAgent, ConceptAgent])
+def test_week4_reference_verification_blocks_fabricated_segment_ids(
+    agent_class: type, monkeypatch
+) -> None:
+    context = _context(chunk_id="chunk-real", text="Python has for loops.")
+    agent = agent_class(mock_mode=True)
+    agent.mock_mode = False
+
+    def fake_call_llm(_: str) -> str:
+        payload: dict[str, object]
+        if agent_class is MentorAgent:
+            payload = {
+                "explanation": "Python has for loops.",
+                "key_points": ["for loops"],
+                "next_steps": ["Practice loops."],
+                "references": [{"segment_id": "chunk-fake", "text": "Fabricated"}],
+                "requires_human_review": True,
+            }
+        else:
+            payload = {
+                "definition": "A loop repeats instructions.",
+                "explanation": "Python has for loops.",
+                "key_points": ["for loops"],
+                "references": [{"segment_id": "chunk-fake", "text": "Fabricated"}],
+                "requires_human_review": True,
+            }
+        return json.dumps(payload)
+
+    monkeypatch.setattr(agent, "_call_llm", fake_call_llm)
+
+    with pytest.raises(ValueError, match="not grounded"):
+        agent.generate(
+            content="content",
+            user_question="question",
+            difficulty="beginner",
+            context=context,
+        )
+
