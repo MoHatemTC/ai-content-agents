@@ -253,7 +253,7 @@ def test_edit_rechecks_citations_against_the_runs_chunks(
     stored = service.get(output.id)
     assert stored.validation_passed is False
     assert any(
-        violation["rule_name"] == "grounded_references"
+        violation["rule_name"] == "grounding_verification"
         for violation in stored.validation_report["guardrail_violations"]
     )
 

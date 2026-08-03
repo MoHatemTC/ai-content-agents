@@ -6,7 +6,7 @@ three rates the brief asks for, overall and per agent:
 * **schema pass rate** — how often an agent returned something that satisfied
   its declared schema *and* the guardrails;
 * **groundedness rate** — how often its citations pointed at chunks that were
-  genuinely retrieved, from the ``grounded_references`` guardrail's verdict;
+  genuinely retrieved, from the ``grounding_verification`` guardrail's verdict;
 * **review edit rate** — how often a human had to change the output before
   approving it, the most honest quality signal available because it is a
   person's judgement rather than a heuristic.
@@ -37,7 +37,7 @@ from src.validation.store import PlatformStore
 
 logger = logging.getLogger(__name__)
 
-GROUNDING_RULE = "grounded_references"
+GROUNDING_RULE = "grounding_verification"
 
 
 def _rate(numerator: int, denominator: int) -> float | None:

@@ -11,7 +11,8 @@ already schema-valid output. This module provides:
 The rules answer three different questions about a schema-valid output:
 :class:`NonEmptyTextRule` asks whether it says anything at all,
 :class:`ReferencesPresentRule` asks whether it cites its sources, and
-:class:`GroundedReferencesRule` asks whether those citations are **real** —
+:class:`~src.validation.grounding_rule.PlatformGroundingRule` asks whether those
+citations are **real** —
 whether each cited segment was actually retrieved, catching a model that
 fabricates provenance. Semantic entailment checking (does the source actually
 *support* the claim?) remains out of scope.
@@ -24,7 +25,6 @@ from enum import Enum
 
 from pydantic import BaseModel
 
-from src.retrieval.grounding import verify_references
 from src.retrieval.models import GroundedContext
 from src.validation.schemas import ContentReference
 
@@ -118,7 +118,7 @@ class GuardrailContext(BaseModel):
             fields; otherwise every string field on the output is checked.
         grounded_context: The retrieval payload the agent was given, when the
             output was produced through the grounded pipeline. Supplies
-            :class:`GroundedReferencesRule` with the set of chunk ids that were
+            the grounding rule with the set of chunk ids that were
             genuinely retrieved.
         retrieved_chunk_ids: The same information reduced to the ids alone, for
             callers that no longer hold the full payload — re-validating a
@@ -182,60 +182,6 @@ class ReferencesPresentRule(GuardrailRule):
         return None
 
 
-class GroundedReferencesRule(GuardrailRule):
-    """Hallucination check: cited segments must actually have been retrieved.
-
-    :class:`ReferencesPresentRule` only asks whether an output cites *anything*.
-    This rule asks whether those citations are **real**, comparing every cited
-    ``segment_id`` against the ids in the :class:`GroundedContext` the agent was
-    actually given. A model that invents a plausible-looking chunk id — the
-    classic grounding failure — is caught here rather than reaching a reviewer
-    with fabricated provenance.
-
-    The rule accepts its evidence in either of two shapes: the full
-    :class:`GroundedContext` at generation time, or just the retrieved chunk ids
-    when re-validating a reviewer's edit later, by which point only
-    ``AgentRun.source_chunk_ids`` survives. It does not apply when neither is
-    available, so ungrounded callers (tests, ad-hoc generation) are not
-    penalised for a comparison that cannot be made.
-    """
-
-    name = "grounded_references"
-
-    def check(
-        self, output: BaseModel, context: GuardrailContext
-    ) -> GuardrailViolation | None:
-        references = collect_content_references(output)
-
-        if context.grounded_context is not None:
-            # Delegate to the retrieval lane's own verification.
-            unknown_ids = verify_references(
-                references, context.grounded_context
-            ).unknown_segment_ids
-        elif context.retrieved_chunk_ids is not None:
-            known = set(context.retrieved_chunk_ids)
-            unknown_ids = [
-                reference.segment_id
-                for reference in references
-                if reference.segment_id not in known
-            ]
-        else:
-            return None  # Nothing to verify against.
-
-        if not unknown_ids:
-            return None
-
-        unknown = ", ".join(repr(i) for i in unknown_ids)
-        return GuardrailViolation(
-            rule_name=self.name,
-            message=(
-                f"Output cites {len(unknown_ids)} segment id(s) that were never "
-                f"retrieved: {unknown}. The citation is fabricated or points "
-                "outside the retrieved scope."
-            ),
-        )
-
-
 class NonEmptyTextRule(GuardrailRule):
     """Sanity rule: required text fields must not be blank or too short.
 
@@ -273,11 +219,10 @@ class NonEmptyTextRule(GuardrailRule):
         return None
 
 
-# The default set of rules every agent output runs through. GroundedReferencesRule
-# is a no-op unless the caller supplies a GroundedContext, so it is safe here for
-# ungrounded callers while enforcing citation integrity on the real pipeline.
+# Rules that need no external evidence. The grounding check is added on top by
+# ValidatorBase, which can import it without the circular dependency this module
+# would hit (src.retrieval.verifier imports GuardrailRule from here).
 DEFAULT_RULES: list[GuardrailRule] = [
     ReferencesPresentRule(),
     NonEmptyTextRule(),
-    GroundedReferencesRule(),
 ]

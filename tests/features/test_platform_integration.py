@@ -198,7 +198,7 @@ def test_pipeline_flags_a_hallucinated_citation(tmp_path: Path) -> None:
     output = result.outputs[0]
     assert output.validation_passed is False
     assert any(
-        violation["rule_name"] == "grounded_references"
+        violation["rule_name"] == "grounding_verification"
         for violation in output.validation_report["guardrail_violations"]
     )
 

@@ -44,7 +44,6 @@ if TYPE_CHECKING:  # Static analysers get the real names; runtime stays lazy.
     )
     from src.validation.guardrails import (
         DEFAULT_RULES,
-        GroundedReferencesRule,
         GuardrailContext,
         GuardrailRule,
         GuardrailViolation,
@@ -92,7 +91,7 @@ _EXPORTS: dict[str, str] = {
     "EvaluationHarness": "src.validation.evaluation",
     "EvaluationReport": "src.validation.evaluation",
     "DEFAULT_RULES": "src.validation.guardrails",
-    "GroundedReferencesRule": "src.validation.guardrails",
+    "PlatformGroundingRule": "src.validation.grounding_rule",
     "GuardrailContext": "src.validation.guardrails",
     "GuardrailRule": "src.validation.guardrails",
     "GuardrailViolation": "src.validation.guardrails",
@@ -144,7 +143,7 @@ __all__ = [
     "ExportBlockedError",
     "ExportFormat",
     "GeneratedOutput",
-    "GroundedReferencesRule",
+    "PlatformGroundingRule",
     "GuardrailContext",
     "GuardrailRule",
     "GuardrailViolation",

@@ -16,8 +16,8 @@ import pytest
 
 from src.exports import ExportFormat, export_approved_run, export_outputs
 from src.retrieval.models import Chunk, GroundedContext, RetrievalScope, RetrievedChunk
+from src.validation.grounding_rule import PlatformGroundingRule
 from src.validation.guardrails import (
-    GroundedReferencesRule,
     GuardrailContext,
     ReferencesPresentRule,
     Severity,
@@ -349,7 +349,7 @@ def test_saved_review_is_returned_unchanged(store: PlatformStore) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# GroundedReferencesRule: the hallucinated-citation check
+# PlatformGroundingRule: the hallucinated-citation check
 # --------------------------------------------------------------------------- #
 
 
@@ -389,13 +389,13 @@ def _mentor_output(*segment_ids: str) -> MentorOutput:
 
 def test_grounding_rule_is_a_no_op_without_a_grounded_context() -> None:
     """Ungrounded callers are not penalised; the rule simply does not apply."""
-    rule = GroundedReferencesRule()
+    rule = PlatformGroundingRule()
 
     assert rule.check(_mentor_output("anything"), GuardrailContext()) is None
 
 
 def test_grounding_rule_passes_when_every_citation_was_retrieved() -> None:
-    rule = GroundedReferencesRule()
+    rule = PlatformGroundingRule()
     context = GuardrailContext(
         grounded_context=_grounded_context("physics-notes-c0000", "physics-notes-c0001")
     )
@@ -405,20 +405,20 @@ def test_grounding_rule_passes_when_every_citation_was_retrieved() -> None:
 
 def test_grounding_rule_flags_a_fabricated_citation() -> None:
     """The exact failure the mock agents exhibit: citing 'chunk_001'."""
-    rule = GroundedReferencesRule()
+    rule = PlatformGroundingRule()
     context = GuardrailContext(grounded_context=_grounded_context("physics-notes-c0000"))
 
     violation = rule.check(_mentor_output("chunk_001"), context)
 
     assert violation is not None
-    assert violation.rule_name == "grounded_references"
+    assert violation.rule_name == "grounding_verification"
     assert violation.severity is Severity.ERROR
     assert "chunk_001" in violation.message
 
 
 def test_grounding_rule_reaches_nested_references() -> None:
     """QuestionBankOutput cites per question, not at the top level."""
-    rule = GroundedReferencesRule()
+    rule = PlatformGroundingRule()
     context = GuardrailContext(grounded_context=_grounded_context("physics-notes-c0000"))
     output = QuestionBankOutput(
         questions=[
@@ -451,7 +451,7 @@ def test_ungrounded_output_fails_validation_end_to_end() -> None:
 
     assert model is not None  # schema was fine; grounding was not
     assert result.passed is False
-    assert any(v.rule_name == "grounded_references" for v in result.guardrail_violations)
+    assert any(v.rule_name == "grounding_verification" for v in result.guardrail_violations)
 
 
 def test_grounded_output_passes_validation_end_to_end() -> None:
@@ -469,7 +469,7 @@ def test_grounded_output_passes_validation_end_to_end() -> None:
 
 
 def test_grounding_rule_reports_every_fabricated_id() -> None:
-    rule = GroundedReferencesRule()
+    rule = PlatformGroundingRule()
     context = GuardrailContext(grounded_context=_grounded_context("physics-notes-c0000"))
 
     violation = rule.check(_mentor_output("fake-a", "fake-b"), context)
@@ -727,7 +727,7 @@ def test_grounded_run_flags_a_hallucinated_citation(store: PlatformStore) -> Non
     assert result.output is not None
     assert result.output.validation_passed is False
     violations = result.output.validation_report["guardrail_violations"]
-    assert any(v["rule_name"] == "grounded_references" for v in violations)
+    assert any(v["rule_name"] == "grounding_verification" for v in violations)
 
 
 def test_run_without_content_or_grounding_is_refused(store: PlatformStore) -> None:
@@ -1012,7 +1012,7 @@ def _record(
         return None
 
     violations = (
-        [{"rule_name": "grounded_references", "message": "fabricated", "severity": "error"}]
+        [{"rule_name": "grounding_verification", "message": "fabricated", "severity": "error"}]
         if grounding_violation
         else []
     )
