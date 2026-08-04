@@ -17,7 +17,7 @@ import pytest
 import streamlit as st
 from streamlit.testing.v1 import AppTest
 
-from src.ingestion.schema import Chunk
+from src.ingestion.schema import Chunk, Document
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STUDY_UI = REPO_ROOT / "src" / "study" / "ui.py"
@@ -33,6 +33,9 @@ def _clear_streamlit_caches():
     st.cache_resource.clear()
 
 
+DOC_TITLE = "Diplomacy Primer"
+
+
 def _chunks(document_id: str = "doc-1", count: int = 3) -> list[Chunk]:
     """Chunk records shaped exactly as the Upload page stores them."""
     return [
@@ -44,6 +47,28 @@ def _chunks(document_id: str = "doc-1", count: int = 3) -> list[Chunk]:
         )
         for index in range(count)
     ]
+
+
+def _document(document_id: str = "doc-1") -> Document:
+    """A Document shaped exactly as the Upload page stores it."""
+    return Document(
+        id=document_id,
+        title=DOC_TITLE,
+        content=(
+            "Diplomacy is the practice of negotiation between nations. "
+            "Treaties, envoys and summits are its core instruments."
+        ),
+        source_type="paste",
+        file_type="txt",
+    )
+
+
+def _load_content(at: AppTest, count: int = 3) -> list[Chunk]:
+    """Put an active document and its chunks in session state, as upload does."""
+    chunks = _chunks(count=count)
+    at.session_state["current_doc"] = _document()
+    at.session_state["current_chunks"] = chunks
+    return chunks
 
 
 # --------------------------------------------------------------------------- #
@@ -81,7 +106,7 @@ def test_flashcards_page_accepts_stored_chunks() -> None:
     per chunk in the uploaded document.
     """
     at = AppTest.from_file(str(STUDY_UI), default_timeout=120)
-    at.session_state["current_chunks"] = _chunks(count=3)
+    _load_content(at, count=3)
     at.run()
 
     at.button[0].click().run()
