@@ -66,6 +66,30 @@ A short trailing window is folded back into its predecessor. Three words are
 almost always three distinct words, so a 2,001-word document of pure repetition
 would otherwise average `0.0005` and `1.0` into a comfortable pass.
 
+### 3. …and then the transcription failed a *third* heuristic
+
+With the handwritten notes finally transcribed, ingestion still refused them:
+*"Document contains too little readable text."*
+
+`_check_letter_ratio` counted **letters** against every character. It exists to
+catch mojibake and binary junk, but a worked physics solution is legitimately 22%
+digits and 23% operators, so it scored `0.292` against a `0.40` floor. The check
+had quietly become a test for prose.
+
+Counting **alphanumerics against non-whitespace** asks the intended question —
+digits are content, whitespace is neither content nor noise:
+
+| Content | letters / all chars | alnum / non-space |
+|---|---|---|
+| Worked physics transcription | 0.243 ❌ | **0.680** ✅ |
+| Ordinary prose | 0.850 | 0.979 |
+| Physics textbook | 0.723 | 0.941 |
+| Box-drawing mojibake | 0.000 | 0.000 ❌ |
+| Control-character junk | 0.000 | 0.000 ❌ |
+
+All three failures share one shape: **a heuristic measuring something adjacent to
+the question it was asked.** Worth remembering the next time one is added.
+
 ---
 
 ## Why filtering could not fix the scanned PDF
@@ -272,6 +296,18 @@ proves the behaviour without requiring a system install.
   genuine Arabic or French scan would read as noise and escalate to vision. That
   is the safe direction to fail, but it means vision gets used more than it needs
   to for non-English documents.
-- **The textbook produces roughly 7,500 chunks** at `chunk_size=1000,
-  overlap=100`. Retrieval over a corpus containing it will be dominated by that
-  one document. No cap has been added speculatively — measure before deciding.
+- **The textbook produces 7,470 chunks** at `chunk_size=1000, overlap=100`.
+  Ingestion itself is fine — measured at **11.3 s** for 6.7M characters, leaving
+  a 17.5 MB database — but retrieval over a corpus containing it will be
+  dominated by that one document. No cap has been added; the number to watch is
+  retrieval quality, not ingestion time.
+
+## Measured end to end
+
+Both real documents, through the real pipeline:
+
+| | Before | After |
+|---|---|---|
+| Handwritten notes | 330 chars of noise, `source_type=file` | 650 chars of physics, `source_type=file-vision-ocr` |
+| Extracted topics | CamScanner, PAGE, DATE, Kwad Res | Mechanism, heat, transfer, Assignment |
+| 1,598-page textbook | rejected as "highly repetitive" | 7,470 chunks in 11.3 s |
