@@ -51,6 +51,10 @@ class QualityChecker:
     MAX_EMPTY_LINE_RATIO = 0.50
     MIN_UNIQUE_WORD_RATIO = 0.20
 
+    # Vocabulary is measured over windows of this many words rather than over the
+    # whole document. See _check_repetition for why the distinction matters.
+    REPETITION_WINDOW_WORDS = 2000
+
     def validate(self, text: str) -> QualityResult:
         """
         Validate the quality of a document.
@@ -150,6 +154,18 @@ class QualityChecker:
         """
         Detect highly repetitive document content.
 
+        Vocabulary richness is measured **per window**, not over the whole
+        document, because the ratio of distinct words to total words falls as a
+        document grows however varied its prose: a writer reuses "the" and "of"
+        indefinitely while the stock of new words runs out (Heaps' law). Judged
+        whole-document, length alone reads as repetition, and a real textbook is
+        rejected for being long - a 1,598-page physics text scores 0.019 against
+        a 0.20 floor, yet 0.381 over its first 2,000 words.
+
+        Averaging the ratio across fixed-size windows keeps the check meaningful
+        at any length: genuinely repetitive text scores low in every window,
+        while a long varied document scores normally in each one.
+
         Args:
             text:
                 Document content.
@@ -161,7 +177,18 @@ class QualityChecker:
         if not words:
             return
 
-        unique_ratio = len(set(words)) / len(words)
+        window = self.REPETITION_WINDOW_WORDS
+        windows = [words[start : start + window] for start in range(0, len(words), window)]
+
+        # A short trailing window would score near 1.0 whatever the document says
+        # - three words are almost always three distinct words - and would drag
+        # the average up enough to pass genuinely repetitive text. Fold it back
+        # into its predecessor instead of letting it vote on its own.
+        if len(windows) > 1 and len(windows[-1]) < window // 2:
+            windows[-2].extend(windows.pop())
+
+        ratios = [len(set(chunk)) / len(chunk) for chunk in windows]
+        unique_ratio = sum(ratios) / len(ratios)
 
         if unique_ratio < self.MIN_UNIQUE_WORD_RATIO:
             issues.append("Document appears to contain highly repetitive content.")
