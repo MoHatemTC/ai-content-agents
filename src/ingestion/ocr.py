@@ -27,6 +27,7 @@ from __future__ import annotations
 import io
 import logging
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -125,6 +126,85 @@ def ocr_availability() -> tuple[bool, str]:
     return True, ""
 
 
+# Artefacts every page of a phone-scanned document carries: the scanner app's
+# watermark and the printed template fields of the notebook itself. They repeat
+# on every page, so they dominate word frequencies and get mistaken for the
+# document's subject matter - a scan of physics notes produced flashcards titled
+# "CamScanner", "PAGE" and "DATE".
+_FURNITURE_PATTERNS = (
+    r"scanned\s+with\s+camscanner",
+    r"\bcamscanner\b",
+    r"\bscanned\s+by\s+\w+",
+    r"\bkwad\s+res\b",
+    r"^\s*page\s*(no\.?|number)?\s*:?\s*\d*\s*$",
+    r"^\s*date\s*:?\s*$",
+    r"\bpage\s+date\b",
+)
+_FURNITURE = re.compile("|".join(_FURNITURE_PATTERNS), re.IGNORECASE | re.MULTILINE)
+
+# A minimal common-English vocabulary, used only to ask whether OCR produced
+# words at all. Deliberately not a full dictionary: the question is "is this
+# language or is it noise", and noise scores zero against any word list.
+_COMMON_WORDS = frozenset(
+    """the be to of and a in that have it for not on with he as you do at this but his by
+    from they we say her she or an will my one all would there their what so up out if
+    about who get which go me when make can like time no just him know take people into
+    year your good some could them see other than then now look only come its over think
+    also back after use two how our work first well way even new want because any these
+    give day most us is are was were been has had did does said made where much before
+    through between under both each many such own same those while during against per via
+    value values result results example examples figure table chapter section problem
+    problems equation equations force energy mass velocity motion system point line
+    surface field temperature heat water object body speed direction distance change rate
+    constant""".split()
+)
+
+# Below this share of recognisable words, the text is noise rather than content.
+# Measured on the real failure: a scanned page of handwritten physics scored
+# 0.000 once its scanner furniture was removed, while the weakest legitimate
+# document in this repo scores 0.14 and a vision transcription of the same page
+# scores 0.57.
+MIN_LEXICALITY = 0.08
+
+# Mean per-word confidence below which Tesseract is guessing. The same page
+# scored 41.1; a clean printed scan sits comfortably above 70.
+MIN_MEAN_CONFIDENCE = 55.0
+
+
+def strip_scanner_furniture(text: str) -> str:
+    """Remove scanner watermarks and notebook template text from OCR output.
+
+    Args:
+        text: Raw OCR output.
+
+    Returns:
+        The same text without the per-page artefacts, whitespace tidied.
+    """
+    return re.sub(r"[ \t]{2,}", " ", _FURNITURE.sub(" ", text)).strip()
+
+
+def lexicality(text: str) -> float:
+    """Return the share of word-like tokens that are recognisable English words.
+
+    This is the signal that separates a real transcription from OCR noise, and
+    it is applied **only** to OCR output. Ordinary uploaded documents are not
+    judged this way: technical, non-English or heavily notated prose can score
+    low without being wrong, and there is no reason to gamble a user's upload on
+    a word list.
+
+    Args:
+        text: Text to score, ideally with scanner furniture already stripped -
+            the watermark words are real English and inflate the score.
+
+    Returns:
+        A ratio in ``[0.0, 1.0]``; ``0.0`` when there are no word-like tokens.
+    """
+    tokens = [token for token in re.findall(r"[A-Za-z]+", text.lower()) if len(token) > 2]
+    if not tokens:
+        return 0.0
+    return sum(token in _COMMON_WORDS for token in tokens) / len(tokens)
+
+
 def ocr_pdf(file_content: bytes, *, dpi: int = 300, language: str = "eng") -> str:
     """Extract text from a PDF by rendering each page and running OCR on it.
 
@@ -152,17 +232,88 @@ def ocr_pdf(file_content: bytes, *, dpi: int = 300, language: str = "eng") -> st
     document = fitz.open(stream=file_content, filetype="pdf")
     try:
         pages: list[str] = []
+        confidences: list[float] = []
         for number, page in enumerate(document, start=1):
             # Round-trip through PNG rather than reading pix.samples directly:
             # it sidesteps having to handle colourspace and alpha variations.
             image = Image.open(io.BytesIO(page.get_pixmap(dpi=dpi).tobytes("png")))
-            text = pytesseract.image_to_string(image, lang=language)
-            logger.info("ocr page %d/%d: %d chars", number, len(document), len(text))
+            data = pytesseract.image_to_data(
+                image, lang=language, output_type=pytesseract.Output.DICT
+            )
+            words = [
+                (word.strip(), float(conf))
+                for word, conf in zip(data["text"], data["conf"])
+                if word.strip() and float(conf) >= 0
+            ]
+            text = " ".join(word for word, _ in words)
+            confidences.extend(conf for _, conf in words)
+            logger.info(
+                "ocr page %d/%d: %d chars, %d words",
+                number,
+                len(document),
+                len(text),
+                len(words),
+            )
             pages.append(text)
     finally:
         document.close()
 
+    _LAST_MEAN_CONFIDENCE.append(
+        sum(confidences) / len(confidences) if confidences else 0.0
+    )
     return "\n".join(pages)
+
+
+# Confidence is produced as a side effect of the pass that builds the text; a
+# second OCR pass purely to measure it would double the slowest step in
+# ingestion. Only the most recent value is kept.
+_LAST_MEAN_CONFIDENCE: list[float] = []
+
+
+def last_mean_confidence() -> float:
+    """Return the mean per-word confidence of the most recent :func:`ocr_pdf` call.
+
+    Returns:
+        The mean confidence in ``[0, 100]``, or ``0.0`` if OCR has not run.
+    """
+    return _LAST_MEAN_CONFIDENCE[-1] if _LAST_MEAN_CONFIDENCE else 0.0
+
+
+def ocr_looks_readable(text: str, mean_confidence: float | None = None) -> tuple[bool, str]:
+    """Judge whether OCR actually read the document, or merely produced characters.
+
+    Tesseract recognises printed text; it cannot read handwriting, and on a
+    handwritten page it does not fail - it returns confident-looking nonsense.
+    Worse, the only words it gets right there are the *printed* ones, so
+    filtering by confidence keeps the scanner watermark and discards everything
+    else. Judging the text as a whole is the way to catch this.
+
+    Args:
+        text: OCR output, with scanner furniture already stripped.
+        mean_confidence: Mean per-word confidence, if known. Defaults to the most
+            recent :func:`ocr_pdf` run.
+
+    Returns:
+        ``(readable, reason)``. ``reason`` is empty when the text looks like
+        language, otherwise it names what was wrong.
+    """
+    confidence = last_mean_confidence() if mean_confidence is None else mean_confidence
+    score = lexicality(text)
+
+    if score < MIN_LEXICALITY:
+        return False, (
+            f"the recognised text is not readable language ({score:.0%} of words "
+            f"recognisable, mean confidence {confidence:.0f}/100). The page is "
+            "most likely handwritten - Tesseract reads printed text only."
+        )
+
+    if confidence and confidence < MIN_MEAN_CONFIDENCE:
+        return False, (
+            f"OCR confidence was too low to trust ({confidence:.0f}/100). The scan "
+            "may be blurred, skewed, or too low-resolution."
+        )
+
+    return True, ""
 
 
 class OcrUnavailableError(RuntimeError):
