@@ -42,40 +42,40 @@ from src.study.study_plan_agent import StudyPlanAgent
 PENDING_BADGE = ":warning: **PENDING HUMAN REVIEW — not final.**"
 
 
-def _get_doc() -> tuple[str, str]:
-    """Return the current document (title, content) from session state.
+def render_current_content_status() -> tuple[Any, list, bool]:
+    """Render unified Current Content header across all AI pages.
 
-    Falls back to a sample Python basics text so the page is still usable
-    standalone.
+    Returns (doc, chunks, is_loaded).
     """
     doc = st.session_state.get("current_doc")
-    if doc is None:
-        fallback = (
-            "Python Programming Basics. "
-            "Python is a high-level, interpreted programming language. "
-            "Key concepts include Functions, Loops (for and while), Classes, "
-            "Lists, Dictionaries, and Error Handling. Functions are reusable "
-            "blocks defined with the def keyword. Loops iterate over sequences. "
-            "Classes enable object-oriented programming. "
-            "Lists and Dictionaries are core data structures. "
-            "Error Handling uses try/except blocks."
-        )
-        return "Pasted sample (Python Programming)", fallback
+    chunks = st.session_state.get("current_chunks") or []
+
+    if doc is None or not getattr(doc, "content", None):
+        st.warning("⚠️ Please upload educational content first.")
+        st.info("💡 Go to the **Upload Content** page to upload a file, paste text, or select a document from the Content Library.")
+        return None, [], False
+
     title = getattr(doc, "title", "Uploaded content")
-    content = getattr(doc, "content", "") or ""
-    return title, content
+    chunk_count = len(chunks)
+
+    with st.container(border=True):
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown(f"### 📄 Current Content: **{title}**")
+        with col2:
+            st.markdown(f"**🧩 {chunk_count} Chunks Loaded**")
+
+    return doc, chunks, True
 
 
 def flashcards_page() -> None:
     st.title("🃏 Grounded Flashcard Generator")
-    title, content = _get_doc()
-    st.caption(f"Content source: {title}")
-    if "current_doc" not in st.session_state:
-        st.info(
-            "Tip: upload content on the Upload Content page first, or "
-            "use the built-in sample below."
-        )
+    doc, chunks, is_loaded = render_current_content_status()
 
+    if not is_loaded:
+        return
+
+    content = doc.content
     with st.form("fc_form"):
         col1, col2 = st.columns(2)
         with col1:
@@ -132,9 +132,13 @@ def flashcards_page() -> None:
 
 def study_plan_page() -> None:
     st.title("📅 Grounded Study Plan")
-    title, content = _get_doc()
-    st.caption(f"Content source: {title}")
+    doc, chunks, is_loaded = render_current_content_status()
 
+    if not is_loaded:
+        return
+
+    content = doc.content
+    title = doc.title
     today = date.today()
     with st.form("sp_form"):
         col1, col2 = st.columns(2)
@@ -198,9 +202,12 @@ def study_plan_page() -> None:
 
 def revision_page() -> None:
     st.title("🔄 Targeted Revision Assistant")
-    title, content = _get_doc()
-    st.caption(f"Content source: {title}")
+    doc, chunks, is_loaded = render_current_content_status()
 
+    if not is_loaded:
+        return
+
+    content = doc.content
     allow_list = FlashcardAgent.extract_topics(content, max_topics=40)
     if not allow_list:
         allow_list = ["General topic"]
