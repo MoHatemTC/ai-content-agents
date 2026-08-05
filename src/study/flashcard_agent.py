@@ -42,6 +42,7 @@ from src.study.llm_client import (
     call_llm,
     parse_json,
     schema_block,
+    sentence_about,
 )
 
 load_dotenv()
@@ -241,7 +242,10 @@ class FlashcardAgent:
 
     @staticmethod
     def _mock_response(
-        extracted_topics: list[str], card_format: str, card_count: int
+        extracted_topics: list[str],
+        card_format: str,
+        card_count: int,
+        content: str = "",
     ) -> FlashcardSet:
         """Deterministic grounded sample for tests and local demoing.
 
@@ -249,6 +253,8 @@ class FlashcardAgent:
             extracted_topics: Topic allow-list.
             card_format: ``term-definition`` or ``qa``.
             card_count: Target count.
+            content: The source text, so the cards can quote it instead of
+                describing where to find it.
 
         Returns:
             Valid, grounded :class:`FlashcardSet` that passes every validator
@@ -259,15 +265,14 @@ class FlashcardAgent:
         cards: list[Flashcard] = []
         for i in range(n):
             topic = topics[i % len(topics)]
-            if card_format == "term-definition":
-                front = topic
-                back = (
-                    f"{topic} is a key concept described in the supplied "
-                    f"content. See the source text for a fuller treatment."
-                )
-            else:  # qa
-                front = f"What is {topic}?"
-                back = f"{topic} is explained in the supplied content as an important topic."
+            # Quote the document rather than describing it. The previous text -
+            # "X is a key concept described in the supplied content. See the
+            # source text for a fuller treatment." - was the same sentence for
+            # every card of every document, and it is what the app displayed,
+            # since the UI hardcoded mock mode. A card that says where the
+            # answer is instead of what it is teaches nothing.
+            back = sentence_about(content, topic)
+            front = topic if card_format == "term-definition" else f"What is {topic}?"
             cards.append(
                 Flashcard(
                     front=front,
@@ -386,7 +391,9 @@ class FlashcardAgent:
         prompt = self._build_prompt(content, extracted_topics, card_format, card_count)
 
         if self.mock_mode:
-            raw = self._mock_response(extracted_topics, card_format, card_count)
+            raw = self._mock_response(
+                extracted_topics, card_format, card_count, content
+            )
         else:
             try:
                 text = self._call_llm(prompt)
