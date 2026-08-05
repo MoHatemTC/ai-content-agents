@@ -251,8 +251,8 @@ class MentorAgent:
             )
             if context is not None:
                 explanation = chunk_text.strip()
-                key_points = ["for loops", "while loops"]
-                next_steps = ["Practice loops."]
+                key_points = [chunk_text.strip()]
+                next_steps = [chunk_text.strip()]
             elif difficulty is DifficultyLevel.BEGINNER:
                 explanation = "Python has two loop types: for and while."
                 key_points = ["for loops", "while loops"]

@@ -37,10 +37,9 @@ python -m pytest -q tests/test_week4_mentor_concept_e2e.py
 
 ### Result
 
-- ✅ 8 passed
-- Output (summary): `8 passed in 0.71s`
+- ✅ 12 passed
+- Output (summary): `12 passed in 0.84s`
 
 ### Test File
 
 - [test_week4_mentor_concept_e2e.py](file:///d:/Sprint/Sprint_Task1/ai-content-agents/tests/test_week4_mentor_concept_e2e.py)
-

@@ -64,9 +64,34 @@ def test_week4_concept_grounding_requires_valid_references_and_supported_claims(
 def test_week4_difficulty_control_changes_explanation_depth(agent_class: type) -> None:
     agent = agent_class(mock_mode=True)
     beginner = agent.generate(content="Python has for and while loops.", difficulty="beginner")
+    intermediate = agent.generate(content="Python has for and while loops.", difficulty="intermediate")
     advanced = agent.generate(content="Python has for and while loops.", difficulty="advanced")
 
+    assert len(intermediate.explanation) >= len(beginner.explanation)
     assert len(advanced.explanation) > len(beginner.explanation)
+
+
+@pytest.mark.parametrize("agent_class", [MentorAgent, ConceptAgent])
+def test_week4_outputs_default_to_human_review(agent_class: type) -> None:
+    agent = agent_class(mock_mode=True)
+    result = agent.generate(content="Python has for and while loops.", difficulty="beginner")
+
+    assert result.requires_human_review is True
+
+
+@pytest.mark.parametrize("agent_class", [MentorAgent, ConceptAgent])
+def test_week4_grounded_generation_retains_human_review(agent_class: type) -> None:
+    context = _context(chunk_id="chunk-review", text="Python has for loops.")
+    agent = agent_class(mock_mode=True)
+
+    result = agent.generate(
+        content="content",
+        user_question="Explain loops.",
+        difficulty="advanced",
+        context=context,
+    )
+
+    assert result.requires_human_review is True
 
 
 def test_week4_support_check_blocks_off_content_mentor_claims(monkeypatch) -> None:
@@ -160,4 +185,3 @@ def test_week4_reference_verification_blocks_fabricated_segment_ids(
             difficulty="beginner",
             context=context,
         )
-

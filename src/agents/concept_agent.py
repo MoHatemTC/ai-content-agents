@@ -262,7 +262,7 @@ class ConceptAgent:
             if context is not None:
                 definition = chunk_text.strip()
                 explanation = chunk_text.strip()
-                key_points = ["for loops", "while loops"]
+                key_points = [chunk_text.strip()]
             elif difficulty is DifficultyLevel.BEGINNER:
                 definition = "A loop repeats instructions."
                 explanation = "Python has for and while loops."
