@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import date, timedelta
 
 import pytest
 
+from src.schemas import Flashcard, FlashcardSet
 from src.study.batch import (
+    BatchFlashcardResult,
+    BatchPlanResult,
     BatchReport,
     default_demo_dataset,
     run_full_batch,
@@ -14,11 +18,13 @@ from src.study.evaluation import (
     BenchmarkReport,
     benchmark_quality,
 )
+from src.study.flashcard_agent import FlashcardAgent
 from src.study.formatters import (
     format_flashcard_set,
     format_revision_session,
     format_study_plan,
 )
+from src.study.schemas import StudyPlan, TopicSchedule
 
 
 class TestFullBatchPipeline:
@@ -59,6 +65,76 @@ class TestBenchmarkQuality:
         assert d["revisions"]["grounded_rate"] == 1.0
         # Overall quality >= 0.8 on the default demo dataset (expect near 1.0).
         assert d["overall"] >= 0.8
+
+    def test_flashcard_count_mismatch_is_detected(self):
+        item = default_demo_dataset()[0]
+        allowed = FlashcardAgent.extract_topics(item.content)
+        assert len(allowed) > 1
+        card = Flashcard(
+            front="Term",
+            back="Definition",
+            format="term-definition",
+            source_topic=allowed[0],
+            tags=[],
+        )
+        card_set = FlashcardSet(
+            title=item.title,
+            description=None,
+            cards=[card],
+            source_topics=[allowed[0]],
+            source_chunk_ids=[],
+            needs_human_review=True,
+        )
+        report = BatchReport(
+            flashcards=[BatchFlashcardResult(title=item.title, card_set=card_set)],
+            plans=[],
+            revisions=[],
+        )
+        bench = benchmark_quality(
+            report,
+            [item],
+            expected_card_format="term-definition",
+            expected_card_count=5,
+        )
+        d = bench.to_dict()
+        assert d["flashcards"]["grounded"] == 1
+        assert d["flashcards"]["format_matches_request"] == 1
+        assert d["flashcards"]["count_matches_request"] == 0
+
+    def test_plan_completeness_requires_all_extracted_topics(self):
+        item = default_demo_dataset()[0]
+        allowed = FlashcardAgent.extract_topics(item.content)
+        assert len(allowed) > 1
+        start = date.today()
+        end = start + timedelta(days=7)
+        plan = StudyPlan(
+            goal="Goal",
+            start_date=start,
+            end_date=end,
+            overall_difficulty="easy",
+            available_hours_per_week=5.0,
+            topic_schedule=[
+                TopicSchedule(
+                    topic=allowed[0],
+                    start_date=start,
+                    end_date=start,
+                    duration_hours=1.0,
+                    difficulty="easy",
+                    resources=[],
+                )
+            ],
+            source_topics=[allowed[0]],
+            needs_human_review=True,
+        )
+        report = BatchReport(
+            flashcards=[],
+            plans=[BatchPlanResult(title=item.title, plan=plan)],
+            revisions=[],
+        )
+        bench = benchmark_quality(report, [item])
+        d = bench.to_dict()
+        assert d["plans"]["grounded"] == 1
+        assert d["plans"]["all_extracted_topics_scheduled"] == 0
 
     def test_benchmark_report_is_serialisable(self):
         import json

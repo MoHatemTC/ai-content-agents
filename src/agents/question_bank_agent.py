@@ -16,7 +16,6 @@ from typing import Any, Optional
 
 import yaml
 from dotenv import load_dotenv
-from openai import OpenAI
 
 from src.validation.schemas import QuestionBankOutput
 
@@ -54,6 +53,13 @@ class QuestionBankAgent:
         self.prompt = self._load_prompt()
 
         if not self.mock_mode:
+            try:
+                from openai import OpenAI
+            except ModuleNotFoundError as e:
+                raise ModuleNotFoundError(
+                    "openai is required when MOCK_MODE=false. Install it or enable mock mode."
+                ) from e
+
             api_key = os.getenv("LITELLM_API_KEY")
             base_url = os.getenv("LITELLM_BASE_URL")
             self.model = os.getenv("DEFAULT_MODEL", "FW-Kimi-K2.6")

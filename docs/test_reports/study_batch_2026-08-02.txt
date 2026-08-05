@@ -1,0 +1,60 @@
+﻿BATCH_SUMMARY {
+  "flashcards": {
+    "errors": 0,
+    "ok": 3,
+    "total": 3
+  },
+  "plans": {
+    "errors": 0,
+    "ok": 3,
+    "total": 3
+  },
+  "revisions": {
+    "errors": 0,
+    "ok": 3,
+    "total": 3
+  }
+}
+BENCHMARK {
+  "flashcards": {
+    "count_matches_request": 3,
+    "format_matches_request": 3,
+    "gate_flag_set": 3,
+    "grounded": 3,
+    "grounded_rate": 1.0,
+    "overall_quality": 1.0,
+    "schema_valid": 3,
+    "total_outputs": 3
+  },
+  "overall": 1.0,
+  "plans": {
+    "all_extracted_topics_scheduled": 3,
+    "dates_in_window": 3,
+    "gate_flag_set": 3,
+    "grounded": 3,
+    "grounded_rate": 1.0,
+    "overall_quality": 1.0,
+    "schema_valid": 3,
+    "total_outputs": 3
+  },
+  "revisions": {
+    "covers_all_selected": 3,
+    "gate_flag_set": 3,
+    "grounded": 3,
+    "grounded_rate": 1.0,
+    "overall_quality": 1.0,
+    "schema_valid": 3,
+    "spaced_repetition_offsets_valid": 3,
+    "total_outputs": 3
+  }
+}
+FLASHCARD_COUNTS [5, 5, 5]
+FLASHCARD_FORMATS [['term-definition'], ['term-definition'], ['term-definition']]
+SAMPLE_FLASHCARD_NEEDS_REVIEW True
+SAMPLE_FLASHCARD_TOPICS ['Classes', 'Classes Lists', 'Classes enable', 'Dictionaries', 'Error']
+SAMPLE_PLAN_NEEDS_REVIEW True
+SAMPLE_PLAN_GOAL Prepare for Python exam
+SAMPLE_PLAN_TOPICS ['Classes', 'Classes Lists', 'Classes enable', 'Dictionaries', 'Error', 'Error Handling', 'Functions', 'Functions Loops', 'Handling', 'Handling Functions', 'Handling uses', 'Key concepts', 'Lists', 'Lists Dictionaries', 'Loops', 'Loops iterate', 'Python', 'Python high', 'include Functions', 'keyword Loops', 'language Key', 'programming Lists', 'sequences Classes', 'structures Error', 'while Classes']
+SAMPLE_REVISION_NEEDS_REVIEW True
+SAMPLE_REVISION_TOPICS ['Functions', 'Classes']
+SAMPLE_REVISION_OFFSETS [7, 7]

@@ -1,0 +1,56 @@
+python scripts/run_mentor_concept_benchmark.py
+
+MENTOR_GROUNDED_BENCHMARK {
+  "average_difficulty_alignment_score": 0.7083333333333334,
+  "average_groundedness_ratio": 1.0,
+  "average_groundedness_score": 1.0,
+  "average_quality_score": 1.0,
+  "elapsed_seconds": 0.0020429000724107027,
+  "reference_validity_rate": 1.0,
+  "support_rate": 1.0,
+  "total_failed": 0,
+  "total_processed": 3,
+  "total_succeeded": 3,
+  "validation_pass_rate": 1.0
+}
+
+MENTOR_DIFFICULTY_BENCHMARK {
+  "average_difficulty_alignment_score": 0.8208333333333333,
+  "average_groundedness_ratio": null,
+  "average_groundedness_score": null,
+  "average_quality_score": 1.0,
+  "elapsed_seconds": 0.0007183999987319112,
+  "reference_validity_rate": 0.0,
+  "support_rate": 0.0,
+  "total_failed": 0,
+  "total_processed": 3,
+  "validation_pass_rate": 1.0
+}
+
+CONCEPT_GROUNDED_BENCHMARK {
+  "average_difficulty_alignment_score": 0.7083333333333334,
+  "average_groundedness_ratio": 1.0,
+  "average_groundedness_score": 1.0,
+  "average_quality_score": 1.0,
+  "elapsed_seconds": 0.001563300029374659,
+  "reference_validity_rate": 1.0,
+  "support_rate": 1.0,
+  "total_failed": 0,
+  "total_processed": 3,
+  "total_succeeded": 3,
+  "validation_pass_rate": 1.0
+}
+
+CONCEPT_DIFFICULTY_BENCHMARK {
+  "average_difficulty_alignment_score": 0.8645833333333334,
+  "average_groundedness_ratio": null,
+  "average_groundedness_score": null,
+  "average_quality_score": 1.0,
+  "elapsed_seconds": 0.0007303000893443823,
+  "reference_validity_rate": 0.0,
+  "support_rate": 0.0,
+  "total_failed": 0,
+  "total_processed": 3,
+  "total_succeeded": 3,
+  "validation_pass_rate": 1.0
+}

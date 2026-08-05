@@ -175,7 +175,7 @@ def _evaluate_flashcards(
             topics_in_cards = {card.source_topic for card in cs.cards if card.source_topic}
             if topics_in_cards.issubset(allowed):
                 q.grounded += 1
-        if len(cs.cards) >= min(expected_count, max(1, len(cs.cards))):
+        if len(cs.cards) == expected_count:
             q.count_matches_request += 1
         card_formats = {card.format for card in cs.cards}
         if len(card_formats) == 1 and expected_format in card_formats:
@@ -202,7 +202,7 @@ def _evaluate_plans(
             scheduled = {s.topic for s in plan.topic_schedule}
             if scheduled.issubset(allowed):
                 q.grounded += 1
-            if scheduled >= (allowed & scheduled):
+            if allowed.issubset(scheduled):
                 q.all_extracted_topics_scheduled += 1
         # Dates in window
         all_in_window = True
