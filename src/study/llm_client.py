@@ -123,7 +123,9 @@ def sentence_about(content: str, topic: str) -> str:
         The first sentence mentioning ``topic``; otherwise the opening sentence
         of the content, which is at least drawn from the same document.
     """
-    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+", content) if part.strip()]
+    sentences = [
+        part.strip() for part in re.split(r"(?<=[.!?])\s+", content) if part.strip()
+    ]
     if not sentences:
         return f"{topic} (no source text was supplied)."
 

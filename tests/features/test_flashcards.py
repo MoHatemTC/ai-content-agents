@@ -124,3 +124,136 @@ class TestFlashcardBatch:
             assert r.error is None
             assert len(r.card_set.cards) >= 1
             assert r.card_set.needs_human_review is True
+
+
+# --------------------------------------------------------------------------- #
+# The topic allow-list is the grounding contract, not a display detail
+# --------------------------------------------------------------------------- #
+
+
+# Shaped like the real thing: in the 1,598-page physics textbook "Fig" is the
+# 13th most frequent token in the whole book, ahead of "mass", "speed" and
+# "charge". A fixture where the furniture is rare would let the ranking exclude
+# it and never exercise the filter at all - verified by mutation, where an
+# earlier version of this fixture passed with the filter removed.
+TEXTBOOK_EXTRACT = (
+    "The electric field near a point charge falls off with distance. "
+    "See Fig. 21.5 for the field lines drawn around a positive charge. "
+    "Fig. 21.6 and Fig. 21.7 repeat the construction for a dipole. "
+    "Example 21.3 works through the electric field of a dipole. "
+    "Example 21.4 and Example 21.5 extend it to a ring of charge. "
+    "Section 21.4 introduces the electric field of continuous charge "
+    "distributions, and Figure 21.7 shows the same field as a vector map. "
+    "Section 21.5 and Section 21.6 continue, as shown in Figure 21.8, and "
+    "Figure 21.9 is shown alongside Problem 21.9 and Problem 21.10. "
+    "The kinetic energy of the charge changes as it moves through the field, "
+    "while its potential energy falls. Kinetic energy and potential energy "
+    "together give the total energy. The net force on the charge is the "
+    "product of charge and electric field. Problem 21.9 asks for the net "
+    "force when two charges act at once. "
+) * 3
+
+
+class TestTopicAllowListQuality:
+    def test_document_furniture_is_not_a_topic(self):
+        """A physics textbook is not about figures, sections and examples.
+
+        In the real 1,598-page book "Fig" is the 13th most frequent token -
+        ahead of "mass", "speed" and "charge" - so frequency ranking alone put
+        the typesetting at the top of the syllabus, and the flashcards drilled
+        "Fig", "Section" and "Example".
+        """
+        topics = {t.lower() for t in FlashcardAgent.extract_topics(TEXTBOOK_EXTRACT, 30)}
+
+        for junk in ("fig", "figure", "example", "section", "problem", "shown"):
+            assert junk not in topics, f"{junk!r} is typesetting, not subject matter"
+
+    def test_function_words_are_not_topics(self):
+        """The old stopword list held ~50 entries and let these through."""
+        topics = {t.lower() for t in FlashcardAgent.extract_topics(TEXTBOOK_EXTRACT, 30)}
+
+        for junk in ("between", "each", "same", "which", "use", "the"):
+            assert junk not in topics
+
+    def test_real_subject_matter_survives(self):
+        """Filtering must not be so aggressive that the topics vanish."""
+        topics = {t.lower() for t in FlashcardAgent.extract_topics(TEXTBOOK_EXTRACT, 30)}
+
+        assert {"charge", "energy", "field"} & topics
+
+    def test_multi_word_terms_are_preferred(self):
+        """Real topics look like "kinetic energy", not "energy"."""
+        topics = {t.lower() for t in FlashcardAgent.extract_topics(TEXTBOOK_EXTRACT, 30)}
+
+        assert any(" " in topic for topic in topics), topics
+        assert "kinetic energy" in topics or "potential energy" in topics
+
+    def test_topics_are_literal_substrings_of_the_content(self):
+        """The anti-hallucination property: a topic is quoted, never invented."""
+        for topic in FlashcardAgent.extract_topics(TEXTBOOK_EXTRACT, 30):
+            assert topic in TEXTBOOK_EXTRACT, topic
+
+    def test_surface_form_is_preserved(self):
+        """Grounding matches by exact string, so casing is load-bearing.
+
+        The demo dataset's hand-authored weak_topics are capitalised
+        ("Gradient Descent", "DNA Replication"); lowercasing the allow-list
+        would drop them out of it and silently break revision grounding.
+        """
+        content = "Gradient Descent is iterative. Gradient Descent minimises loss."
+
+        assert "Gradient Descent" in FlashcardAgent.extract_topics(content, 10)
+
+    def test_extraction_is_deterministic(self):
+        first = FlashcardAgent.extract_topics(TEXTBOOK_EXTRACT, 20)
+        second = FlashcardAgent.extract_topics(TEXTBOOK_EXTRACT, 20)
+
+        assert first == second
+
+    def test_demo_weak_topics_stay_in_the_allow_list(self):
+        """Revision grounding fails outright if a selected topic is missing."""
+        from src.study.batch import default_demo_dataset
+
+        for item in default_demo_dataset():
+            allowed = set(FlashcardAgent.extract_topics(item.content))
+            missing = [w for w in (item.weak_topics or []) if w not in allowed]
+            assert not missing, f"{item.title}: {missing}"
+
+
+# --------------------------------------------------------------------------- #
+# Mock output is made of the document, not about it
+# --------------------------------------------------------------------------- #
+
+
+class TestMockOutputIsGrounded:
+    CONTENT = (
+        "Conduction moves energy through a material by direct molecular contact. "
+        "Convection carries heat in the bulk motion of a fluid. "
+        "Radiation needs no medium: energy crosses a vacuum as electromagnetic waves."
+    )
+
+    def test_no_placeholder_phrases(self):
+        """What the app actually displayed for weeks.
+
+        Every card of every document read "X is a key concept described in the
+        supplied content. See the source text for a fuller treatment." A card
+        that says where the answer is instead of what it is teaches nothing,
+        and the UI forced mock mode, so this was the product.
+        """
+        card_set = FlashcardAgent(mock_mode=True).generate(self.CONTENT, card_count=3)
+
+        body = " ".join(card.back.lower() for card in card_set.cards)
+        for phrase in ("see the source", "supplied content", "fuller treatment"):
+            assert phrase not in body, f"placeholder text: {phrase!r}"
+
+    def test_card_backs_are_quoted_from_the_content(self):
+        card_set = FlashcardAgent(mock_mode=True).generate(self.CONTENT, card_count=3)
+
+        for card in card_set.cards:
+            assert card.back in self.CONTENT, card.back
+
+    def test_cards_are_not_all_identical(self):
+        """The failure mode this replaces produced one sentence, repeated."""
+        card_set = FlashcardAgent(mock_mode=True).generate(self.CONTENT, card_count=3)
+
+        assert len({card.back for card in card_set.cards}) > 1

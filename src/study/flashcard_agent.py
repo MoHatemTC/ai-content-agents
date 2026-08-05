@@ -48,19 +48,57 @@ from src.study.llm_client import (
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-# Topic extraction heuristic: minimal, deterministic, cheap, auditable.
-# We split the content into capitalised n-grams and high-information tokens,
-# then keep the most frequent ones that are >= 3 chars long. The result is
-# intentionally noisy but *never* hallucinated - it is a strict substring of
-# the content. The LLM is later constrained to only pick from this list.
-_STOPWORDS = {
-    "the", "and", "for", "are", "but", "not", "you", "all", "any", "can",
-    "had", "her", "was", "one", "our", "out", "day", "get", "has", "him",
-    "his", "how", "its", "let", "may", "new", "now", "old", "see", "two",
-    "way", "who", "did", "his", "that", "this", "with", "from", "they",
-    "have", "were", "been", "their", "them", "then", "what", "when", "will",
-    "your", "into", "just", "some", "than", "also", "only", "over", "such",
-}
+# Topic extraction heuristic: deterministic, cheap, auditable, and never
+# hallucinated - every topic is a literal substring of the content. The LLM is
+# constrained to pick only from this list, so the list is the grounding
+# contract, not a display detail: a junk entry is a junk card the guardrail
+# will happily approve.
+#
+# Two vocabularies, because they answer different questions.
+
+# Words that carry no subject matter. The previous list held ~50 entries and
+# let "between", "each", "same", "which" and "use" through into the allow-list
+# of a physics textbook.
+_STOPWORDS = frozenset(
+    """
+    a an the and or but if then than that this these those there here of in on
+    at to from by for with without within into onto up out over under above
+    below between among across through during before after while since until
+    about against is are was were be been being am do does did done has have
+    had having can could may might must shall should will would it its he she
+    they them their his her our your my we you us me him what when where which
+    who whom whose why how all any both each every few more most other some
+    such no nor not only own same so too very one two three four five six seven
+    eight nine ten first second next last also just now new old way get let see
+    make made use used using take taken give given call called note noted
+    following right left top bottom thing things
+    """.split()
+)
+
+# How a book refers to itself. Kept apart from the stopwords because it is a
+# different idea: these are perfectly good English words that happen to be
+# publishing apparatus. In a 1,598-page physics textbook "Fig" appears 3,483
+# times - the 13th most frequent token, ahead of "mass", "speed" and "charge" -
+# so frequency ranking put the typesetting at the top of the syllabus.
+_DOCUMENT_FURNITURE = frozenset(
+    """
+    fig figs figure figures table tables chart charts diagram diagrams
+    chapter chapters section sections subsection appendix appendices
+    example examples exercise exercises problem problems question questions
+    solution solutions answer answers summary review test quiz
+    page pages part parts unit units lesson lessons
+    equation equations eq formula formulas
+    shown show see refer reference references note notes caption
+    """.split()
+)
+
+# The smallest number of times a two-word phrase must occur before it counts as
+# a term rather than a coincidence of adjacent words.
+_MIN_BIGRAM_COUNT = 2
+
+# Multi-word terms are what real topics look like - "kinetic energy",
+# "potential difference" - so they outrank single words of the same frequency.
+_BIGRAM_WEIGHT = 4
 
 
 class GroundingError(ValueError):
@@ -135,9 +173,21 @@ class FlashcardAgent:
     def extract_topics(content: str, max_topics: int = 25) -> list[str]:
         """Deterministically extract a topic allow-list from raw content.
 
-        Strategy: capitalised unigrams + bigrams, drop stopwords, keep the
-        most frequent. The output is strictly substrings of ``content`` -
-        the LLM later is only allowed to pick from this list.
+        Every topic is a literal substring of ``content``, and the LLM may only
+        pick from this list, so it is the grounding contract rather than a
+        display detail.
+
+        Ranking is by frequency, with two corrections. Function words and
+        document furniture are dropped, because "Fig" is the 13th most common
+        token in a physics textbook and frequency alone put the typesetting at
+        the top of the syllabus. And repeated two-word phrases outrank single
+        words, because real topics look like "kinetic energy" and "potential
+        difference".
+
+        The surface form is preserved: candidates are grouped case-insensitively
+        but emitted in their most frequent original casing, so a topic stays a
+        literal substring and hand-authored topics such as ``Gradient Descent``
+        keep matching the allow-list by exact string equality.
 
         Args:
             content: Cleaned text from the ingestion lane.
@@ -149,33 +199,59 @@ class FlashcardAgent:
         if not content or not content.strip():
             return []
 
-        # Tokens preserving capitalisation for proper nouns, then normalised
-        # frequencies. We also capture 2-word capitalised chunks.
-        cap_words = re.findall(r"\b[A-Z][A-Za-z0-9]{2,}\b", content)
-        all_words = re.findall(r"\b[A-Za-z][A-Za-z0-9]{2,}\b", content)
-        lowered = [w.lower() for w in all_words if w.lower() not in _STOPWORDS]
+        matches = list(re.finditer(r"\b[A-Za-z][A-Za-z0-9]{2,}\b", content))
+        if not matches:
+            return []
 
-        # Bigrams of non-stopwords, also captured if at least one word is
-        # capitalised in the source.
-        bigrams = []
-        for i in range(len(all_words) - 1):
-            a, b = all_words[i], all_words[i + 1]
-            if a.lower() in _STOPWORDS or b.lower() in _STOPWORDS:
+        words = [match.group() for match in matches]
+
+        # Remember how each word is actually written so topics stay literal
+        # substrings; "Energy" and "energy" are one candidate, emitted as
+        # whichever spelling the document prefers.
+        surface_forms: dict[str, Counter[str]] = {}
+        for word in words:
+            surface_forms.setdefault(word.lower(), Counter())[word] += 1
+
+        def surface(key: str) -> str:
+            return " ".join(
+                surface_forms[part].most_common(1)[0][0]
+                if part in surface_forms
+                else part
+                for part in key.split()
+            )
+
+        def is_content_word(word: str) -> bool:
+            return word not in _STOPWORDS and word not in _DOCUMENT_FURNITURE
+
+        lowered = [word.lower() for word in words]
+
+        scores: Counter[str] = Counter()
+        for word in lowered:
+            if is_content_word(word):
+                scores[word] += 1
+
+        # Only pair words that are genuinely adjacent in the source. The token
+        # regex skips anything under three characters, so pairing consecutive
+        # *matches* would join words with something dropped between them:
+        # "drawn around a positive charge" yielded "around positive", which
+        # appears nowhere in the document and breaks the one property that
+        # makes this list safe - that a topic is always quoted, never invented.
+        bigrams: Counter[str] = Counter()
+        for first, second in zip(matches, matches[1:]):
+            gap = content[first.end() : second.start()]
+            if gap and not gap.isspace():
                 continue
-            if a[0].isupper() or b[0].isupper():
-                bigrams.append(f"{a} {b}")
+            if is_content_word(first.group().lower()) and is_content_word(
+                second.group().lower()
+            ):
+                bigrams[f"{first.group().lower()} {second.group().lower()}"] += 1
 
-        counts: Counter[str] = Counter()
-        for w in cap_words:
-            if w.lower() not in _STOPWORDS:
-                counts[w] += 2  # capitalised = signal boost
-        for w in lowered:
-            counts[w] += 1
-        for bg in bigrams:
-            counts[bg] += 3
+        for phrase, count in bigrams.items():
+            if count >= _MIN_BIGRAM_COUNT:
+                scores[phrase] = count * _BIGRAM_WEIGHT
 
-        ranked = [topic for topic, _ in counts.most_common(max_topics)]
-        return sorted(set(ranked))
+        ranked = [topic for topic, _ in scores.most_common(max_topics)]
+        return sorted({surface(topic) for topic in ranked})
 
     def _build_prompt(
         self,
