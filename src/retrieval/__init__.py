@@ -16,6 +16,12 @@ from src.retrieval.grounding import (
     build_grounded_context,
     verify_references,
 )
+from src.retrieval.index import (
+    ChunkIndex,
+    HashingEmbeddingFunction,
+    sanitize_document_id,
+    split_text_into_chunks,
+)
 from src.retrieval.models import (
     Chunk,
     GroundedContext,
@@ -24,27 +30,6 @@ from src.retrieval.models import (
     RetrievedChunk,
 )
 from src.retrieval.retriever import ChromaRetriever, Retriever
-
-try:
-    from src.retrieval.index import (
-        ChunkIndex,
-        HashingEmbeddingFunction,
-        sanitize_document_id,
-        split_text_into_chunks,
-    )
-except ModuleNotFoundError:
-    ChunkIndex = None  # type: ignore[assignment]
-    HashingEmbeddingFunction = None  # type: ignore[assignment]
-
-    def sanitize_document_id(document_id: str) -> str:  # type: ignore[override]
-        raise ModuleNotFoundError(
-            "chromadb is required for sanitize_document_id; install chromadb or avoid retrieval indexing."
-        )
-
-    def split_text_into_chunks(*args, **kwargs):  # type: ignore[override]
-        raise ModuleNotFoundError(
-            "chromadb is required for split_text_into_chunks; install chromadb or avoid retrieval indexing."
-        )
 
 __all__ = [
     "Chunk",
