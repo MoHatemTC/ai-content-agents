@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import date
 
 import pytest
 
@@ -28,11 +27,13 @@ class TestTopicExtraction:
     def test_extract_topics_is_deterministic_subset_of_content(self):
         topics = FlashcardAgent.extract_topics(SAMPLE_CONTENT)
         assert isinstance(topics, list)
-        # Should capture the capitalised concept names.
-        tokens_lower = {t.lower() for t in topics}
+        # Should capture the capitalised concept names. `expected` used to be
+        # built and then never used, while the loop below checked three of its
+        # six entries - so the test named an intent it did not enforce.
+        found = {topic.lower() for topic in topics}
         expected = {"functions", "loops", "classes", "lists", "dictionaries", "python"}
-        for word in {"functions", "python", "classes"}:
-            assert any(word in t.lower() for t in topics) or word in tokens_lower
+        for word in expected:
+            assert any(word in topic for topic in found), word
 
     def test_extract_topics_handles_empty_content(self):
         assert FlashcardAgent.extract_topics("") == []

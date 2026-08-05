@@ -38,44 +38,19 @@ from src.study.formatters import (
 )
 from src.study.revision_agent import RevisionAgent
 from src.study.study_plan_agent import StudyPlanAgent
+from src.ui_common import chunk_ids, render_current_content_status
 
 PENDING_BADGE = ":warning: **PENDING HUMAN REVIEW — not final.**"
 
 
-def _get_doc() -> tuple[str, str]:
-    """Return the current document (title, content) from session state.
-
-    Falls back to a sample Python basics text so the page is still usable
-    standalone.
-    """
-    doc = st.session_state.get("current_doc")
-    if doc is None:
-        fallback = (
-            "Python Programming Basics. "
-            "Python is a high-level, interpreted programming language. "
-            "Key concepts include Functions, Loops (for and while), Classes, "
-            "Lists, Dictionaries, and Error Handling. Functions are reusable "
-            "blocks defined with the def keyword. Loops iterate over sequences. "
-            "Classes enable object-oriented programming. "
-            "Lists and Dictionaries are core data structures. "
-            "Error Handling uses try/except blocks."
-        )
-        return "Pasted sample (Python Programming)", fallback
-    title = getattr(doc, "title", "Uploaded content")
-    content = getattr(doc, "content", "") or ""
-    return title, content
-
-
 def flashcards_page() -> None:
     st.title("🃏 Grounded Flashcard Generator")
-    title, content = _get_doc()
-    st.caption(f"Content source: {title}")
-    if "current_doc" not in st.session_state:
-        st.info(
-            "Tip: upload content on the Upload Content page first, or "
-            "use the built-in sample below."
-        )
+    doc, chunks, is_loaded = render_current_content_status()
 
+    if not is_loaded:
+        return
+
+    content = doc.content
     with st.form("fc_form"):
         col1, col2 = st.columns(2)
         with col1:
@@ -95,13 +70,12 @@ def flashcards_page() -> None:
     if submitted:
         agent = FlashcardAgent(mock_mode=True)
         try:
-            chunk_ids = list(st.session_state.get("current_chunks", []) or [])
             with st.spinner("Generating cards..."):
                 card_set = agent.generate(
                     content,
                     card_format=card_format,
                     card_count=card_count,
-                    source_chunk_ids=chunk_ids,
+                    source_chunk_ids=chunk_ids(chunks),
                 )
         except Exception as exc:
             st.error(f"Failed to generate flashcards: {exc}")
@@ -132,9 +106,13 @@ def flashcards_page() -> None:
 
 def study_plan_page() -> None:
     st.title("📅 Grounded Study Plan")
-    title, content = _get_doc()
-    st.caption(f"Content source: {title}")
+    doc, chunks, is_loaded = render_current_content_status()
 
+    if not is_loaded:
+        return
+
+    content = doc.content
+    title = doc.title
     today = date.today()
     with st.form("sp_form"):
         col1, col2 = st.columns(2)
@@ -198,9 +176,12 @@ def study_plan_page() -> None:
 
 def revision_page() -> None:
     st.title("🔄 Targeted Revision Assistant")
-    title, content = _get_doc()
-    st.caption(f"Content source: {title}")
+    doc, chunks, is_loaded = render_current_content_status()
 
+    if not is_loaded:
+        return
+
+    content = doc.content
     allow_list = FlashcardAgent.extract_topics(content, max_topics=40)
     if not allow_list:
         allow_list = ["General topic"]

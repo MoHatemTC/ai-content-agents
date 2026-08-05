@@ -168,7 +168,7 @@ class StudyPlanAgent:
                 )
             )
         return StudyPlan(
-            goal=learner_goal or f"Master the content topics",
+            goal=learner_goal or "Master the content topics",
             start_date=start_date,
             end_date=end_date,
             overall_difficulty=difficulty,
