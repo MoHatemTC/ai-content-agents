@@ -30,6 +30,7 @@ from src.study.revision_agent import RevisionAgent
 from src.study.study_plan_agent import StudyPlanAgent
 from src.schemas import FlashcardSet, StudyPlan, RevisionSession
 from src.services.mentor_concept import MentorConceptService
+from src.ui_common import chunk_ids, render_current_content_status
 
 # ---------------------------------------------------------------------------
 # Initialize shared services
@@ -77,32 +78,6 @@ def get_revision_agent():
 # ---------------------------------------------------------------------------
 
 PENDING_BADGE = ":warning: **PENDING HUMAN REVIEW — not final.**"
-
-
-def render_current_content_status():
-    """Render unified Current Content header across all AI pages.
-
-    Returns (doc, chunks, is_loaded).
-    """
-    doc = st.session_state.get("current_doc")
-    chunks = st.session_state.get("current_chunks") or []
-
-    if doc is None or not getattr(doc, "content", None):
-        st.warning("⚠️ Please upload educational content first.")
-        st.info("💡 Go to the **Upload Content** page to upload a file, paste text, or select a document from the Content Library.")
-        return None, [], False
-
-    title = getattr(doc, "title", "Uploaded content")
-    chunk_count = len(chunks)
-
-    with st.container(border=True):
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            st.markdown(f"### 📄 Current Content: **{title}**")
-        with col2:
-            st.markdown(f"**🧩 {chunk_count} Chunks Loaded**")
-
-    return doc, chunks, True
 
 
 
@@ -393,16 +368,12 @@ elif page == "🃏 Generate Flashcards":
 
         if submitted:
             try:
-                chunk_ids = [
-                    chunk.id if hasattr(chunk, "id") else str(chunk)
-                    for chunk in chunks
-                ]
                 with st.spinner("Generating cards..."):
                     card_set = fc_agent.generate(
                         content,
                         card_format=card_format,
                         card_count=card_count,
-                        source_chunk_ids=chunk_ids,
+                        source_chunk_ids=chunk_ids(chunks),
                     )
             except Exception as exc:
                 st.error(f"Failed to generate flashcards: {exc}")
