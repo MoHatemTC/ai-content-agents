@@ -3,9 +3,17 @@ name = "flashcards-study-revision"
 version = "0.2.0"
 description = "Flashcards, Study Plan, Revision Tools, and Content Ingestion"
 requires-python = ">=3.10"
+
+# The source of truth for what this project needs. Derived by walking every
+# top-level import in src/ rather than from memory, so it matches what the code
+# actually loads. requirements.txt installs this file.
 dependencies = [
     "pydantic>=2.0.0",
     "pyyaml>=6.0",
+    "python-dotenv>=1.0.0",
+    "openai>=1.30.0",
+    "chromadb>=0.5.0",
+    "numpy>=1.26.0",
     "streamlit>=1.30.0",
     "pymupdf>=1.23.0",
     "python-docx>=1.1.0",
@@ -14,8 +22,19 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# OCR is opt-in (ENABLE_OCR) and additionally needs the Tesseract *binary*,
+# which pip cannot install - see docs/ocr-and-content-quality.md. The Python
+# side stays optional so a contributor who never touches scanned PDFs is not
+# asked to install it: src/ingestion/ocr.py imports both lazily and reports what
+# is missing instead of raising ImportError.
+ocr = [
+    "pytesseract>=0.3.10",
+    "Pillow>=10.0.0",
+]
+
 dev = [
     "pytest>=8.0.0",
+    "ruff>=0.6.0",
 ]
 
 [tool.pytest.ini_options]
