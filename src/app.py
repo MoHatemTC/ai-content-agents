@@ -28,7 +28,6 @@ from src.study.formatters import (
 )
 from src.study.revision_agent import RevisionAgent
 from src.study.study_plan_agent import StudyPlanAgent
-from src.schemas import FlashcardSet, StudyPlan, RevisionSession
 from src.services.mentor_concept import MentorConceptService
 from src.ui_common import chunk_ids, render_current_content_status
 

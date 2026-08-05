@@ -1,0 +1,55 @@
+name: CI
+
+# Runs the test suite and the linter on every pull request, so "the suite
+# passes" stops being something a reviewer has to take on trust. Four PRs were
+# open at once with no automated verification, and a teammate could not run the
+# suite at all because the dependency manifest was incomplete - nobody noticed
+# until he said so. See issue #21.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A new push to a PR makes the previous run irrelevant; don't queue behind it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # One version to begin with. Local development is on 3.14 and the
+          # project claims >=3.10, so a matrix will find real breakage - but it
+          # should not be what makes CI red on its first run. Widen once this
+          # is green and trusted.
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        # requirements.txt installs pyproject, which is the source of truth.
+        # If this step fails, the manifest is wrong - which is the failure this
+        # workflow exists to catch early.
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Lint
+        # Only the F rules for now: undefined names, unused imports, redefined
+        # names. They catch real defects - an `F821 Undefined name 'Any'` reached
+        # main earlier this week - while E501 and friends have a pre-existing
+        # backlog. Failing the build on that backlog on day one would teach
+        # everyone to ignore a red tick, which is worse than no tick.
+        run: python -m ruff check src/ tests/ --select F
+
+      - name: Test
+        # MOCK_MODE is pinned in tests/conftest.py, so no test reaches the
+        # gateway. There are no API keys in CI and there should not be.
+        run: python -m pytest tests/ -q
