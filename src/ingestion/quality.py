@@ -47,9 +47,13 @@ class QualityChecker:
     """
 
     MIN_CHARACTERS = 100
-    MIN_LETTER_RATIO = 0.40
+    MIN_READABLE_RATIO = 0.40
     MAX_EMPTY_LINE_RATIO = 0.50
     MIN_UNIQUE_WORD_RATIO = 0.20
+
+    # Vocabulary is measured over windows of this many words rather than over the
+    # whole document. See _check_repetition for why the distinction matters.
+    REPETITION_WINDOW_WORDS = 2000
 
     def validate(self, text: str) -> QualityResult:
         """
@@ -82,7 +86,7 @@ class QualityChecker:
             )
 
         self._check_length(text, issues)
-        self._check_letter_ratio(text, issues)
+        self._check_readable_ratio(text, issues)
         self._check_blank_lines(text, issues)
         self._check_repetition(text, issues)
 
@@ -110,9 +114,20 @@ class QualityChecker:
                 f"Document is too short (minimum {self.MIN_CHARACTERS} characters)."
             )
 
-    def _check_letter_ratio(self, text: str, issues: list[str]) -> None:
+    def _check_readable_ratio(self, text: str, issues: list[str]) -> None:
         """
-        Validate that the document contains sufficient readable text.
+        Validate that the document is made of readable characters.
+
+        The check exists to catch mojibake and binary junk - text that is
+        characters but not writing. It counted **letters** against every
+        character, which quietly made it a test of prose: a worked physics
+        solution is 22% digits and 23% operators, so it scored 0.29 and was
+        rejected as unreadable while being perfectly good study material.
+
+        Counting alphanumerics against non-whitespace asks the question actually
+        intended. Digits are content, not noise, and whitespace is neither.
+        Measured: worked physics 0.68, ordinary prose 0.98, a physics textbook
+        0.94, mojibake and binary 0.00.
 
         Args:
             text:
@@ -120,9 +135,13 @@ class QualityChecker:
             issues:
                 List that accumulates validation issues.
         """
-        letter_ratio = sum(char.isalpha() for char in text) / len(text)
+        non_whitespace = sum(not char.isspace() for char in text)
+        if not non_whitespace:
+            return
 
-        if letter_ratio < self.MIN_LETTER_RATIO:
+        readable_ratio = sum(char.isalnum() for char in text) / non_whitespace
+
+        if readable_ratio < self.MIN_READABLE_RATIO:
             issues.append("Document contains too little readable text.")
 
     def _check_blank_lines(self, text: str, issues: list[str]) -> None:
@@ -150,6 +169,18 @@ class QualityChecker:
         """
         Detect highly repetitive document content.
 
+        Vocabulary richness is measured **per window**, not over the whole
+        document, because the ratio of distinct words to total words falls as a
+        document grows however varied its prose: a writer reuses "the" and "of"
+        indefinitely while the stock of new words runs out (Heaps' law). Judged
+        whole-document, length alone reads as repetition, and a real textbook is
+        rejected for being long - a 1,598-page physics text scores 0.019 against
+        a 0.20 floor, yet 0.381 over its first 2,000 words.
+
+        Averaging the ratio across fixed-size windows keeps the check meaningful
+        at any length: genuinely repetitive text scores low in every window,
+        while a long varied document scores normally in each one.
+
         Args:
             text:
                 Document content.
@@ -161,7 +192,18 @@ class QualityChecker:
         if not words:
             return
 
-        unique_ratio = len(set(words)) / len(words)
+        window = self.REPETITION_WINDOW_WORDS
+        windows = [words[start : start + window] for start in range(0, len(words), window)]
+
+        # A short trailing window would score near 1.0 whatever the document says
+        # - three words are almost always three distinct words - and would drag
+        # the average up enough to pass genuinely repetitive text. Fold it back
+        # into its predecessor instead of letting it vote on its own.
+        if len(windows) > 1 and len(windows[-1]) < window // 2:
+            windows[-2].extend(windows.pop())
+
+        ratios = [len(set(chunk)) / len(chunk) for chunk in windows]
+        unique_ratio = sum(ratios) / len(ratios)
 
         if unique_ratio < self.MIN_UNIQUE_WORD_RATIO:
             issues.append("Document appears to contain highly repetitive content.")

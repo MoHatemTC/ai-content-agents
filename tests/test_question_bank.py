@@ -1,4 +1,3 @@
-from unittest import result
 
 from src.agents.question_bank_agent import QuestionBankAgent
 from src.validation.schemas import QuestionBankOutput

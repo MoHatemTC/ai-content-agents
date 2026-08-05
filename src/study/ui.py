@@ -14,6 +14,7 @@ reflecting the human-review gate. The UI intentionally never shows an
 
 from __future__ import annotations
 
+import os
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -38,44 +39,19 @@ from src.study.formatters import (
 )
 from src.study.revision_agent import RevisionAgent
 from src.study.study_plan_agent import StudyPlanAgent
+from src.ui_common import chunk_ids, render_current_content_status
 
 PENDING_BADGE = ":warning: **PENDING HUMAN REVIEW — not final.**"
 
 
-def _get_doc() -> tuple[str, str]:
-    """Return the current document (title, content) from session state.
-
-    Falls back to a sample Python basics text so the page is still usable
-    standalone.
-    """
-    doc = st.session_state.get("current_doc")
-    if doc is None:
-        fallback = (
-            "Python Programming Basics. "
-            "Python is a high-level, interpreted programming language. "
-            "Key concepts include Functions, Loops (for and while), Classes, "
-            "Lists, Dictionaries, and Error Handling. Functions are reusable "
-            "blocks defined with the def keyword. Loops iterate over sequences. "
-            "Classes enable object-oriented programming. "
-            "Lists and Dictionaries are core data structures. "
-            "Error Handling uses try/except blocks."
-        )
-        return "Pasted sample (Python Programming)", fallback
-    title = getattr(doc, "title", "Uploaded content")
-    content = getattr(doc, "content", "") or ""
-    return title, content
-
-
 def flashcards_page() -> None:
     st.title("🃏 Grounded Flashcard Generator")
-    title, content = _get_doc()
-    st.caption(f"Content source: {title}")
-    if "current_doc" not in st.session_state:
-        st.info(
-            "Tip: upload content on the Upload Content page first, or "
-            "use the built-in sample below."
-        )
+    doc, chunks, is_loaded = render_current_content_status()
 
+    if not is_loaded:
+        return
+
+    content = doc.content
     with st.form("fc_form"):
         col1, col2 = st.columns(2)
         with col1:
@@ -93,15 +69,14 @@ def flashcards_page() -> None:
         submitted = st.form_submit_button("Generate Grounded Flashcards")
 
     if submitted:
-        agent = FlashcardAgent(mock_mode=True)
+        agent = FlashcardAgent()
         try:
-            chunk_ids = list(st.session_state.get("current_chunks", []) or [])
             with st.spinner("Generating cards..."):
                 card_set = agent.generate(
                     content,
                     card_format=card_format,
                     card_count=card_count,
-                    source_chunk_ids=chunk_ids,
+                    source_chunk_ids=chunk_ids(chunks),
                 )
         except Exception as exc:
             st.error(f"Failed to generate flashcards: {exc}")
@@ -132,9 +107,13 @@ def flashcards_page() -> None:
 
 def study_plan_page() -> None:
     st.title("📅 Grounded Study Plan")
-    title, content = _get_doc()
-    st.caption(f"Content source: {title}")
+    doc, chunks, is_loaded = render_current_content_status()
 
+    if not is_loaded:
+        return
+
+    content = doc.content
+    title = doc.title
     today = date.today()
     with st.form("sp_form"):
         col1, col2 = st.columns(2)
@@ -159,7 +138,7 @@ def study_plan_page() -> None:
         submitted = st.form_submit_button("Generate Grounded Study Plan")
 
     if submitted:
-        agent = StudyPlanAgent(mock_mode=True)
+        agent = StudyPlanAgent()
         try:
             with st.spinner("Building study plan..."):
                 plan = agent.generate(
@@ -198,9 +177,12 @@ def study_plan_page() -> None:
 
 def revision_page() -> None:
     st.title("🔄 Targeted Revision Assistant")
-    title, content = _get_doc()
-    st.caption(f"Content source: {title}")
+    doc, chunks, is_loaded = render_current_content_status()
 
+    if not is_loaded:
+        return
+
+    content = doc.content
     allow_list = FlashcardAgent.extract_topics(content, max_topics=40)
     if not allow_list:
         allow_list = ["General topic"]
@@ -223,7 +205,7 @@ def revision_page() -> None:
         if not selected:
             st.warning("Pick at least one topic to revise.")
             return
-        agent = RevisionAgent(mock_mode=True)
+        agent = RevisionAgent()
         try:
             with st.spinner("Planning revision items..."):
                 session = agent.generate(
@@ -300,6 +282,18 @@ def main() -> None:
             "📦 Batch & Benchmark",
         ],
     )
+    # Say which mode the agents are in. The app spent weeks generating
+    # placeholder cards because the UI forced mock mode regardless of
+    # MOCK_MODE, and nothing on screen said so.
+    if os.getenv("MOCK_MODE", "true").strip().lower() == "true":
+        st.sidebar.warning(
+            "**Mock mode** — output is built from your document but not "
+            "generated by a model. Set `MOCK_MODE=false` in `.env` for real "
+            "generation."
+        )
+    else:
+        st.sidebar.caption(f"🟢 Live · `{os.getenv('DEFAULT_MODEL', 'unset')}`")
+
     if page.startswith("🃏"):
         flashcards_page()
     elif page.startswith("📅"):

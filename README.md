@@ -16,7 +16,10 @@ Each engineer owns a vertical slice ("lane"); the docs describe the contracts:
 - [Content Ingestion & Processing](docs/content-ingestion-lane.md)
 - [Study Agents (Flashcards, Study Plan, Revision)](docs/study-agent%20lane.md)
 - [Mentor & Concept Agents](docs/mentor-concept-lane.md)
-- [Validation & Review Gate](docs/validation-lane.md)
+- [Retrieval & Grounding](docs/retrieval-lane.md)
+- [Review, Validation, Orchestration & Export](docs/validation-lane.md)
+
+[Deployment guide](docs/deployment.md) — configuration, running, troubleshooting.
 
 ## Folder map
 
@@ -36,9 +39,15 @@ content-agents/
     retrieval/       # Retrieval / grounding lane
     schemas/         # Study-agents output schemas
     services/        # Shared services
-    validation/      # Validation / guardrails / review lane
-    exports/         # Export utilities
+    validation/      # Review, validation, orchestration & export platform
+    exports/         # Approved-output exporters (JSON / CSV / Markdown / PDF)
 ```
+
+The `validation/` package is the platform layer that connects the other lanes:
+`orchestrator` runs agents, `integration` chains ingest → retrieve → generate →
+validate, `review_service` + `ui` are the human review gate, `store` persists
+`agent_runs` / `generated_outputs` / `reviews`, `automation` runs it in batch and
+`evaluation` measures the result.
 
 ## Setup
 
@@ -61,8 +70,10 @@ Fill in `.env` with your own keys. Never commit secrets. `MOCK_MODE=true` (the d
 ## Run
 
 ```bash
-streamlit run src/app.py    # combined study-assistant UI
-python -m pytest tests/     # full test suite
+streamlit run src/app.py               # combined study-assistant UI
+streamlit run src/validation/ui.py     # review / history / export / metrics
+python -m src.validation.automation    # batch run + quality report (--offline to skip the API)
+python -m pytest tests/                # full test suite
 ```
 
 ## Collaboration

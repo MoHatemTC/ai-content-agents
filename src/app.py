@@ -28,8 +28,8 @@ from src.study.formatters import (
 )
 from src.study.revision_agent import RevisionAgent
 from src.study.study_plan_agent import StudyPlanAgent
-from src.schemas import FlashcardSet, StudyPlan, RevisionSession
 from src.services.mentor_concept import MentorConceptService
+from src.ui_common import chunk_ids, render_current_content_status
 
 # ---------------------------------------------------------------------------
 # Initialize shared services
@@ -62,15 +62,15 @@ def get_generator():
 
 @st.cache_resource
 def get_flashcard_agent():
-    return FlashcardAgent(mock_mode=True)
+    return FlashcardAgent()
 
 @st.cache_resource
 def get_study_plan_agent():
-    return StudyPlanAgent(mock_mode=True)
+    return StudyPlanAgent()
 
 @st.cache_resource
 def get_revision_agent():
-    return RevisionAgent(mock_mode=True)
+    return RevisionAgent()
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -78,24 +78,6 @@ def get_revision_agent():
 
 PENDING_BADGE = ":warning: **PENDING HUMAN REVIEW — not final.**"
 
-
-def _get_doc():
-    doc = st.session_state.get("current_doc")
-    if doc is None:
-        fallback = (
-            "Python Programming Basics. "
-            "Python is a high-level, interpreted programming language. "
-            "Key concepts include Functions, Loops (for and while), Classes, "
-            "Lists, Dictionaries, and Error Handling. Functions are reusable "
-            "blocks defined with the def keyword. Loops iterate over sequences. "
-            "Classes enable object-oriented programming. "
-            "Lists and Dictionaries are core data structures. "
-            "Error Handling uses try/except blocks."
-        )
-        return "Built-in sample (Python Programming)", fallback
-    title = getattr(doc, "title", "Uploaded content")
-    content = getattr(doc, "content", "") or ""
-    return title, content
 
 
 # ---------------------------------------------------------------------------
@@ -132,6 +114,17 @@ fc_agent = get_flashcard_agent()
 sp_agent = get_study_plan_agent()
 rv_agent = get_revision_agent()
 mentor_concept_service = get_mentor_concept_service()
+
+# Say which mode the agents are in. The app spent weeks generating placeholder
+# cards - "See the source text for a fuller treatment" - because the UI forced
+# mock mode regardless of MOCK_MODE, and nothing on screen said so.
+if fc_agent.mock_mode:
+    st.sidebar.warning(
+        "**Mock mode** — output is built from your document but not generated "
+        "by a model. Set `MOCK_MODE=false` in `.env` for real generation."
+    )
+else:
+    st.sidebar.caption(f"🟢 Live · `{fc_agent.model}`")
 
 
 # ---------------------------------------------------------------------------
@@ -258,8 +251,10 @@ elif page == "📤 Upload Content":
                 progress.progress(100, text="Batch upload complete!")
                 progress.empty()
                 if result.documents:
+                    st.session_state.current_doc = result.documents[0]
+                    st.session_state.current_chunks = loader.store.get_chunks_by_document_id(result.documents[0].id)
                     st.success(
-                        f"Successfully uploaded {len(result.documents)} file(s)."
+                        f"Successfully uploaded {len(result.documents)} file(s). Set '{result.documents[0].title}' as active content."
                     )
 
                 if result.failed_files:
@@ -282,11 +277,13 @@ elif page == "📤 Upload Content":
             st.info("No documents have been uploaded yet.")
     
         else:
+            current_id = getattr(st.session_state.get("current_doc"), "id", None)
             for doc in documents:
-                col1, col2 = st.columns([5, 1])
+                col1, col2 = st.columns([4, 2])
                 
                 with col1:
-                    st.markdown(f"### {doc.title}")
+                    active_badge = " 🟢 **[ACTIVE]**" if current_id == doc.id else ""
+                    st.markdown(f"### {doc.title}{active_badge}")
                     st.write(f"**Source:** {doc.source_type}")
                     st.write(f"**Type:** {doc.file_type}")
                     st.write(f"**Size:** {doc.size}")
@@ -297,10 +294,24 @@ elif page == "📤 Upload Content":
                 
                 with col2:
                     if st.button(
+                        "📌 Select Active",
+                        key=f"select_{doc.id}"
+                    ):
+                        loaded_doc = library.get_document(doc.id)
+                        if loaded_doc:
+                            chunks = loader.store.get_chunks_by_document_id(doc.id)
+                            st.session_state.current_doc = loaded_doc
+                            st.session_state.current_chunks = chunks
+                            st.success(f"Selected '{loaded_doc.title}' as active content!")
+                            st.rerun()
+                    if st.button(
                                  "🗑️ Delete",
                                 key=f"delete_{doc.id}"
                                 ):
                         if library.delete_document(doc.id):
+                            if current_id == doc.id:
+                                st.session_state.current_doc = None
+                                st.session_state.current_chunks = []
                             st.success(f"{doc.title} deleted successfully!")
                             st.rerun()
                         else:
@@ -323,6 +334,14 @@ elif page == "📤 Upload Content":
 
                     count = demo.load_demo_data()
 
+                    docs = library.list_documents()
+                    if docs:
+                        loaded_doc = library.get_document(docs[0].id)
+                        if loaded_doc:
+                            chunks = loader.store.get_chunks_by_document_id(loaded_doc.id)
+                            st.session_state.current_doc = loaded_doc
+                            st.session_state.current_chunks = chunks
+
                     progress.progress(100, text="Demo dataset loaded!")
                     progress.empty()
 
@@ -339,57 +358,55 @@ elif page == "📤 Upload Content":
 # Page: Generate Flashcards
 elif page == "🃏 Generate Flashcards":
     st.title("🃏 Grounded Flashcard Generator")
-    title, content = _get_doc()
-    st.caption(f"Content source: {title}")
-    if "current_doc" not in st.session_state:
-        st.info("Tip: upload content on Upload Content page, or use the built-in sample.")
+    doc, chunks, is_loaded = render_current_content_status()
 
-    with st.form("fc_form"):
-        col1, col2 = st.columns(2)
-        with col1:
-            card_format = st.radio(
-                "Card format", ["term-definition", "qa"], horizontal=True,
-                help="term-definition: front = term. Q-A: front = a question.",
-            )
-            card_count = st.slider("Card count", min_value=1, max_value=25, value=8)
-        with col2:
-            allow_list = FlashcardAgent.extract_topics(content, max_topics=30)
-            st.caption(f"Extracted topic allow-list ({len(allow_list)} topics):")
-            st.write(", ".join(allow_list) if allow_list else "(none)")
-        submitted = st.form_submit_button("Generate Grounded Flashcards")
-
-    if submitted:
-        try:
-            chunk_ids = list(st.session_state.get("current_chunks", []) or [])
-            with st.spinner("Generating cards..."):
-                card_set = fc_agent.generate(
-                    content,
-                    card_format=card_format,
-                    card_count=card_count,
-                    source_chunk_ids=chunk_ids,
+    if is_loaded:
+        content = doc.content
+        with st.form("fc_form"):
+            col1, col2 = st.columns(2)
+            with col1:
+                card_format = st.radio(
+                    "Card format", ["term-definition", "qa"], horizontal=True,
+                    help="term-definition: front = term. Q-A: front = a question.",
                 )
-        except Exception as exc:
-            st.error(f"Failed to generate flashcards: {exc}")
-        else:
-            st.success(f"Generated {len(card_set.cards)} grounded cards")
-            st.markdown(PENDING_BADGE)
-            st.subheader(card_set.title)
-            if card_set.description:
-                st.write(card_set.description)
-            st.caption(
-                "Source topics (from allow-list only): "
-                + ", ".join(card_set.source_topics)
-            )
-            for i, card in enumerate(card_set.cards, start=1):
-                with st.expander(f"{i}. {card.front}"):
-                    st.markdown(f"**Back:** {card.back}")
-                    st.caption(
-                        f"Format: {card.format}  ·  Topic: {card.source_topic}"
+                card_count = st.slider("Card count", min_value=1, max_value=25, value=8)
+            with col2:
+                allow_list = FlashcardAgent.extract_topics(content, max_topics=30)
+                st.caption(f"Extracted topic allow-list ({len(allow_list)} topics):")
+                st.write(", ".join(allow_list) if allow_list else "(none)")
+            submitted = st.form_submit_button("Generate Grounded Flashcards")
+
+        if submitted:
+            try:
+                with st.spinner("Generating cards..."):
+                    card_set = fc_agent.generate(
+                        content,
+                        card_format=card_format,
+                        card_count=card_count,
+                        source_chunk_ids=chunk_ids(chunks),
                     )
-                    if card.tags:
-                        st.caption(f"Tags: {', '.join(card.tags)}")
-            with st.expander("JSON payload (for export gate)"):
-                st.json(format_flashcard_set(card_set))
+            except Exception as exc:
+                st.error(f"Failed to generate flashcards: {exc}")
+            else:
+                st.success(f"Generated {len(card_set.cards)} grounded cards")
+                st.markdown(PENDING_BADGE)
+                st.subheader(card_set.title)
+                if card_set.description:
+                    st.write(card_set.description)
+                st.caption(
+                    "Source topics (from allow-list only): "
+                    + ", ".join(card_set.source_topics)
+                )
+                for i, card in enumerate(card_set.cards, start=1):
+                    with st.expander(f"{i}. {card.front}"):
+                        st.markdown(f"**Back:** {card.back}")
+                        st.caption(
+                            f"Format: {card.format}  ·  Topic: {card.source_topic}"
+                        )
+                        if card.tags:
+                            st.caption(f"Tags: {', '.join(card.tags)}")
+                with st.expander("JSON payload (for export gate)"):
+                    st.json(format_flashcard_set(card_set))
 
 
 # ---------------------------------------------------------------------------
@@ -397,59 +414,61 @@ elif page == "🃏 Generate Flashcards":
 # ---------------------------------------------------------------------------
 elif page == "📅 Study Plan":
     st.title("📅 Grounded Study Plan")
-    title, content = _get_doc()
-    st.caption(f"Content source: {title}")
+    doc, chunks, is_loaded = render_current_content_status()
     from datetime import date as _date
 
-    today = _date.today()
-    with st.form("sp_form"):
-        col1, col2 = st.columns(2)
-        with col1:
-            goal = st.text_input("Learner goal", f"Master the concepts in: {title}")
-            difficulty = st.radio(
-                "Overall difficulty", ["easy", "medium", "hard"], horizontal=True
-            )
-            hours_per_week = st.slider("Hours per week", min_value=1, max_value=30, value=10)
-        with col2:
-            start_date = st.date_input("Plan start", today)
-            end_date = st.date_input("Plan end", today + timedelta(days=28))
-            allow_list = FlashcardAgent.extract_topics(content, max_topics=30)
-            st.caption(f"Planner may only schedule these {len(allow_list)} topics:")
-            st.write(", ".join(allow_list) if allow_list else "(none)")
-        submitted = st.form_submit_button("Generate Grounded Study Plan")
-
-    if submitted:
-        try:
-            with st.spinner("Building study plan..."):
-                plan = sp_agent.generate(
-                    content,
-                    learner_goal=goal,
-                    difficulty=difficulty,
-                    start_date=start_date,
-                    end_date=end_date,
-                    hours_per_week=float(hours_per_week),
+    if is_loaded:
+        content = doc.content
+        title = doc.title
+        today = _date.today()
+        with st.form("sp_form"):
+            col1, col2 = st.columns(2)
+            with col1:
+                goal = st.text_input("Learner goal", f"Master the concepts in: {title}")
+                difficulty = st.radio(
+                    "Overall difficulty", ["easy", "medium", "hard"], horizontal=True
                 )
-        except Exception as exc:
-            st.error(f"Failed to build study plan: {exc}")
-        else:
-            st.success("Study plan ready (pending review)")
-            st.markdown(PENDING_BADGE)
-            st.subheader(plan.goal)
-            st.caption(
-                f"{plan.start_date} → {plan.end_date} · difficulty={plan.overall_difficulty} · "
-                f"{plan.available_hours_per_week} h/week"
-            )
-            st.caption(
-                "Scheduled source topics: " + ", ".join(plan.source_topics)
-            )
-            for s in plan.topic_schedule:
-                with st.expander(f"📌 {s.topic} ({s.difficulty})"):
-                    st.write(f"Dates: {s.start_date} → {s.end_date}")
-                    st.write(f"Duration: {s.duration_hours} hours")
-                    if s.resources:
-                        st.caption(f"Resources: {', '.join(s.resources)}")
-            with st.expander("JSON payload"):
-                st.json(format_study_plan(plan))
+                hours_per_week = st.slider("Hours per week", min_value=1, max_value=30, value=10)
+            with col2:
+                start_date = st.date_input("Plan start", today)
+                end_date = st.date_input("Plan end", today + timedelta(days=28))
+                allow_list = FlashcardAgent.extract_topics(content, max_topics=30)
+                st.caption(f"Planner may only schedule these {len(allow_list)} topics:")
+                st.write(", ".join(allow_list) if allow_list else "(none)")
+            submitted = st.form_submit_button("Generate Grounded Study Plan")
+
+        if submitted:
+            try:
+                with st.spinner("Building study plan..."):
+                    plan = sp_agent.generate(
+                        content,
+                        learner_goal=goal,
+                        difficulty=difficulty,
+                        start_date=start_date,
+                        end_date=end_date,
+                        hours_per_week=float(hours_per_week),
+                    )
+            except Exception as exc:
+                st.error(f"Failed to build study plan: {exc}")
+            else:
+                st.success("Study plan ready (pending review)")
+                st.markdown(PENDING_BADGE)
+                st.subheader(plan.goal)
+                st.caption(
+                    f"{plan.start_date} → {plan.end_date} · difficulty={plan.overall_difficulty} · "
+                    f"{plan.available_hours_per_week} h/week"
+                )
+                st.caption(
+                    "Scheduled source topics: " + ", ".join(plan.source_topics)
+                )
+                for s in plan.topic_schedule:
+                    with st.expander(f"📌 {s.topic} ({s.difficulty})"):
+                        st.write(f"Dates: {s.start_date} → {s.end_date}")
+                        st.write(f"Duration: {s.duration_hours} hours")
+                        if s.resources:
+                            st.caption(f"Resources: {', '.join(s.resources)}")
+                with st.expander("JSON payload"):
+                    st.json(format_study_plan(plan))
 
 
 # ---------------------------------------------------------------------------
@@ -457,59 +476,60 @@ elif page == "📅 Study Plan":
 # ---------------------------------------------------------------------------
 elif page == "🔄 Revision Plan":
     st.title("🔄 Targeted Revision Assistant")
-    title, content = _get_doc()
-    st.caption(f"Content source: {title}")
+    doc, chunks, is_loaded = render_current_content_status()
     from datetime import date as _date
 
-    allow_list = FlashcardAgent.extract_topics(content, max_topics=40)
-    if not allow_list:
-        allow_list = ["General topic"]
-    with st.form("rv_form"):
-        col1, col2 = st.columns(2)
-        with col1:
-            selected = st.multiselect(
-                "Weak / selected topics to revise",
-                options=allow_list,
-                default=allow_list[: min(3, len(allow_list))],
-                help="Only topics from the extracted allow-list are eligible.",
-            )
-            session_date = st.date_input("Session date", _date.today())
-        with col2:
-            st.caption("Eligible topics (from content only):")
-            st.write(", ".join(allow_list))
-        submitted = st.form_submit_button("Generate Revision Items")
-
-    if submitted:
-        if not selected:
-            st.warning("Pick at least one topic to revise.")
-        else:
-            try:
-                with st.spinner("Planning revision items..."):
-                    session = rv_agent.generate(
-                        content,
-                        selected_topics=list(selected),
-                        session_date=session_date,
-                    )
-            except Exception as exc:
-                st.error(f"Failed to generate revision items: {exc}")
-            else:
-                st.success("Revision items ready (pending review)")
-                st.markdown(PENDING_BADGE)
-                st.subheader(f"Revision Session · {session.session_date}")
-                if session.notes:
-                    st.caption(session.notes)
-                st.caption(
-                    "Selected weak topics: " + ", ".join(session.selected_weak_topics)
+    if is_loaded:
+        content = doc.content
+        allow_list = FlashcardAgent.extract_topics(content, max_topics=40)
+        if not allow_list:
+            allow_list = ["General topic"]
+        with st.form("rv_form"):
+            col1, col2 = st.columns(2)
+            with col1:
+                selected = st.multiselect(
+                    "Weak / selected topics to revise",
+                    options=allow_list,
+                    default=allow_list[: min(3, len(allow_list))],
+                    help="Only topics from the extracted allow-list are eligible.",
                 )
-                for i, item in enumerate(session.items, start=1):
-                    with st.expander(f"{i}. {item.topic} [{item.difficulty}]"):
-                        if item.description:
-                            st.write(item.description)
-                        st.write(f"Next revision: {item.next_revision_date}")
-                        if item.confidence_prompt:
-                            st.caption(f"Self-check: {item.confidence_prompt}")
-                with st.expander("JSON payload"):
-                    st.json(format_revision_session(session))
+                session_date = st.date_input("Session date", _date.today())
+            with col2:
+                st.caption("Eligible topics (from content only):")
+                st.write(", ".join(allow_list))
+            submitted = st.form_submit_button("Generate Revision Items")
+
+        if submitted:
+            if not selected:
+                st.warning("Pick at least one topic to revise.")
+            else:
+                try:
+                    with st.spinner("Planning revision items..."):
+                        session = rv_agent.generate(
+                            content,
+                            selected_topics=list(selected),
+                            session_date=session_date,
+                        )
+                except Exception as exc:
+                    st.error(f"Failed to generate revision items: {exc}")
+                else:
+                    st.success("Revision items ready (pending review)")
+                    st.markdown(PENDING_BADGE)
+                    st.subheader(f"Revision Session · {session.session_date}")
+                    if session.notes:
+                        st.caption(session.notes)
+                    st.caption(
+                        "Selected weak topics: " + ", ".join(session.selected_weak_topics)
+                    )
+                    for i, item in enumerate(session.items, start=1):
+                        with st.expander(f"{i}. {item.topic} [{item.difficulty}]"):
+                            if item.description:
+                                st.write(item.description)
+                            st.write(f"Next revision: {item.next_revision_date}")
+                            if item.confidence_prompt:
+                                st.caption(f"Self-check: {item.confidence_prompt}")
+                    with st.expander("JSON payload"):
+                        st.json(format_revision_session(session))
 
 
 # ---------------------------------------------------------------------------
@@ -549,21 +569,20 @@ elif page == "📦 Batch & Benchmark":
 elif page == "🧭 Mentor":
     st.title("Mentor")
     st.caption("Generate a grounded mentoring response for human review.")
+    doc, chunks, is_loaded = render_current_content_status()
 
-    with st.form("mentor_form"):
-        content = st.text_area("Content", height=220)
-        user_question = st.text_input("User question")
-        difficulty = st.selectbox(
-            "Difficulty",
-            ["beginner", "intermediate", "advanced"],
-            key="mentor_difficulty",
-        )
-        submitted = st.form_submit_button("Generate Mentor Response")
+    if is_loaded:
+        content = doc.content
+        with st.form("mentor_form"):
+            user_question = st.text_input("User question")
+            difficulty = st.selectbox(
+                "Difficulty",
+                ["beginner", "intermediate", "advanced"],
+                key="mentor_difficulty",
+            )
+            submitted = st.form_submit_button("Generate Mentor Response")
 
-    if submitted:
-        if not content.strip():
-            st.warning("Enter educational content before generating a response.")
-        else:
+        if submitted:
             try:
                 with st.spinner("Generating mentor response..."):
                     reviewable = mentor_concept_service.generate_mentor_reviewable(
@@ -592,21 +611,20 @@ elif page == "🧭 Mentor":
 elif page == "💡 Concept Explanation":
     st.title("Concept Explanation")
     st.caption("Generate a grounded concept explanation for human review.")
+    doc, chunks, is_loaded = render_current_content_status()
 
-    with st.form("concept_form"):
-        content = st.text_area("Content", height=220)
-        user_question = st.text_input("Concept question")
-        difficulty = st.selectbox(
-            "Difficulty",
-            ["beginner", "intermediate", "advanced"],
-            key="concept_difficulty",
-        )
-        submitted = st.form_submit_button("Generate Concept Explanation")
+    if is_loaded:
+        content = doc.content
+        with st.form("concept_form"):
+            user_question = st.text_input("Concept question")
+            difficulty = st.selectbox(
+                "Difficulty",
+                ["beginner", "intermediate", "advanced"],
+                key="concept_difficulty",
+            )
+            submitted = st.form_submit_button("Generate Concept Explanation")
 
-    if submitted:
-        if not content.strip():
-            st.warning("Enter educational content before generating an explanation.")
-        else:
+        if submitted:
             try:
                 with st.spinner("Generating concept explanation..."):
                     reviewable = mentor_concept_service.generate_concept_reviewable(

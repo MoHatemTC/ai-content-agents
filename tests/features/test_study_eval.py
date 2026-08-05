@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
 
 import pytest
 
@@ -13,7 +12,6 @@ from src.study.batch import (
     BatchReport,
     default_demo_dataset,
     run_full_batch,
-    run_flashcard_batch,
 )
 from src.study.evaluation import (
     BenchmarkReport,
