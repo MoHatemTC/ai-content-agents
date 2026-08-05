@@ -229,3 +229,33 @@ def test_sentence_about_falls_back_within_the_document() -> None:
 
 def test_sentence_about_handles_empty_content() -> None:
     assert "no source text" in sentence_about("", "Conduction")
+
+
+def test_a_truncated_reply_says_so_rather_than_blaming_the_json() -> None:
+    """A reasoning model spends its budget thinking before it answers.
+
+    Cap the output at what the answer alone needs and the JSON is cut off
+    mid-object. Measured on gemini-3.5-flash: ~1,900 reasoning tokens, so it
+    fails at max_tokens=2000 and succeeds at 8000 - identical prompt.
+
+    Reported as "the model did not return valid JSON", that sends you to the
+    prompt instead of to the one number responsible.
+    """
+    message = type("M", (), {"content": '{"title": "Heat", "cards": [{"fro'})
+    choice = type("C", (), {"message": message, "finish_reason": "length"})
+    client = FakeClient(_Reply(choices=[choice]))
+
+    with pytest.raises(UpstreamResponseError) as excinfo:
+        call_llm(client, "m", "prompt", max_tokens=2000, attempts=1)
+
+    text = str(excinfo.value)
+    assert "cut off" in text
+    assert "LLM_MAX_TOKENS" in text
+    assert "2000" in text
+
+
+def test_a_complete_reply_is_not_mistaken_for_truncation() -> None:
+    message = type("M", (), {"content": '{"a": 1}'})
+    choice = type("C", (), {"message": message, "finish_reason": "stop"})
+
+    assert call_llm(FakeClient(_Reply(choices=[choice])), "m", "p") == '{"a": 1}'

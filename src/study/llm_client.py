@@ -186,7 +186,25 @@ def call_llm(
             last_error = f"gateway returned no choices ({detail})"
             logger.warning("llm attempt %d/%d: %s", attempt, attempts, last_error)
         else:
-            content = getattr(choices[0].message, "content", None)
+            choice = choices[0]
+            content = getattr(choice.message, "content", None)
+
+            # A reasoning model spends its budget thinking before it answers, so
+            # a cap sized for the answer alone truncates the JSON mid-object.
+            # Without this check the failure surfaces from json.loads as "the
+            # model did not return valid JSON", which sends you looking at the
+            # prompt instead of at the one number that caused it. Measured:
+            # gemini-3.5-flash spends ~1,900 tokens reasoning, so it fails at
+            # max_tokens=2000 and succeeds at 8000.
+            if getattr(choice, "finish_reason", None) == "length":
+                raise UpstreamResponseError(
+                    "The model's reply was cut off by the output limit "
+                    f"(max_tokens={max_tokens if max_tokens is not None else max_tokens_default()}), "
+                    "so the JSON is incomplete. Raise LLM_MAX_TOKENS, or use a "
+                    "model that does not emit reasoning tokens - they are "
+                    "charged against the same budget as the answer."
+                )
+
             if content and content.strip():
                 return strip_fences(content)
             last_error = "gateway returned an empty message"
