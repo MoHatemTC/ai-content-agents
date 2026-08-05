@@ -33,6 +33,7 @@ from chromadb.config import Settings
 
 from src.retrieval.config import RetrievalConfig
 from src.retrieval.models import Chunk
+from src.ingestion.chunker import TextChunker
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -61,36 +62,6 @@ def sanitize_document_id(document_id: str) -> str:
     return _ID_SANITIZE_RE.sub("-", document_id)
 
 
-def _window_split(paragraph: str, chunk_size: int, overlap: int) -> list[str]:
-    """Split one oversized paragraph into word windows with overlap.
-
-    Windows never cut words; a window may slightly exceed ``chunk_size``
-    when a single word is longer than the budget (progress is guaranteed).
-    """
-    words = paragraph.split()
-    pieces: list[str] = []
-    current: list[str] = []
-    seed_count = 0  # trailing words carried over from the previous window
-
-    def joined_len(items: list[str]) -> int:
-        return sum(len(word) for word in items) + max(len(items) - 1, 0)
-
-    for word in words:
-        overflows = joined_len([*current, word]) > chunk_size
-        if overflows and len(current) > seed_count:
-            pieces.append(" ".join(current))
-            tail: list[str] = []
-            for previous in reversed(current):
-                if joined_len([previous, *tail]) > overlap:
-                    break
-                tail.insert(0, previous)
-            current = list(tail)
-            seed_count = len(tail)
-        current.append(word)
-    if len(current) > seed_count:
-        pieces.append(" ".join(current))
-    return pieces
-
 
 def split_text_into_chunks(
     text: str,
@@ -99,55 +70,40 @@ def split_text_into_chunks(
     session_id: str | None = None,
     config: RetrievalConfig | None = None,
 ) -> list[Chunk]:
-    """Turn raw document text into :class:`Chunk` records.
+    """Turn raw document text into Chunk records.
 
-    Paragraphs (blank-line separated) are greedily packed into chunks of up
-    to ``config.chunk_size`` characters; a single oversized paragraph falls
-    back to a word-window split with ``config.chunk_overlap`` characters of
-    overlap between windows.
+    Delegates chunking to the shared TextChunker used by the ingestion
+    pipeline so retrieval and ingestion always produce identical chunk
+    boundaries and stable chunk ids.
 
     Args:
-        text: The raw document text; empty/whitespace text yields no chunks.
-        document_id: Source document id; sanitized so chunk ids stay
-            citation-safe (``[^A-Za-z0-9_-]`` becomes ``-``).
-        session_id: Optional owning session, propagated to every chunk.
-        config: Chunking tunables; defaults to :class:`RetrievalConfig`.
-
+        ...
     Returns:
-        Chunks with deterministic ids ``f"{document_id}-c{ordinal:04d}"``,
-        in document order.
+        Chunk records with deterministic ids.
     """
     config = config or RetrievalConfig()
     safe_document_id = sanitize_document_id(document_id)
 
-    paragraphs = [part.strip() for part in re.split(r"\n\s*\n", text) if part.strip()]
-    pieces: list[str] = []
-    buffer = ""
-    for paragraph in paragraphs:
-        if len(paragraph) > config.chunk_size:
-            if buffer:
-                pieces.append(buffer)
-                buffer = ""
-            pieces.extend(_window_split(paragraph, config.chunk_size, config.chunk_overlap))
-        elif not buffer:
-            buffer = paragraph
-        elif len(buffer) + 2 + len(paragraph) <= config.chunk_size:
-            buffer = f"{buffer}\n\n{paragraph}"
-        else:
-            pieces.append(buffer)
-            buffer = paragraph
-    if buffer:
-        pieces.append(buffer)
+    chunker = TextChunker(
+        chunk_size=config.chunk_size,
+        overlap=config.chunk_overlap,
+    )
+
+    ingestion_chunks = chunker.chunk(
+        text=text,
+        document_id=safe_document_id,
+        session_id=session_id,
+    )
 
     return [
         Chunk(
-            chunk_id=f"{safe_document_id}-c{ordinal:04d}",
-            document_id=safe_document_id,
-            session_id=session_id,
-            ordinal=ordinal,
-            text=piece,
+            chunk_id=chunk.id,
+            document_id=chunk.document_id,
+            session_id=chunk.session_id,
+            ordinal=chunk.ordinal,
+            text=chunk.text,
         )
-        for ordinal, piece in enumerate(pieces)
+        for chunk in ingestion_chunks
     ]
 
 
