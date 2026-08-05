@@ -37,23 +37,68 @@ import yaml
 from dotenv import load_dotenv
 
 from src.schemas import Flashcard, FlashcardSet
+from src.study.llm_client import (
+    UpstreamResponseError,
+    call_llm,
+    parse_json,
+    schema_block,
+    sentence_about,
+)
 
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-# Topic extraction heuristic: minimal, deterministic, cheap, auditable.
-# We split the content into capitalised n-grams and high-information tokens,
-# then keep the most frequent ones that are >= 3 chars long. The result is
-# intentionally noisy but *never* hallucinated - it is a strict substring of
-# the content. The LLM is later constrained to only pick from this list.
-_STOPWORDS = {
-    "the", "and", "for", "are", "but", "not", "you", "all", "any", "can",
-    "had", "her", "was", "one", "our", "out", "day", "get", "has", "him",
-    "his", "how", "its", "let", "may", "new", "now", "old", "see", "two",
-    "way", "who", "did", "his", "that", "this", "with", "from", "they",
-    "have", "were", "been", "their", "them", "then", "what", "when", "will",
-    "your", "into", "just", "some", "than", "also", "only", "over", "such",
-}
+# Topic extraction heuristic: deterministic, cheap, auditable, and never
+# hallucinated - every topic is a literal substring of the content. The LLM is
+# constrained to pick only from this list, so the list is the grounding
+# contract, not a display detail: a junk entry is a junk card the guardrail
+# will happily approve.
+#
+# Two vocabularies, because they answer different questions.
+
+# Words that carry no subject matter. The previous list held ~50 entries and
+# let "between", "each", "same", "which" and "use" through into the allow-list
+# of a physics textbook.
+_STOPWORDS = frozenset(
+    """
+    a an the and or but if then than that this these those there here of in on
+    at to from by for with without within into onto up out over under above
+    below between among across through during before after while since until
+    about against is are was were be been being am do does did done has have
+    had having can could may might must shall should will would it its he she
+    they them their his her our your my we you us me him what when where which
+    who whom whose why how all any both each every few more most other some
+    such no nor not only own same so too very one two three four five six seven
+    eight nine ten first second next last also just now new old way get let see
+    make made use used using take taken give given call called note noted
+    following right left top bottom thing things
+    """.split()
+)
+
+# How a book refers to itself. Kept apart from the stopwords because it is a
+# different idea: these are perfectly good English words that happen to be
+# publishing apparatus. In a 1,598-page physics textbook "Fig" appears 3,483
+# times - the 13th most frequent token, ahead of "mass", "speed" and "charge" -
+# so frequency ranking put the typesetting at the top of the syllabus.
+_DOCUMENT_FURNITURE = frozenset(
+    """
+    fig figs figure figures table tables chart charts diagram diagrams
+    chapter chapters section sections subsection appendix appendices
+    example examples exercise exercises problem problems question questions
+    solution solutions answer answers summary review test quiz
+    page pages part parts unit units lesson lessons
+    equation equations eq formula formulas
+    shown show see refer reference references note notes caption
+    """.split()
+)
+
+# The smallest number of times a two-word phrase must occur before it counts as
+# a term rather than a coincidence of adjacent words.
+_MIN_BIGRAM_COUNT = 2
+
+# Multi-word terms are what real topics look like - "kinetic energy",
+# "potential difference" - so they outrank single words of the same frequency.
+_BIGRAM_WEIGHT = 4
 
 
 class GroundingError(ValueError):
@@ -128,9 +173,21 @@ class FlashcardAgent:
     def extract_topics(content: str, max_topics: int = 25) -> list[str]:
         """Deterministically extract a topic allow-list from raw content.
 
-        Strategy: capitalised unigrams + bigrams, drop stopwords, keep the
-        most frequent. The output is strictly substrings of ``content`` -
-        the LLM later is only allowed to pick from this list.
+        Every topic is a literal substring of ``content``, and the LLM may only
+        pick from this list, so it is the grounding contract rather than a
+        display detail.
+
+        Ranking is by frequency, with two corrections. Function words and
+        document furniture are dropped, because "Fig" is the 13th most common
+        token in a physics textbook and frequency alone put the typesetting at
+        the top of the syllabus. And repeated two-word phrases outrank single
+        words, because real topics look like "kinetic energy" and "potential
+        difference".
+
+        The surface form is preserved: candidates are grouped case-insensitively
+        but emitted in their most frequent original casing, so a topic stays a
+        literal substring and hand-authored topics such as ``Gradient Descent``
+        keep matching the allow-list by exact string equality.
 
         Args:
             content: Cleaned text from the ingestion lane.
@@ -142,33 +199,59 @@ class FlashcardAgent:
         if not content or not content.strip():
             return []
 
-        # Tokens preserving capitalisation for proper nouns, then normalised
-        # frequencies. We also capture 2-word capitalised chunks.
-        cap_words = re.findall(r"\b[A-Z][A-Za-z0-9]{2,}\b", content)
-        all_words = re.findall(r"\b[A-Za-z][A-Za-z0-9]{2,}\b", content)
-        lowered = [w.lower() for w in all_words if w.lower() not in _STOPWORDS]
+        matches = list(re.finditer(r"\b[A-Za-z][A-Za-z0-9]{2,}\b", content))
+        if not matches:
+            return []
 
-        # Bigrams of non-stopwords, also captured if at least one word is
-        # capitalised in the source.
-        bigrams = []
-        for i in range(len(all_words) - 1):
-            a, b = all_words[i], all_words[i + 1]
-            if a.lower() in _STOPWORDS or b.lower() in _STOPWORDS:
+        words = [match.group() for match in matches]
+
+        # Remember how each word is actually written so topics stay literal
+        # substrings; "Energy" and "energy" are one candidate, emitted as
+        # whichever spelling the document prefers.
+        surface_forms: dict[str, Counter[str]] = {}
+        for word in words:
+            surface_forms.setdefault(word.lower(), Counter())[word] += 1
+
+        def surface(key: str) -> str:
+            return " ".join(
+                surface_forms[part].most_common(1)[0][0]
+                if part in surface_forms
+                else part
+                for part in key.split()
+            )
+
+        def is_content_word(word: str) -> bool:
+            return word not in _STOPWORDS and word not in _DOCUMENT_FURNITURE
+
+        lowered = [word.lower() for word in words]
+
+        scores: Counter[str] = Counter()
+        for word in lowered:
+            if is_content_word(word):
+                scores[word] += 1
+
+        # Only pair words that are genuinely adjacent in the source. The token
+        # regex skips anything under three characters, so pairing consecutive
+        # *matches* would join words with something dropped between them:
+        # "drawn around a positive charge" yielded "around positive", which
+        # appears nowhere in the document and breaks the one property that
+        # makes this list safe - that a topic is always quoted, never invented.
+        bigrams: Counter[str] = Counter()
+        for first, second in zip(matches, matches[1:]):
+            gap = content[first.end() : second.start()]
+            if gap and not gap.isspace():
                 continue
-            if a[0].isupper() or b[0].isupper():
-                bigrams.append(f"{a} {b}")
+            if is_content_word(first.group().lower()) and is_content_word(
+                second.group().lower()
+            ):
+                bigrams[f"{first.group().lower()} {second.group().lower()}"] += 1
 
-        counts: Counter[str] = Counter()
-        for w in cap_words:
-            if w.lower() not in _STOPWORDS:
-                counts[w] += 2  # capitalised = signal boost
-        for w in lowered:
-            counts[w] += 1
-        for bg in bigrams:
-            counts[bg] += 3
+        for phrase, count in bigrams.items():
+            if count >= _MIN_BIGRAM_COUNT:
+                scores[phrase] = count * _BIGRAM_WEIGHT
 
-        ranked = [topic for topic, _ in counts.most_common(max_topics)]
-        return sorted(set(ranked))
+        ranked = [topic for topic, _ in scores.most_common(max_topics)]
+        return sorted({surface(topic) for topic in ranked})
 
     def _build_prompt(
         self,
@@ -207,6 +290,11 @@ class FlashcardAgent:
             f"extracted_topics (pick FROM THIS LIST ONLY): {topics_json}\n"
             f"card_format: {card_format}\n"
             f"card_count: {card_count}\n"
+            # The YAML's `output_schema: FlashcardSet` is a label, never sent to
+            # the model. Without the actual shape it guessed `{"cards": [...]}`,
+            # omitted the required `title`, and every live call failed to
+            # validate.
+            f"{schema_block(FlashcardSet)}"
         )
         return prompt_block
 
@@ -222,21 +310,18 @@ class FlashcardAgent:
 
         Returns:
             Stripped LLM response body.
+
+        Raises:
+            UpstreamResponseError: If the gateway returned no usable choice.
         """
-        assert self.client is not None, "Called _call_llm in mock_mode"
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.2,
-        )
-        content = response.choices[0].message.content
-        if not content:
-            raise ValueError("LLM returned empty response")
-        return content.strip()
+        return call_llm(self.client, self.model, prompt)
 
     @staticmethod
     def _mock_response(
-        extracted_topics: list[str], card_format: str, card_count: int
+        extracted_topics: list[str],
+        card_format: str,
+        card_count: int,
+        content: str = "",
     ) -> FlashcardSet:
         """Deterministic grounded sample for tests and local demoing.
 
@@ -244,6 +329,8 @@ class FlashcardAgent:
             extracted_topics: Topic allow-list.
             card_format: ``term-definition`` or ``qa``.
             card_count: Target count.
+            content: The source text, so the cards can quote it instead of
+                describing where to find it.
 
         Returns:
             Valid, grounded :class:`FlashcardSet` that passes every validator
@@ -254,15 +341,14 @@ class FlashcardAgent:
         cards: list[Flashcard] = []
         for i in range(n):
             topic = topics[i % len(topics)]
-            if card_format == "term-definition":
-                front = topic
-                back = (
-                    f"{topic} is a key concept described in the supplied "
-                    f"content. See the source text for a fuller treatment."
-                )
-            else:  # qa
-                front = f"What is {topic}?"
-                back = f"{topic} is explained in the supplied content as an important topic."
+            # Quote the document rather than describing it. The previous text -
+            # "X is a key concept described in the supplied content. See the
+            # source text for a fuller treatment." - was the same sentence for
+            # every card of every document, and it is what the app displayed,
+            # since the UI hardcoded mock mode. A card that says where the
+            # answer is instead of what it is teaches nothing.
+            back = sentence_about(content, topic)
+            front = topic if card_format == "term-definition" else f"What is {topic}?"
             cards.append(
                 Flashcard(
                     front=front,
@@ -381,21 +467,19 @@ class FlashcardAgent:
         prompt = self._build_prompt(content, extracted_topics, card_format, card_count)
 
         if self.mock_mode:
-            raw = self._mock_response(extracted_topics, card_format, card_count)
-        else:  # pragma: no cover - live path exercised with API key
+            raw = self._mock_response(
+                extracted_topics, card_format, card_count, content
+            )
+        else:
             try:
                 text = self._call_llm(prompt)
-            except Exception as exc:  # pragma: no cover - network
+            except UpstreamResponseError:
+                # Already says what the gateway did and whether it is worth
+                # retrying; wrapping it in RuntimeError("call failed") would
+                # replace a diagnosis with a shrug.
                 logger.exception("Flashcard LLM call failed")
-                raise RuntimeError("Flashcard LLM call failed") from exc
-            try:
-                payload = json.loads(text)
-            except json.JSONDecodeError as exc:  # pragma: no cover
-                raise ValueError("LLM returned invalid JSON") from exc
-            try:
-                raw = FlashcardSet.model_validate(payload)
-            except Exception as exc:  # pragma: no cover
-                raise ValueError("LLM JSON failed FlashcardSet schema") from exc
+                raise
+            raw = parse_json(text, FlashcardSet)
 
         if source_chunk_ids:
             raw.source_chunk_ids = list(source_chunk_ids)
