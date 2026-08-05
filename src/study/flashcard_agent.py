@@ -37,6 +37,12 @@ import yaml
 from dotenv import load_dotenv
 
 from src.schemas import Flashcard, FlashcardSet
+from src.study.llm_client import (
+    UpstreamResponseError,
+    call_llm,
+    parse_json,
+    schema_block,
+)
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -207,6 +213,11 @@ class FlashcardAgent:
             f"extracted_topics (pick FROM THIS LIST ONLY): {topics_json}\n"
             f"card_format: {card_format}\n"
             f"card_count: {card_count}\n"
+            # The YAML's `output_schema: FlashcardSet` is a label, never sent to
+            # the model. Without the actual shape it guessed `{"cards": [...]}`,
+            # omitted the required `title`, and every live call failed to
+            # validate.
+            f"{schema_block(FlashcardSet)}"
         )
         return prompt_block
 
@@ -222,17 +233,11 @@ class FlashcardAgent:
 
         Returns:
             Stripped LLM response body.
+
+        Raises:
+            UpstreamResponseError: If the gateway returned no usable choice.
         """
-        assert self.client is not None, "Called _call_llm in mock_mode"
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.2,
-        )
-        content = response.choices[0].message.content
-        if not content:
-            raise ValueError("LLM returned empty response")
-        return content.strip()
+        return call_llm(self.client, self.model, prompt)
 
     @staticmethod
     def _mock_response(
@@ -382,20 +387,16 @@ class FlashcardAgent:
 
         if self.mock_mode:
             raw = self._mock_response(extracted_topics, card_format, card_count)
-        else:  # pragma: no cover - live path exercised with API key
+        else:
             try:
                 text = self._call_llm(prompt)
-            except Exception as exc:  # pragma: no cover - network
+            except UpstreamResponseError:
+                # Already says what the gateway did and whether it is worth
+                # retrying; wrapping it in RuntimeError("call failed") would
+                # replace a diagnosis with a shrug.
                 logger.exception("Flashcard LLM call failed")
-                raise RuntimeError("Flashcard LLM call failed") from exc
-            try:
-                payload = json.loads(text)
-            except json.JSONDecodeError as exc:  # pragma: no cover
-                raise ValueError("LLM returned invalid JSON") from exc
-            try:
-                raw = FlashcardSet.model_validate(payload)
-            except Exception as exc:  # pragma: no cover
-                raise ValueError("LLM JSON failed FlashcardSet schema") from exc
+                raise
+            raw = parse_json(text, FlashcardSet)
 
         if source_chunk_ids:
             raw.source_chunk_ids = list(source_chunk_ids)

@@ -26,6 +26,12 @@ import yaml
 from dotenv import load_dotenv
 
 from src.study.flashcard_agent import FlashcardAgent
+from src.study.llm_client import (
+    UpstreamResponseError,
+    call_llm,
+    parse_json,
+    schema_block,
+)
 from src.study.schemas import RevisionItem, RevisionSession
 
 load_dotenv()
@@ -123,23 +129,18 @@ class RevisionAgent:
             f"extracted_topics (full allow-list): {extracted_json}\n"
             f"selected_topics (subset to revise): {selected_json}\n"
             f"session_date: {session_date.isoformat()}\n"
+            # The YAML names the schema but never sends it; without the shape
+            # the model omits required keys and validation fails.
+            f"{schema_block(RevisionSession)}"
         )
 
     # ------------------------------------------------------------------
     # LLM / mock
     # ------------------------------------------------------------------
 
-    def _call_llm(self, prompt: str) -> str:  # pragma: no cover - live path
-        assert self.client is not None
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.2,
-        )
-        body = response.choices[0].message.content
-        if not body:
-            raise ValueError("LLM returned empty response")
-        return body.strip()
+    def _call_llm(self, prompt: str) -> str:
+        """Send the prompt to the gateway and return the reply body."""
+        return call_llm(self.client, self.model, prompt)
 
     @staticmethod
     def _mock_response(
@@ -281,17 +282,10 @@ class RevisionAgent:
         else:  # pragma: no cover - live path
             try:
                 text = self._call_llm(prompt)
-            except Exception as exc:
+            except UpstreamResponseError:
                 logger.exception("Revision LLM call failed")
-                raise RuntimeError("Revision LLM call failed") from exc
-            try:
-                payload = json.loads(text)
-            except json.JSONDecodeError as exc:
-                raise ValueError("LLM returned invalid JSON") from exc
-            try:
-                raw = RevisionSession.model_validate(payload)
-            except Exception as exc:
-                raise ValueError("LLM JSON failed RevisionSession schema") from exc
+                raise
+            raw = parse_json(text, RevisionSession)
 
         self._validate_revision(raw, extracted_topics, selected_topics)
         return self._wrap_for_review_gate(raw, run_id=run_id)
