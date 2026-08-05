@@ -6,6 +6,8 @@ acceptance criteria from issue #18, including the four that a green suite failed
 to catch the first time round.
 """
 
+import time
+
 import pytest
 
 from src.ingestion.chunker import TextChunker
@@ -334,3 +336,36 @@ def test_ordinals_are_contiguous() -> None:
     assert [c.id for c in chunks] == [
         f"doc-c{i:04d}" for i in range(len(chunks))
     ]
+
+
+# --------------------------------------------------------------------------- #
+# Cost has to stay linear in document length
+# --------------------------------------------------------------------------- #
+
+
+def test_a_large_document_chunks_in_reasonable_time() -> None:
+    """Guards against per-boundary work that scans the whole document.
+
+    The abbreviation check originally searched ``text[:period_end]`` — a copy of
+    everything read so far — on every candidate sentence boundary. That is
+    O(n^2): every fixture in this file is small enough to hide it, while a
+    1,598-page textbook took an extrapolated **150 minutes** to split.
+
+    The bound is deliberately loose. It is not a benchmark; it is the difference
+    between linear and quadratic, which for this input is roughly 0.05s against
+    200s, so a slow CI runner cannot make it flake.
+    """
+    text = (
+        "Conduction moves energy through a material by direct molecular contact. "
+        "See Fig. 21.5 for the arrangement. Convection carries heat in a fluid. "
+    ) * 7000  # ~1 MB
+
+    start = time.perf_counter()
+    chunks = TextChunker().chunk(text, "big")
+    elapsed = time.perf_counter() - start
+
+    assert chunks
+    assert elapsed < 10.0, (
+        f"{len(text):,} chars took {elapsed:.1f}s — sentence splitting has "
+        "probably become quadratic again"
+    )

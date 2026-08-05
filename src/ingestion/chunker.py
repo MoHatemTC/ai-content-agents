@@ -37,6 +37,11 @@ _ABBREVIATIONS = frozenset(
 # The token immediately before a candidate boundary's period.
 _TRAILING_TOKEN = re.compile(r"([A-Za-z][A-Za-z.]*)\.$")
 
+# How far back to look for that token. The longest entry in _ABBREVIATIONS is
+# five characters; 64 is generous and keeps the scan independent of document
+# length, which is what stops sentence splitting being quadratic.
+_ABBREVIATION_WINDOW = 64
+
 # Candidate sentence boundary: a terminator followed by whitespace, or the end
 # of the text. Decimals such as 0.375 are already excluded by requiring the
 # whitespace - the period there is followed by a digit.
@@ -244,7 +249,14 @@ class TextChunker:
         if following.islower() or following.isdigit():
             return False
 
-        match = _TRAILING_TOKEN.search(text[:period_end])
+        # Look only at the handful of characters before the period, not at the
+        # whole prefix. `text[:period_end]` copies everything read so far on
+        # every candidate boundary, which is O(n^2) over the document: a
+        # 1,598-page textbook has ~60,000 boundaries, and splitting it took an
+        # extrapolated 150 minutes. The pattern is anchored to the end of the
+        # window, and no abbreviation approaches this length.
+        window_start = max(0, period_end - _ABBREVIATION_WINDOW)
+        match = _TRAILING_TOKEN.search(text[window_start:period_end])
         if match is None:
             return True
 
