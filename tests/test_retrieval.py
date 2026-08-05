@@ -218,6 +218,31 @@ class TestSplitTextIntoChunks:
             for paragraph in chunk.text.split("\n\n"):
                 assert paragraph in text
 
+    def test_paragraph_structure_outranks_sentence_packing(self) -> None:
+        """Paragraphs are the outermost split level, not an incidental one.
+
+        ``test_paragraphs_pack_up_to_chunk_size`` above cannot detect the
+        difference: it splits each chunk on ``\\n\\n`` and checks the pieces are
+        substrings of the source, which any splitter satisfies. This one fails
+        if paragraph packing is removed, because a sentence-only chunker fills
+        its budget across the blank line and mixes two paragraphs in one chunk.
+        """
+        text = (
+            "Alpha one here. Alpha two here.\n\n"
+            "Beta one here. Beta two here.\n\n"
+            "Gamma one here. Gamma two here."
+        )
+        config = RetrievalConfig(chunk_size=48, chunk_overlap=0)
+        chunks = split_text_into_chunks(text, document_id="doc", config=config)
+
+        for chunk in chunks:
+            initials = {
+                word[0] for word in chunk.text.split() if word[:1].isalpha()
+            }
+            assert len(initials & {"A", "B", "G"}) <= 1, (
+                f"chunk spans two paragraphs: {chunk.text!r}"
+            )
+
     def test_oversized_paragraph_is_window_split_with_overlap(self) -> None:
         config = RetrievalConfig(chunk_size=50, chunk_overlap=15)
         words = [f"word{i:02d}" for i in range(30)]
@@ -307,7 +332,11 @@ class TestChunkIndex:
             document_id="notes",
             config=RetrievalConfig(chunk_size=5, chunk_overlap=1),
         )
-        assert index.add_document("notes", old) == 3
+        # How many chunks that tiny config yields is incidental to what this
+        # test is about - "Three." does not fit in five characters, so the
+        # splitter is entitled to divide it. What matters is that re-adding a
+        # document replaces every chunk of the previous version.
+        assert index.add_document("notes", old) == len(old)
         new = split_text_into_chunks("Only paragraph now.", document_id="notes")
         assert index.add_document("notes", new) == 1
         assert len(index) == 1

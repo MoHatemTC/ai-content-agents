@@ -1,12 +1,10 @@
+# Dependencies live in pyproject.toml, which is the single source of truth.
+# This file installs them, so `pip install -r requirements.txt` keeps working.
+#
+#   pip install -r requirements.txt     runtime + OCR + test tooling
+#   pip install -e "."                  runtime only
+#
+# OCR additionally needs the Tesseract *binary*, which pip cannot install:
+# see docs/ocr-and-content-quality.md.
 
-streamlit
-fastapi
-uvicorn
-pydantic
-PyYAML
-python-dotenv
-openai
-pymupdf
-python-docx
-markdown
-chromadb
+-e .[ocr,dev]

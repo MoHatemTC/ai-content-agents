@@ -25,6 +25,7 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
+from src.validation.grounding_rule import PlatformGroundingRule
 from src.validation.guardrails import (
     DEFAULT_RULES,
     GuardrailContext,
@@ -35,6 +36,21 @@ from src.validation.guardrails import (
 from src.validation.review_schema import GeneratedOutput
 
 logger = logging.getLogger(__name__)
+
+
+def default_rule_set() -> list[GuardrailRule]:
+    """Return every rule an output is checked against by default.
+
+    Composed here rather than in :mod:`src.validation.guardrails` because the
+    grounding rule builds on ``src.retrieval.verifier``, which imports
+    ``GuardrailRule`` from that module — importing it back there would be a
+    circular import. The grounding rule is included unbound, which is harmless:
+    with no grounding evidence on the context it simply does not apply.
+
+    Returns:
+        A fresh list of rule instances.
+    """
+    return [*DEFAULT_RULES, PlatformGroundingRule()]
 
 
 class ValidationResult(BaseModel):
@@ -50,13 +66,12 @@ class ValidatorBase:
 
     Args:
         default_rules: Rules to use when :meth:`validate` is called without an
-            explicit ``rules`` argument. Defaults to
-            :data:`~src.validation.guardrails.DEFAULT_RULES`.
+            explicit ``rules`` argument. Defaults to :func:`default_rule_set`.
     """
 
     def __init__(self, default_rules: Sequence[GuardrailRule] | None = None) -> None:
         self._default_rules: list[GuardrailRule] = (
-            list(default_rules) if default_rules is not None else list(DEFAULT_RULES)
+            list(default_rules) if default_rules is not None else default_rule_set()
         )
 
     def validate(
