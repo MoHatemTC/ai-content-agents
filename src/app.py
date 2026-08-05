@@ -62,15 +62,15 @@ def get_generator():
 
 @st.cache_resource
 def get_flashcard_agent():
-    return FlashcardAgent(mock_mode=True)
+    return FlashcardAgent()
 
 @st.cache_resource
 def get_study_plan_agent():
-    return StudyPlanAgent(mock_mode=True)
+    return StudyPlanAgent()
 
 @st.cache_resource
 def get_revision_agent():
-    return RevisionAgent(mock_mode=True)
+    return RevisionAgent()
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -114,6 +114,17 @@ fc_agent = get_flashcard_agent()
 sp_agent = get_study_plan_agent()
 rv_agent = get_revision_agent()
 mentor_concept_service = get_mentor_concept_service()
+
+# Say which mode the agents are in. The app spent weeks generating placeholder
+# cards - "See the source text for a fuller treatment" - because the UI forced
+# mock mode regardless of MOCK_MODE, and nothing on screen said so.
+if fc_agent.mock_mode:
+    st.sidebar.warning(
+        "**Mock mode** — output is built from your document but not generated "
+        "by a model. Set `MOCK_MODE=false` in `.env` for real generation."
+    )
+else:
+    st.sidebar.caption(f"🟢 Live · `{fc_agent.model}`")
 
 
 # ---------------------------------------------------------------------------
