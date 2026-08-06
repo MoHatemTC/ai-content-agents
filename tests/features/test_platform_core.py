@@ -648,7 +648,6 @@ class _FakeAgentModule:
     """Stands in for a real agent, exposing the private methods the adapter uses."""
 
     def __init__(self, response: str | Exception) -> None:
-        self.mock_mode = False
         self.model = "fake"
         self._response = response
 

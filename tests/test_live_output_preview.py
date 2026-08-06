@@ -24,9 +24,8 @@ pytestmark = pytest.mark.skipif(
 
 
 def test_live_output_preview():
-    mentor_agent = MentorAgent(mock_mode=False)
+    mentor_agent = MentorAgent()
     print("Model:", mentor_agent.model)
-    print("Mock mode:", mentor_agent.mock_mode)
     mentor_result = mentor_agent.generate(
         content="""
 Python is a programming language.
@@ -43,9 +42,8 @@ There are for loops and while loops.
     assert isinstance(mentor_result, MentorOutput)
     print("✓ Schema validated successfully")
 
-    concept_agent = ConceptAgent(mock_mode=False)
+    concept_agent = ConceptAgent()
     print("Model:", concept_agent.model)
-    print("Mock mode:", concept_agent.mock_mode)
     concept_result = concept_agent.generate(
         content="""
 Python is a programming language.
@@ -62,9 +60,8 @@ There are for loops and while loops.
     assert isinstance(concept_result, ConceptOutput)
     print("✓ Schema validated successfully")
 
-    question_bank_agent = QuestionBankAgent(mock_mode=False)
+    question_bank_agent = QuestionBankAgent()
     print("Model:", question_bank_agent.model)
-    print("Mock mode:", question_bank_agent.mock_mode)
     question_bank_result = question_bank_agent.generate(
         content="""
 Python is a programming language.
@@ -86,9 +83,8 @@ There are two loop types:
     assert isinstance(question_bank_result, QuestionBankOutput)
     print("✓ Schema validated successfully")
 
-    test_help_agent = TestHelpAgent(mock_mode=False)
+    test_help_agent = TestHelpAgent()
     print("Model:", test_help_agent.model)
-    print("Mock mode:", test_help_agent.mock_mode)
     test_help_result = test_help_agent.generate(
         content="""
 Python provides two loop types:
