@@ -1,0 +1,210 @@
+PHASE 8 PART 1 RESULT
+=====================
+Continuously-maintained working document for Phase 8 Part 1 of Sensei AI.
+Scope: FRONTEND-ONLY preparation for backend integration. No backend code,
+no invented endpoints, no fabricated backend behaviour.
+
+Phase:
+  Phase 8 Part 1 — Frontend preparation for FastAPI backend integration.
+
+Current objective:
+  Prepare the frontend so that wiring the FastAPI backend is a matter of
+  flipping environment flags, while keeping `npm run build`, `npm run lint`
+  and `npx tsc --noEmit` green. The work that can be completed WITHOUT the
+  backend repository is: (1) a single auditable registry of every endpoint the
+  frontend calls (sourced strictly from docs/FASTAPI_INTEGRATION.md +
+  docs/BACKEND_CONTRACT.md + the existing api modules), (2) wiring the api
+  modules to that registry, (3) hardening src/api/http.ts for backend traffic
+  (base-URL normalization + request timeout). Work that depends on backend
+  response-shape confirmation is explicitly deferred and flagged at the end.
+
+Files inspected:
+  - docs/FASTAPI_INTEGRATION.md       (endpoint contract: paths + payloads)
+  - docs/BACKEND_CONTRACT.md          (action -> endpoint + role + error map)
+  - docs/FRONTEND_ARCHITECTURE.md     (layering rules)
+  - docs/DEVELOPMENT_GUIDE.md         (connect-the-pieces + checks)
+  - docs/DATABASE_SCHEMA.md           (Supabase tables the API will read/write)
+  - src/config/env.ts                 (VITE_API_BASE_URL, isMockMode)
+  - src/api/http.ts                   (single HTTP client, single token holder)
+  - src/api/index.ts                  (api module barrel)
+  - src/api/auth.api.ts               (Supabase-backed auth)
+  - src/api/workspace.api.ts          (Supabase-backed workspace data today)
+  - src/api/document.api.ts           (Supabase storage+rows; http parse/chunk/embed)
+  - src/api/generation.api.ts         (http-backed generation)
+  - src/api/chat.api.ts               (http-backed chat)
+  - src/api/review.api.ts             (http-backed review)
+  - src/api/history.api.ts            (http-backed history)
+  - src/api/analytics.api.ts          (http-backed analytics)
+  - src/api/model.api.ts              (http-backed models)
+  - src/api/search.api.ts             (http-backed search)
+  - src/api/catalogue.api.ts          (http-backed agents/pipeline/notifications/catalogue)
+  - src/services/*, src/contexts/*, src/types/api/*.contracts.ts (verified flow)
+  - src/lib/result.ts                 (Result<T> envelope, ERROR_CODES)
+  - src/lib/supabase.ts               (single Supabase client)
+  - eslint.config.js, .prettierrc     (lint/format rules)
+
+Architecture discovered:
+  - Strict layering: routes/ -> components/ -> contexts/&hooks/ -> services/
+    -> api/ -> mock/ -> types/. UI never imports src/api or src/mock.
+  - src/api/http.ts is the SINGLE network path: every *.api.ts module
+    short-circuits to src/mock when isMockMode() and otherwise calls http.*
+    against env.API_BASE_URL. AuthService feeds the one access token via
+    setAccessToken().
+  - Response rule: http.ts auto-unwraps { data: T } when present, otherwise
+    returns the payload verbatim. Errors are thrown as HttpError(status, msg,
+    body) and mapped to Result<T> by src/lib/result.ts attempt().
+  - The api modules ALREADY route generation/chat/review/history/analytics/
+    models/search/catalogue through http.*. ONLY workspace.api.ts and
+    document.api.ts (list/create/update/delete/upload) still read/write
+    Supabase directly in non-mock mode.
+  - Auth (auth.api.ts) intentionally stays on the Supabase JS client
+    (identity + session persistence + refresh), and its access token is
+    forwarded to http.ts for every API request.
+  - Endpoint contract gap found: /agents, /pipeline/*, /catalogue,
+    /notifications*, /search are called by catalogue.api.ts + search.api.ts
+    but are NOT yet listed in docs/FASTAPI_INTEGRATION.md. Registered in the
+    new endpoint registry with a "consumer-defined" note.
+
+Changes completed:
+  1. Created src/api/paths.ts — a single, central registry of every endpoint
+     the frontend calls, grouped by domain, with parameterized-path helpers
+     (e.g. paths.documents.parse(id)). Derived strictly from
+     docs/FASTAPI_INTEGRATION.md + docs/BACKEND_CONTRACT.md and, for the
+     endpoints the api modules already call but the docs do not yet list
+     (/agents, /pipeline/*, /notifications*, /catalogue, /search), recorded
+     with an explicit "consumer-defined" note so the backend team has the full
+     inventory. No invented endpoints.
+  2. Wired every http-based api module to paths.ts (inline path literals
+     removed): generation.api.ts (5 paths), chat.api.ts (4), review.api.ts (7),
+     history.api.ts (1), analytics.api.ts (1), model.api.ts (1),
+     search.api.ts (1), catalogue.api.ts (8), document.api.ts http branches (5).
+  3. Hardened src/api/http.ts for backend traffic:
+     - BASE_URL = env.API_BASE_URL with trailing slashes stripped, so
+       "http://localhost:8000/api/v1/" and "http://localhost:8000/api/v1"
+       both work and never produce double slashes.
+     - DEFAULT_TIMEOUT_MS = 90s via AbortController, active only when the
+       caller does not supply its own signal. An abort surfaces as
+       "Request timed out after 90s." instead of a bare browser AbortError.
+     - Existing behaviours preserved: Bearer header from the single
+       access-token holder, { data } auto-unwrap, HttpError shaping, FormData
+       passthrough, 204 → null.
+
+Why each change was made:
+  - paths.ts gives the backend a single auditable file listing every route the
+    frontend requests, eliminating string-literal drift across nine api
+    modules. Adding/renaming an endpoint is now a one-file change plus its
+    consumer (BACKEND_CONTRACT.md rule 4). Mock-mode behaviour is untouched, so
+    nothing observable changes while VITE_ENABLE_MOCK stays on.
+  - Wrapping the base URL once (instead of string-interpolating on every call)
+    means the switch to the live FastAPI base never has to remember to strip a
+    trailing slash, and the default "/api" mock base keeps working unchanged.
+  - The timeout guards against a stalled backend hanging the UI; it is opt-out
+    only for callers that already manage an AbortSignal (e.g. an in-flight
+    chat generation cancelled by the user).
+
+Files modified:
+  - src/api/http.ts
+  - src/api/generation.api.ts
+  - src/api/chat.api.ts
+  - src/api/review.api.ts
+  - src/api/history.api.ts
+  - src/api/analytics.api.ts
+  - src/api/model.api.ts
+  - src/api/search.api.ts
+  - src/api/catalogue.api.ts
+  - src/api/document.api.ts
+  - PHASE8_PART1_RESULT.txt (this document)
+
+Files created:
+  - src/api/paths.ts
+  - PHASE8_PART1_RESULT.txt (this document)
+
+Build status:
+  PASS — npm run build completes (client + SSR + Nitro bundle). One pre-existing
+  INEFFECTIVE_DYNAMIC_IMPORT warning for workspace.api.ts, untouched.
+
+Lint status:
+  PASS — npm run lint: 0 errors, 13 warnings, all pre-existing react-refresh
+  only-export-components warnings in ui components/contexts, untouched by this
+  work. Two prettier formatting fixes applied to review.api.ts/history.api.ts.
+
+Typecheck status:
+  PASS — npx tsc --noEmit clean.
+
+Remaining work:
+  - Wire workspace.api.ts (Supabase-backed today: workspaces read, bootstrap,
+    create/rename) to http.* — BLOCKED on backend contract confirmation.
+  - Wire the remaining document.api.ts Supabase branches (upload, create,
+    update, getDocuments, getDocumentsForWorkspaces, deleteDocument) to
+    http.* — BLOCKED on backend contract confirmation (POST /upload exists in
+    docs but request/response shapes and the multipart field names must be
+    confirmed; GET /documents, PATCH /documents/{id}, DELETE /documents/{id}
+    must be confirmed as routes).
+  - Notification realtime (NotificationContext) — BLOCKED on backend
+    confirmation that notifications are written to the Supabase
+    `notifications` table (or are served over the new API).
+  - Full E2E flip to VITE_ENABLE_MOCK=false once the backend is running.
+
+Backend information required (if any):
+  The three items above are the boundary. Details in the STOP block below.
+
+Next planned step:
+  Wait for the backend team's answers in the STOP block, then wire
+  workspace.api.ts + document.api.ts to paths.ts/http.* and extend the
+  endpoint registry (paths.ts) + contracts with any confirmed additions.
+
+================================================================================
+CHANGE LOG
+================================================================================
+2026-08-06 — Started Phase 8 Part 1. Verified git baseline (branch
+  phase-8-rag-integration; untracked PHASE8_BACKEND_ANALYSIS-from-backend.txt +
+  PHASE8_IMPLEMENTATION_PLAN.txt). Re-read api layer + config + docs. Built the
+  endpoint inventory from docs + api modules (see sections above).
+2026-08-06 — Completed Part 1 frontend-only work: created src/api/paths.ts,
+  wired nine api modules to it, hardened src/api/http.ts (base-URL
+  normalization + 90s AbortController timeout). Gates green: tsc clean, lint 0
+  errors (13 pre-existing warnings), build pass. Next work (workspace.api.ts /
+  document.api.ts Supabase branches, NotificationContext) is blocked on backend
+  contract confirmation — STOP block below.
+
+================================================================================
+BACKEND INFORMATION REQUIRED
+================================================================================
+----------------------------------------
+BACKEND INFORMATION REQUIRED
+Reason: The remaining Phase 8 Part 1 work rewires workspace and document CRUD
+  from direct Supabase calls to the new FastAPI API. Doing so without the real
+  route and schema definitions would mean inventing endpoints and response
+  shapes — explicitly out of scope. The frontend files that call these are
+  src/api/workspace.api.ts and src/api/document.api.ts (Supabase branches).
+Files needed: fastapi app router files for /workspaces, /documents, /upload
+  (or an OpenAPI/schema export of the same), plus confirmation of whether
+  notifications are still served from the Supabase `notifications` table.
+Classes needed: Pydantic response models for workspace and document payloads.
+Functions needed: no backend functions — the frontend needs the contract only.
+Endpoints needed:
+  - GET /workspaces                  (expected response: list of workspaces)
+  - GET /workspaces/{id}             (expected: single workspace)
+  - POST /workspaces                 (expected: created workspace)
+  - PATCH /workspaces/{id}           (expected: updated workspace)
+  - POST /upload                     (multipart field names, and whether the
+                                     response returns the document record)
+  - GET /documents?workspace_id=     (expected: list of document rows)
+  - PATCH /documents/{id}            (expected: notes/title/tags update)
+  - DELETE /documents/{id}           (expected: void / 204)
+  - Any alternative route the backend actually exposes for these operations.
+Questions:
+  1. Response shapes for the workspace/document list and mutation endpoints —
+     do they wrap in { "data": ... } like the existing FastAPI_INTEGRATION.md
+     endpoints, or return bare objects?
+  2. Is GET /workspaces a bulk list, or is the frontend still expected to list
+     workspaces from the Supabase `workspaces` table directly?
+  3. For POST /upload: exact multipart field name(s) for the file and
+     workspace_id, and does the response return the created document row?
+  4. For document metadata CRUD (create/rename/tag/notes/delete): are these
+     served by the FastAPI API (GET/PATCH/DELETE /documents/{id}) or should
+     the frontend keep talking to Supabase for metadata while the API only
+     handles parse/chunk/embed?
+  5. Do notifications continue to live in the Supabase `notifications` table
+     (realtime via supabase-js), or are they now served by the API?
+----------------------------------------

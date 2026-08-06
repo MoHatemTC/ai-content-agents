@@ -1,0 +1,437 @@
+================================================================================
+PHASE 8 · PART 2 — BACKEND ANALYSIS
+================================================================================
+Inputs:
+  Frontend contract  : /Users/mac/Desktop/Sensei-AI/PHASE8_PART1_RESULT.txt
+  Frontend source    : Sensei-AI/docs/FASTAPI_INTEGRATION.md
+                       Sensei-AI/docs/BACKEND_CONTRACT.md
+                       Sensei-AI/docs/DATABASE_SCHEMA.md
+                       Sensei-AI/docs/FRONTEND_ARCHITECTURE.md
+                       Sensei-AI/src/api/* (paths.ts, http.ts, auth/workspace/
+                         document/generation/chat/review/history/analytics/
+                         catalogue/search/model .api.ts)
+                       Sensei-AI/src/types/api/*.contracts.ts, src/types/domain.ts
+  Backend source     : ai-content-agents/backend/ (EMPTY — .gitkeep only)
+                       ai-content-agents/src/**  (the existing implementation)
+
+Scope: read-only analysis. No code changes, no routers, no FastAPI generated.
+Status of every frontend endpoint vs the EXISTING backend, the adapters that
+must sit between them, every missing component, every risk, and a milestone
+implementation order. Ends with STOP — waits for approval before Phase 8
+implementation begins.
+
+================================================================================
+1. REPOSITORY OVERVIEW
+================================================================================
+
+1.1 Layout
+  ai-content-agents/backend/      → EMPTY (only .gitkeep). The entire HTTP/API
+                                    layer is greenfield.
+  ai-content-agents/src/          → existing domain implementation, six modules:
+    agents/                         MentorAgent, ConceptAgent, QuestionBankAgent,
+                                    TestHelpAgent (+ AgentRegistry).
+    study/                          FlashcardAgent, StudyPlanAgent, RevisionAgent
+                                    (+ grounding.py, llm_client.py, schemas.py).
+    ingestion/                      parser (txt/pdf/docx/markdown), cleaner,
+                                    chunker (Chunker, default 2000 chars/200 ovl),
+                                    loader, store (SQLite `ingestion.db`),
+                                    library, dedupe, ocr, vision_ocr, quality.
+    retrieval/                      embeddings, chroma_index, chunk index (RAG).
+    validation/                     orchestrator (AgentRun/GeneratedOutput/run_agents),
+                                    review_schema (OutputStatus state machine,
+                                    apply_review, assert_exportable), review_service
+                                    (ReviewService), store (PlatformStore, SQLite
+                                    `platform.db`), history (HistoryService),
+                                    guardrails, grounding_rule, support_validator,
+                                    evaluation, automation, integration
+                                    (index_document + Pipeline.ingest_and_run),
+                                    ui (TUI review/history/export/metrics pages).
+    llm_gateway.py                  unified LLM client (retries, default_model()).
+    core/models.py, core/config.py  model names, env config.
+  tests/                          pytest suite + conftest.py LLM doubles.
+  scripts/, data/, docs/          batch/eval tooling, demo dataset, docs.
+
+1.2 Data flow (existing, single-user CLI world)
+  Document → parser → cleaner → Chunker.chunk → IngestionStore(SQLite) + Chroma
+  embeddings → retrieval → Orchestrator.run_agents → GeneratedOutput per agent →
+  guardrail validation (schema + grounding + reference checks) → PlatformStore
+  persists run + output → OutputStatus.pending → ReviewService approve/reject/
+  comment/edit → OutputStatus.approved|rejected (terminal) → assert_exportable
+  gate → export (JSON/CSV/Markdown/PDF). SystemEvent rows log everything.
+
+1.3 Storage
+  ingestion.db : documents(id,title,content,source_type,file_type,created_at,
+                content_hash) + chunks(id,document_id,text,ordinal,start_char,
+                end_char) + platform tables (events, metrics).
+  platform.db  : agent_runs(id,agent_name,input_context,source_chunk_ids,
+                prompt_ref,model,started_at,finished_at,status,error) +
+                generated_outputs(...) + reviews(append-only) + system_events.
+  .chroma/     : deterministic ONNX HashingEmbeddingFunction vector store.
+
+1.4 Dependency / invocation graph (what a FastAPI layer can call TODAY)
+  HTTP layer → src/agents, src/study, src/ingestion, src/retrieval,
+  src/validation (orchestrator/review_service/history/store), src/llm_gateway.
+  Everything is constructible without a network service: agents take
+  `client: Any | None`; tests/conftest.py proves the seams are injectable.
+  `src/validation.integration.Pipeline.ingest_and_run` already chains
+  ingestion → indexing → orchestration in one call.
+
+1.5 The contract reality gap (frontend → backend)
+  The frontend was built for a multi-user Supabase-backed FastAPI (auth, roles,
+  workspaces, per-doc status/pages/size/notes/tags, generation versions, chat
+  history, review queue/audit, notifications, analytics, search, model/agent
+  catalogues). The existing backend is a single-user, workspace-free CLI study
+  platform. None of the Supabase concepts exist in backend code. Every frontend
+  endpoint therefore needs (a) an HTTP router that does not exist and (b) an
+  adapter that translates contract JSON ↔ backend Pydantic/DB models. Sections 2
+  and 3 enumerate exactly which of those are "reuse existing", "wrap existing",
+  and "must be built new".
+
+================================================================================
+2. ENDPOINT MAPPING
+================================================================================
+46 frontend endpoints. Status legend:
+  [REUSE]   endpoint satisfied by existing backend + thin adapter/router only.
+  [WRAP]    backend has the core capability; contract needs a substantial
+            adapter, new read model, or new persistence mapping.
+  [BUILD]   no backend support exists; service/facade + schema + tables are new.
+  ✘  missing  ·  ◐ partial  ·  ✔ present
+
+2.1 AUTH — 4 endpoints                        status: ✘ entirely missing
+  There is no auth anywhere in the backend: no users, no sessions, no tokens,
+  no passwords, no roles, no JWT, no middleware. `src/llm_gateway.py` has no
+  auth; `PlatformStore` has no user concept.
+    POST /auth/login      [BUILD] existing: none. needed: users table, password
+                          hashing, token issuance (supabase session shape).
+    POST /auth/logout     [BUILD] existing: none.
+    GET  /auth/me         [BUILD] existing: none.
+    POST /auth/refresh    [BUILD] existing: none.
+  Needed: auth facade, users/profiles/user_roles tables, token store, dependency
+  injection (current-user resolver for every other router). No backend code is
+  reusable.
+
+2.2 WORKSPACES — 4 endpoints                  status: ✘ missing
+  Backend has no workspace concept; GenerationOutput/AgentRun/Document carry no
+  workspace_id.
+    GET   /workspaces             [BUILD] existing: none.
+    POST  /workspaces             [BUILD] existing: none (409 duplicate-slug
+                                  needs a slug column).
+    GET   /workspaces/{id}        [BUILD] existing: none. Response aggregates
+                                  docs/questions/flashcards/chats/history/
+                                  weakTopics/audit — an aggregate read across
+                                  every domain store.
+    PATCH /workspaces/{id}        [BUILD] existing: none.
+  Needed: workspaces table, workspace-document/output/run/chat FK columns,
+  membership/roles, workspace read-model facade. The single existing
+  `get_all_documents()` (src/ingestion/store.py:150) and `list_outputs()`
+  (src/validation/store.py:339) return all rows, not per-workspace rows.
+
+2.3 DOCUMENTS & UPLOAD PIPELINE — 9 endpoints  status: ◐ partial
+  Backend ingestion is the STRONGEST area: parser (txt/pdf/docx/markdown,
+  src/ingestion/parser.py), Cleaner, Chunker (src/ingestion/chunker.py),
+  Loader.load_file/load_text (src/ingestion/loader.py), Store.add_document/
+  add_chunks/delete (src/ingestion/store.py), Library.list/get/delete (src/
+  ingestion/library.py), OCR + vision OCR fallback (ocr.py, vision_ocr.py),
+  dedupe by content_hash, and integration.index_document (src/validation/
+  integration.py:92) which persists + embeds into Chroma.
+    POST /upload                          [WRAP] reuse Loader.load_file + Store.
+    POST /documents/{id}/parse            [WRAP] reuse Parser.parse.
+    POST /documents/{id}/chunk            [WRAP] reuse Chunker.chunk.
+    POST /documents/{id}/embed            [WRAP] reuse integration.index_document
+                                           (embedding side) or ChromaIndex add.
+    GET  /documents?workspace_id=         [WRAP] reuse Library.list_documents
+                                           (src/ingestion/library.py:58) + filter.
+    GET  /documents/{id}/chunks           [WRAP] reuse Store.get_chunks_by_document_id
+                                           (src/ingestion/store.py:129).
+    PATCH /documents/{id}/notes           [BUILD] no notes column anywhere.
+    DELETE /documents/{id}                [WRAP] reuse Store.delete_document
+                                           (src/ingestion/store.py:249) + Library.
+                                           CAUTION: Library.delete vs Store.delete
+                                           are separate code paths; one deletes
+                                           Chroma rows, the other SQLite — must
+                                           confirm both are called.
+  Missing contract fields on the backend Document (src/ingestion/schema.py):
+  workspace_id, kind/file_type mapping to UI "PDF", size (derivable), pages
+  (derivable only via PDF; not stored), status ("Ready"), tags, notes. Chunk
+  lacks page/tokens/section/tags. All need either new columns or adapter
+  defaults. 413/422/500 error mapping also new.
+
+2.4 GENERATION — 5 endpoints                 status: ◐ partial
+  Backend agents exist for all five kinds:
+    QuestionBankAgent.generate (src/agents/question_bank_agent.py:174) — but NO
+      generate_reviewable/generate_batch, no grounding verification exposed.
+    TestHelpAgent.generate (src/agents/test_help_agent.py:159).
+    FlashcardAgent.generate + extract_topics (src/study/flashcard_agent.py:365,
+      154) with _wrap_for_review_gate; ReviewGateFlashcardSet in schemas.py.
+    StudyPlanAgent.generate (src/study/study_plan_agent.py:188).
+    RevisionAgent.generate (src/study/revision_agent.py:178).
+    Orchestrator.run_agent/run_agents (src/validation/orchestrator.py:285/368)
+      produces AgentRun + GeneratedOutput, persists to PlatformStore, applies
+      guardrails, and sets OutputStatus.pending — the exact lifecycle the
+      contract's "review":"Pending" wants. Pipeline.ingest_and_run
+      (src/validation/integration.py:310) chains doc → retrieve → run.
+    POST /generate/questions     [WRAP] QuestionBankAgent + Orchestrator.
+    POST /generate/test-help     [WRAP] TestHelpAgent + Orchestrator.
+    POST /generate/flashcards    [WRAP] FlashcardAgent (review-gate path).
+    POST /generate/study-plan    [WRAP] StudyPlanAgent (review-gate path).
+    POST /generate/revision      [WRAP] RevisionAgent (review-gate path).
+  Missing contract fields: generationId (new id generator / reuse review-gate
+  run ids), kind tag, grounding_score & quality_score (backend stores per-item
+  quality; no top-level scores), per-question `review`/`estMinutes`/`citations`
+  (citations exist as ContentReference in guardrails, but are not serialized
+  into the question payload), and the `{data:…}`-style envelope the client
+  accepts. Question/test-help currently produce plain QuestionBankItem with no
+  review-gate wiring — the adapter must wrap them like the study lane does.
+
+2.5 CHAT — 4 endpoints                       status: ✘ chat storage missing
+  MentorAgent.generate/generate_reviewable/generate_batch (src/agents/mentor_
+  agent.py:168/242/286) and ConceptAgent (src/agents/concept_agent.py:173/247/
+  291) produce grounded single answers. There is NO chat history: no chats or
+  chat_messages table, no conversation state, no title persistence, no message
+  ids/timestamps, no `chatId`.
+    POST /chats            [BUILD] new chat record + title/model.
+    GET  /chats?workspace_id= [BUILD] new read model with nested messages.
+    POST /mentor/chat      [WRAP] MentorAgent.generate_reviewable + citations
+                            adapter; needs chat row write + message append.
+    POST /concept/chat     [WRAP] ConceptAgent.generate_reviewable + same.
+  Needed: chats/chat_messages tables + chat facade. The chat agents already
+  return references/citations (ContentReference) which the contract's
+  citations[] expects — reuse, don't rebuild.
+
+2.6 REVIEW — 7 endpoints                     status: ◐ partial
+  Backend ReviewService (src/validation/review_service.py:94) has the exact
+  verbs: list_pending (:109), list_outputs (:120), get (:146), history (:163),
+  approve (:178), reject (:197), comment (:214), edit (:233). Review rows are
+  append-only; output rows are rewritten. OutputStatus (src/validation/review_
+  schema.py) = pending → edited → approved|rejected, terminal — maps cleanly to
+  frontend "Pending|Needs Edit|Approved|Rejected". assert_exportable (:288) is
+  the export gate.
+    GET /review?workspace_id=   [WRAP] ReviewService.list_pending + per-workspace
+                                  filter. NOTE: no workspace scoping today; the
+                                  store has no user/workspace dimension.
+    POST /review/approve        [WRAP] ReviewService.approve.
+    POST /review/reject         [WRAP] ReviewService.reject (terminal; matches
+                                  frontend "Rejected").
+    POST /review/needs-edit     [WRAP] ReviewService.edit (edit → edited → needs
+                                  manual approval). Semantics map; label/comment
+                                  passthrough needed.
+    POST /review/flag           [BUILD] no auto-flag rule wired to a review
+                                  action; grounding_rule exists (src/validation/
+                                  grounding_rule.py) but nothing calls
+                                  ReviewService with a flag.
+    POST /review/comment        [WRAP] ReviewService.comment.
+    GET /review/audit?workspace_id= [WRAP] ReviewService.history per output +
+                                  list_events; needs an itemized audit read
+                                  model (id,itemLabel,action,actor,at,comment).
+  Missing: reviewer identity (currently `reviewer` is a free string), workspace
+  scoping, a "queue" read model (list_pending returns outputs, not ids), and
+  `flag` as a first-class action.
+
+2.7 HISTORY — 2 endpoints                    status: ◐ partial
+  AgentRun + HistoryService.list_runs/run_detail/output_timeline/list_events
+  (src/validation/history.py:96/117/135/201) persist and can describe every
+  generation; Review rows + SystemEvent rows give the audit trail.
+    GET  /history?workspace_id=  [WRAP] HistoryService.list_runs + list_outputs
+                                  → contract rows {id,date,agent,doc,status,
+                                  quality,review,items,chatId}. Quality/review/
+                                  items are derivable per output; chatId is not
+                                  tracked.
+    POST /history                [WRAP] the row is a display record; backend has
+                                  no such table. Either add a history table or
+                                  answer with the run already persisted.
+  Missing: workspace_id on AgentRun, chatId linkage, a `history` read-model that
+  joins runs→outputs→reviews (history.output_timeline is per-output, not a flat
+  list).
+
+2.8 ANALYTICS — 1 endpoint                   status: ✘ missing
+  No aggregation layer. Closest existing assets: evaluation.py rates (approval_
+  rate, rejection_rate, groundedness_rate — src/validation/evaluation.py:43-117)
+  and OutputStatus/Review history, which could feed bloom/type distributions and
+  quality series. No topic-coverage, no week bucketing, no activity series.
+    GET /analytics?workspace_id=&range=30d   [BUILD] new analytics facade that
+    aggregates existing outputs/reviews/quality fields; bloom/type/topic fields
+    must first be persisted (they exist per-item in question payloads but are
+    not queryable columns).
+
+2.9 SEARCH — 1 endpoint                      status: ✘ missing
+  Backend has NO full-text/vector search over titles + content + chunk text.
+  building blocks exist: ChromaIndex + HashingEmbeddingFunction (retrieval/),
+  IngestionStore.get_all_documents, PlatformStore.list_outputs. But no `kinds`
+  filtering (documents|questions|flashcards) across stores.
+    GET /search?q=&workspace_id=&kinds=&limit=  [BUILD] new search facade
+    (naive: SQLite LIKE + Chroma similarity; results merged by kind).
+
+2.10 MODEL CATALOGUE — 1 endpoint            status: ✘ missing
+  Only src/llm_gateway.py:61 default_model() + core/models.py constants exist.
+  No registry of {id,name,vendor,desc,available}.
+    GET /models   [BUILD] new registry table/file; mark available per env.
+
+2.11 CATALOGUE / AGENTS / PIPELINE / NOTIFICATIONS — 8 endpoints  status: ✘ missing
+  Consumer-defined in Sensei-AI/src/api/paths.ts:87-96; NOT in
+  FASTAPI_INTEGRATION.md.
+    GET /agents                      [BUILD] AgentRegistry.list_agents (src/agents/
+                                      registry.py:123) gives names only; needs
+                                      {slug,name,desc,capabilities} metadata.
+    GET /agents/{slug}               [BUILD] AgentRegistry.get_agent (:67) + meta.
+    GET /pipeline/steps              [BUILD] no pipeline-step model; ingest→index→
+                                      generate exists as Pipeline.ingest_and_run.
+    GET /pipeline/stages             [BUILD] none (RAG stage labels are frontend
+                                      mock studio-data).
+    GET /notifications               [BUILD] no notifications table.
+    PATCH /notifications/{id}/read   [BUILD] no notifications table.
+    POST /notifications/read-all     [BUILD] no notifications table.
+    GET /catalogue                   [BUILD] demo docs/history/flashcards; closest
+                                      is ingestion demo_data + demo datasets.
+
+2.12 SUMMARY TABLE
+  Reuse/wrap with confidence: documents core, generation, review verbs,
+  chat agents, history runs.  Must build new: auth, workspaces, notes, flag,
+  chats list/create, analytics, search, models, agents/pipeline/notifications
+  catalogues, workspace scoping across every store.
+
+================================================================================
+3. MISSING COMPONENTS (what Phase 8 implementation must add)
+================================================================================
+
+3.1 Routers (FastAPI, greenfield — none exist)
+  auth, workspaces, documents(+upload), generation, chat, review, history,
+  analytics, search, models, catalogue. Plus app factory, lifespan,
+  exception handlers (error envelope `{error:{code,message,details}}`), CORS,
+  middleware. NOTE: docs are explicit — do not hand-wave; the contract's error
+  codes (400/401/403/404/409/413/422/429/500) must be produced by handlers.
+
+3.2 Schemas (Pydantic request/response)
+  Per contract types in Sensei-AI/src/types/api/: auth.Session/User; workspace
+  WorkspaceData + nested aggregates; document WsDoc (status/pages/size/notes/
+  tags/kind) + WsChunk (page/tokens/section/tags); generation GeneratedQuestion
+  (prompt/type/difficulty/options/answer/rationale/bloom/quality/grounded/
+  estMinutes/review/citations) + WsFlashcard + StudyPlan + Revision + generation
+  envelope (generationId/kind/grounding_score/quality_score); chat WsChat/
+  WsChatMessage; review item/audit; history row; analytics distributions;
+  search results; models; agents/pipeline/notifications. Adapters map backend
+  QuestionBankItem/FlashcardSet/StudyPlan/RevisionSession/GeneratedOutput →
+  these shapes (backend ↔ frontend field names differ materially).
+
+3.3 Service facades (thin, orchestrating existing domain code)
+  api facade; ingest facade (upload→parse→chunk→embed reuse of Loader/Chunker/
+  index_document); review facade (ReviewService + queue/audit read model + flag);
+  chat facade (chat rows + MentorAgent/ConceptAgent + citations); progress
+  facade (weak-topics derivation from review/rejection data); export facade
+  (assert_exportable + exporters); history/analytics/search/model facades.
+
+3.4 Persistence (new tables + new columns)
+  users, profiles, user_roles, workspaces, workspace_members; documents/
+  chunks/notes/page/size/status columns (or a parallel documents metadata
+  table); generations/generation_versions; chats/chat_messages; notifications;
+  history rows; review flag action. workspace_id FK added to agent_runs,
+  generated_outputs, documents, chats. Migration tooling: none exists (SQLite
+  `_init_db` is CREATE-TABLE-only; no ALTER/versioning) — a lightweight
+  migration runner is required.
+
+3.5 Dependencies / DI / config
+  FastAPI, uvicorn, multipart, python-multipart, pyjwt (or supabase), plus
+  dependency-injection for current-user + workspace-access checks on every
+  router (role rules in Sensei-AI/src/constants ROLE_PERMISSIONS). env-based
+  config already exists in core/config.py.
+
+3.6 Backend services that must change shape (adapters, NOT rewrites)
+  - QuestionBankAgent/TestHelpAgent need the same review-gate + grounding
+    treatment the study lane already has (MentorAgent.generate_reviewable is
+    the template).
+  - PlatformStore needs workspace filters on list_agent_runs/list_outputs and
+    list_pending (they exist but take no workspace arg).
+  - Reviewer identity: `reviewer` is a free string today; wire the auth
+    user id/name through ReviewService.
+
+================================================================================
+4. RISKS
+================================================================================
+
+4.1 Circular import src.validation ↔ src.retrieval. Validation's
+  grounding_rule/guardrails import retrieval types; integration imports
+  ingestion + retrieval. Any new facade that imports validation AND retrieval
+  directly can recreate the cycle — keep the existing lazy-import pattern
+  (src/validation/__init__.py __getattr__). Constraint: do not reorder imports
+  blindly.
+
+4.2 Duplicated logic. Library.delete_document vs Store.delete_document are two
+  code paths; ingestion.db vs platform.db are two databases; there is no single
+  document lifecycle. The upload/delete adapter must decide which store owns
+  "the document" and keep Chroma in sync or the two diverge silently.
+
+4.3 Review-gate is terminal. OutputStatus.rejected is terminal — the contract
+  has no "reuse/re-generate" endpoint, so a rejected question cannot return to
+  the queue without a new generationId. The frontend's Needs Edit ↔ edited
+  mapping must not accidentally allow reject→pending transitions
+  (is_legal_transition review_schema.py:94).
+
+4.4 Retrieval/embedding semantics. Chroma uses a deterministic hashing embedder
+  (no semantic similarity). Search + RAG retrieval results are therefore exact/
+  hash-overlap based; contract "grounding_score" and search relevance may read
+  weaker than a real LLM-embedding product. Do not misrepresent these scores as
+  semantic.
+
+4.5 Auth is not a bolt-on. Roles gate review/approve and owner/admin gates on
+  PATCH/DELETE (BACKEND_CONTRACT.md). Shipping workspaces/documents/review
+  before auth leaves every endpoint open; the auth milestone must land first or
+  everything else is built against a phantom.
+
+4.6 Frontend/client contract looseness. Client accepts bare JSON or
+  {data:…}; pagination and exact field presence vary across contract files
+  (e.g. GET /chats returns nested messages, GET /workspaces returns flat list).
+  Adapters must target the exact contract types, not "close enough" shapes.
+
+4.7 Single-file SQLite concurrency + long generations. One platform.db writer
+  + blocking LLM calls (90s client timeout) means upload/generate handlers need
+  background task handling (202/timeout semantics) or the client times out
+  while a run is in flight. No worker/queue exists today.
+
+4.8 Study lane wiring. Study agents' review-gate lives inside each agent's
+  _wrap_for_review_gate; the question/test-help agents do not wrap at all.
+  Orchestrator run_agents bypasses those private wrappers for some lanes — the
+  facade must reuse the exact path that sets OutputStatus.pending or review
+  queue stays empty.
+
+================================================================================
+5. RECOMMENDED IMPLEMENTATION ORDER (milestones)
+================================================================================
+Each milestone is independently shippable and testable against the frontend's
+mock-free mode. Frontend flip (isMockMode=false) is the acceptance check.
+
+  M0  Scaffold: FastAPI app, config, error envelope, CORS, migration runner,
+      DI skeleton, /health. Zero domain changes.
+  M1  Auth: users/profiles/roles, login/logout/me/refresh, bearer DI, role
+      guard. Unlocks everything (4.5).
+  M2  Workspaces: tables, CRUD, slug conflict (409), membership, workspace
+      aggregate GET (docs/questions/flashcards/chats/history/weakTopics/audit).
+  M3  Documents/upload: upload/parse/chunk/embed/list/chunks/delete + notes,
+      reusing Loader/Chunker/index_document; workspace + metadata columns;
+      Chroma/SQLite sync (4.2).
+  M4  Retrieval: ensure Chroma index is built per workspace; grounding +
+      citation serialization into generation payloads (reuse ContentReference).
+  M5  Generation: wrap QuestionBank/TestHelp into the review-gate path like the
+      study lane (4.8); generationId/kind/scores envelope; per-item review/
+      estMinutes/citations.
+  M6  Chat: chats/chat_messages tables; POST/GET /chats; mentor/concept message
+      handlers around existing agents + citations.
+  M7  Review: approve/reject/needs-edit/comment via ReviewService, + flag and
+      queue/audit read models, reviewer identity from auth, workspace filters.
+  M8  Exports: assert_exportable + existing exporters behind an export facade
+      (not in the contract's endpoint list but required by review-gate flow).
+  M9  History/analytics: history rows from AgentRun/Output/Review; analytics
+      facade over persisted bloom/type/quality/topic data; search facade
+      (documents/questions/flashcards kinds).
+  M10 Catalogue/models/notifications: agents metadata, pipeline steps/stages,
+      notifications CRUD, /catalogue demo, /models registry.
+  M11 Frontend flip + contract conformance pass per BACKEND_CONTRACT.md rule 4
+      (paths → contracts → api → service order), then full integration tests.
+
+Cross-cutting: tests at every milestone using tests/conftest.py LLM doubles;
+keep the lazy-import constraint (4.1); never reorder src/validation exports.
+
+================================================================================
+END OF ANALYSIS — STOP
+================================================================================
+Awaiting approval before any Phase 8 implementation begins. Per the phase
+rules: no production code, no routers, no FastAPI, no edits to services were
+made while producing this document — it is read-only analysis only.
