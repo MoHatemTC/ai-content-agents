@@ -323,3 +323,86 @@ def test_the_default_index_is_in_memory_during_tests() -> None:
     from src.retrieval.config import RetrievalConfig
 
     assert RetrievalConfig().persist_directory is None
+
+
+# --------------------------------------------------------------------------- #
+# A persisted index belongs to the embedder that wrote it
+# --------------------------------------------------------------------------- #
+
+
+def test_a_wrapped_embedder_swap_is_caught(tmp_path) -> None:
+    """The real failure: the caching wrapper hides the swap from Chroma.
+
+    Chroma compares embedders by name, and CachingEmbeddingFunction reports
+    "caching-embedding-function" whether it holds the offline embedder or the
+    ONNX one. So toggling MOCK_MODE produced no conflict at open time and
+    surfaced later, from inside a query, as "Collection expecting embedding with
+    dimension of 384, got 256". Two models sharing a dimension would have
+    produced no error at all.
+    """
+    from src.retrieval.index import IndexEmbedderMismatchError
+    from src.retrieval.performance import CachingEmbeddingFunction
+
+    config = RetrievalConfig(
+        persist_directory=str(tmp_path / "chroma"),
+        collection_name=f"wrapped-{uuid4().hex[:8]}",
+    )
+    written = ChunkIndex(
+        config=config,
+        embedding_function=CachingEmbeddingFunction(HashingEmbeddingFunction(dim=256)),
+    )
+    index_chunks(written, DOC, [_IngestionChunk(0, PASSAGES[0])])
+    del written
+
+    class _OtherModel(HashingEmbeddingFunction):
+        @staticmethod
+        def name() -> str:
+            return "some-other-model"
+
+    with pytest.raises(IndexEmbedderMismatchError) as excinfo:
+        ChunkIndex(
+            config=config,
+            embedding_function=CachingEmbeddingFunction(_OtherModel(dim=384)),
+        )
+
+    message = str(excinfo.value)
+    assert "hashing-bag-of-words" in message, "does not name the embedder that wrote it"
+    assert "some-other-model" in message, "does not name the embedder in use"
+    assert "re-ingest" in message, "does not say how to fix it"
+
+
+def test_an_unwrapped_embedder_swap_also_explains_the_fix(tmp_path) -> None:
+    """Chroma catches this one itself; it just does not say what to do.
+
+    Its message names both embedders and stops there, so the translation exists
+    only to append the remedy.
+    """
+    from src.retrieval.index import IndexEmbedderMismatchError
+
+    config = RetrievalConfig(
+        persist_directory=str(tmp_path / "chroma"),
+        collection_name=f"plain-{uuid4().hex[:8]}",
+    )
+    ChunkIndex(config=config, embedding_function=HashingEmbeddingFunction())
+
+    class _OtherModel(HashingEmbeddingFunction):
+        @staticmethod
+        def name() -> str:
+            return "some-other-model"
+
+    with pytest.raises(IndexEmbedderMismatchError, match="re-ingest"):
+        ChunkIndex(config=config, embedding_function=_OtherModel())
+
+
+def test_the_matching_embedder_still_reopens(tmp_path) -> None:
+    """The check must not cost us the persistence win from #27."""
+    config = RetrievalConfig(
+        persist_directory=str(tmp_path / "chroma"),
+        collection_name=f"match-{uuid4().hex[:8]}",
+    )
+    first = ChunkIndex(config=config, embedding_function=HashingEmbeddingFunction())
+    index_chunks(first, DOC, [_IngestionChunk(i, t) for i, t in enumerate(PASSAGES)])
+    del first
+
+    reopened = ChunkIndex(config=config, embedding_function=HashingEmbeddingFunction())
+    assert len(reopened) == len(PASSAGES)

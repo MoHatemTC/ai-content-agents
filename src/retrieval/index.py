@@ -199,6 +199,42 @@ def _default_embedding_function() -> EmbeddingFunction[Documents] | None:
     return CachingEmbeddingFunction(DefaultEmbeddingFunction())
 
 
+class IndexEmbedderMismatchError(RuntimeError):
+    """A persisted index was written by a different embedder than the current one.
+
+    Vectors are only comparable to others from the same model. Opening an index
+    with the wrong embedder produces either a dimension error from deep inside
+    Chroma or, when the dimensions happen to agree, silently meaningless
+    rankings — which is worse, because nothing looks broken.
+    """
+
+
+def _embedder_fingerprint(embedding_function: EmbeddingFunction[Documents] | None) -> str:
+    """Identify the model behind an embedder, seeing through the caching wrapper.
+
+    ``CachingEmbeddingFunction.name()`` is ``"caching-embedding-function"``
+    whichever model it wraps, so it cannot tell the offline embedder from the
+    ONNX one. Its config carries ``inner_name``, which can.
+
+    Args:
+        embedding_function: The embedder about to be used, or ``None`` for
+            Chroma's built-in default.
+
+    Returns:
+        A short stable identifier for the underlying model.
+    """
+    if embedding_function is None:
+        return "chroma-default"
+
+    try:
+        config = embedding_function.get_config()
+    except Exception:  # noqa: BLE001 - a custom embedder need not implement it
+        config = {}
+
+    inner = config.get("inner_name") if isinstance(config, dict) else None
+    return str(inner or embedding_function.name())
+
+
 class ChunkIndex:
     """Incrementally updated index of ingested chunks, backed by Chroma.
 
@@ -233,14 +269,71 @@ class ChunkIndex:
             )
         else:
             client = chromadb.EphemeralClient(settings=settings)
-        self._collection = client.get_or_create_collection(
-            name=self._config.collection_name,
-            # Chroma's EmbeddingFunction generic is invariant, so a text-only
-            # embedder needs a cast to the Documents|Images union it accepts.
-            embedding_function=cast(
-                "EmbeddingFunction[Embeddable] | None", embedding_function
-            ),
-            metadata={"hnsw:space": "cosine"},
+        fingerprint = _embedder_fingerprint(embedding_function)
+        try:
+            self._collection = client.get_or_create_collection(
+                name=self._config.collection_name,
+                # Chroma's EmbeddingFunction generic is invariant, so a
+                # text-only embedder needs a cast to the Documents|Images union.
+                embedding_function=cast(
+                    "EmbeddingFunction[Embeddable] | None", embedding_function
+                ),
+                metadata={"hnsw:space": "cosine", "embedder": fingerprint},
+            )
+        except ValueError as exc:
+            # Chroma catches this itself when the embedders differ by name, and
+            # says so clearly enough - it just does not say what to do about it.
+            if "mbedding function" not in str(exc):
+                raise
+            raise IndexEmbedderMismatchError(
+                f"{exc}\n\n{self._rebuild_hint()}"
+            ) from exc
+
+        self._verify_embedder(fingerprint)
+
+    def _rebuild_hint(self) -> str:
+        """The remedy, phrased for wherever the index actually lives."""
+        location = self._config.persist_directory or "the in-memory index"
+        return (
+            f"Delete {location} and re-ingest to rebuild it with the current "
+            "embedder. It is not rebuilt automatically because re-embedding a "
+            "large document takes minutes, and that is not something to discard "
+            "without being asked."
+        )
+
+    def _verify_embedder(self, fingerprint: str) -> None:
+        """Refuse an index whose vectors came from a different model.
+
+        Chroma performs this check itself when the embedders differ by name, but
+        it cannot see through :class:`CachingEmbeddingFunction`: the wrapper
+        reports ``"caching-embedding-function"`` whether it holds the offline
+        embedder or the ONNX one, so Chroma sees no conflict and the mismatch
+        surfaces later as ``Collection expecting embedding with dimension of
+        384, got 256`` from inside a query. Worse, two models that happen to
+        share a dimension would produce no error at all - just meaningless
+        rankings.
+
+        The fingerprint recorded here is of the *inner* model, which does
+        distinguish them.
+
+        A collection created before this check has no fingerprint recorded, and
+        that is allowed: an existing index must survive an upgrade rather than
+        be refused for lacking a field it could not have had.
+
+        Args:
+            fingerprint: Identifier of the embedder about to be used.
+
+        Raises:
+            IndexEmbedderMismatchError: If the index records a different one.
+        """
+        recorded = (self._collection.metadata or {}).get("embedder")
+        if not recorded or recorded == fingerprint:
+            return
+
+        raise IndexEmbedderMismatchError(
+            f"This index was built with the {recorded!r} embedder, but "
+            f"{fingerprint!r} is in use now. Their vectors are not comparable, "
+            f"so retrieval would be meaningless.\n\n{self._rebuild_hint()}"
         )
 
     def __len__(self) -> int:
