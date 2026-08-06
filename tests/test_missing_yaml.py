@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from src.agents.mentor_agent import MentorAgent
+from tests.conftest import CompliantAgentsClient
 
 
 def test_missing_yaml():
@@ -18,7 +19,7 @@ def test_missing_yaml():
 
     try:
         with pytest.raises(FileNotFoundError):
-            MentorAgent(mock_mode=True)
+            MentorAgent(client=CompliantAgentsClient())
 
     finally:
         backup.rename(yaml_path)

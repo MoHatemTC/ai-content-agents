@@ -5,6 +5,7 @@ import pytest
 from src.agents.concept_agent import ConceptAgent
 from src.agents.mentor_agent import MentorAgent
 from src.validation.schemas import ConceptOutput, ContentReference, MentorOutput
+from tests.conftest import CompliantAgentsClient
 
 
 def _mentor_output(content: str) -> MentorOutput:
@@ -40,7 +41,7 @@ def test_generate_batch_all_succeed_and_preserve_order(
     output_factory,
 ):
     """Every input is generated once and successes retain input order."""
-    agent = agent_class(mock_mode=True)
+    agent = agent_class(client=CompliantAgentsClient())
     items = [{"content": "first"}, {"content": "second"}, {"content": "third"}]
     calls: list[dict[str, str]] = []
 
@@ -78,7 +79,7 @@ def test_generate_batch_continues_after_partial_failure(
     output_factory,
 ):
     """A failed item is recorded while later inputs still run."""
-    agent = agent_class(mock_mode=True)
+    agent = agent_class(client=CompliantAgentsClient())
     items = [{"content": "first"}, {"content": "bad"}, {"content": "third"}]
     calls: list[dict[str, str]] = []
 
@@ -108,7 +109,7 @@ def test_generate_batch_continues_after_partial_failure(
 @pytest.mark.parametrize("agent_class", [MentorAgent, ConceptAgent])
 def test_generate_batch_handles_empty_input(agent_class):
     """An empty batch returns an empty result without calling generation."""
-    agent = agent_class(mock_mode=True)
+    agent = agent_class(client=CompliantAgentsClient())
     result = agent.generate_batch([])
 
     assert result.successful_outputs == []

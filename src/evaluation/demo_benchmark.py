@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 from src.agents.concept_agent import ConceptAgent
 from src.agents.mentor_agent import MentorAgent
@@ -28,11 +28,20 @@ def load_demo_inputs(dataset_path: Path = DEFAULT_DATASET_PATH) -> list[Benchmar
 
 def run_demo_benchmark(
     inputs: list[BenchmarkInput],
+    *,
+    client: Any | None = None,
 ) -> dict[str, BenchmarkReport]:
-    """Run the loaded inputs through both agents in offline mock mode."""
+    """Run the loaded inputs through both agents.
+
+    Args:
+        inputs: Benchmark rows.
+        client: An OpenAI-compatible client shared by both agents. Defaults to
+            one built from the configured gateway; tests inject a double. This
+            used to run in mock mode, which meant it benchmarked the mock.
+    """
     return {
-        "mentor": run_benchmark(MentorAgent(mock_mode=True), inputs),
-        "concept": run_benchmark(ConceptAgent(mock_mode=True), inputs),
+        "mentor": run_benchmark(MentorAgent(client=client), inputs),
+        "concept": run_benchmark(ConceptAgent(client=client), inputs),
     }
 
 

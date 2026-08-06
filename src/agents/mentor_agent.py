@@ -9,13 +9,14 @@ and validates the structured response using the MentorOutput schema.
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Optional
 
 import yaml
 from dotenv import load_dotenv
+
+from src.llm_gateway import build_client, default_model
 from pydantic import ValidationError
 
 from src.models.batch import BatchGenerationFailure, BatchGenerationResult
@@ -40,44 +41,11 @@ class MentorAgent:
     - Validate output using Pydantic
     """
 
-    def __init__(self, mock_mode: Optional[bool] = None) -> None:
-        """Initialize the Mentor Agent."""
 
-        if mock_mode is None:
-            self.mock_mode = (
-                os.getenv("MOCK_MODE", "true").lower() == "true"
-            )
-        else:
-            self.mock_mode = mock_mode
-
+    def __init__(self, *, client: Any | None = None, model: str | None = None) -> None:
         self.prompt = self._load_prompt()
-
-        if not self.mock_mode:
-            try:
-                from openai import OpenAI
-            except ModuleNotFoundError as e:
-                raise ModuleNotFoundError(
-                    "openai is required when MOCK_MODE=false. Install it or enable mock mode."
-                ) from e
-
-            api_key = os.getenv("LITELLM_API_KEY")
-            base_url = os.getenv("LITELLM_BASE_URL")
-            self.model = os.getenv("DEFAULT_MODEL", "FW-Kimi-K2.6")
-
-            if not api_key:
-                raise ValueError("Missing LITELLM_API_KEY environment variable.")
-
-            if not base_url:
-                raise ValueError("Missing LITELLM_BASE_URL environment variable.")
-
-            self.client = OpenAI(
-                api_key=api_key,
-                base_url=base_url,
-                timeout=60.0,
-            )
-        else:
-            self.client = None
-            self.model = None
+        self.client = client if client is not None else build_client()
+        self.model = model or default_model()
 
     def _load_prompt(self) -> dict[str, Any]:
         """
@@ -171,11 +139,6 @@ class MentorAgent:
             Raw LLM response.
         """
 
-        if self.client is None:
-            raise RuntimeError(
-                "LLM client is not initialized because mock mode is enabled."
-            )
-
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
@@ -238,60 +201,7 @@ class MentorAgent:
             difficulty=difficulty.value,
         )
 
-        if self.mock_mode:
-            chunk_id = (
-                context.chunk_ids[0]
-                if context is not None and context.chunk_ids
-                else "chunk_001"
-            )
-            chunk_text = (
-                context.chunks[0].chunk.text
-                if context is not None and context.chunks
-                else "Relevant content excerpt."
-            )
-            if context is not None:
-                explanation = chunk_text.strip()
-                key_points = [chunk_text.strip()]
-                next_steps = [chunk_text.strip()]
-            elif difficulty is DifficultyLevel.BEGINNER:
-                explanation = "Python has two loop types: for and while."
-                key_points = ["for loops", "while loops"]
-                next_steps = ["Practice loops."]
-            elif difficulty is DifficultyLevel.INTERMEDIATE:
-                explanation = (
-                    "Python supports for and while loops. Use for loops to iterate over a "
-                    "sequence and while loops to repeat until a condition changes."
-                )
-                key_points = ["for loops iterate over sequences", "while loops repeat on a condition"]
-                next_steps = ["Practice loops."]
-            else:
-                explanation = (
-                    "Python supports for and while loops. A for loop iterates over an iterable, "
-                    "while a while loop repeats until its condition becomes false. Choosing between them "
-                    "depends on whether you have a natural iterable or an explicit condition-driven process."
-                )
-                key_points = [
-                    "for loops iterate over iterables",
-                    "while loops repeat on a condition",
-                    "choose the loop type based on the control structure you need",
-                ]
-                next_steps = ["Practice loops."]
-            raw_response = json.dumps(
-                {
-                    "explanation": explanation,
-                    "key_points": key_points,
-                    "next_steps": next_steps,
-                    "references": [
-                        {
-                            "segment_id": chunk_id,
-                            "text": chunk_text[:240],
-                        }
-                    ],
-                    "requires_human_review": True,
-                }
-            )
-        else:
-            raw_response = self._call_llm(prompt)
+        raw_response = self._call_llm(prompt)
 
         try:
             response_json = json.loads(raw_response)

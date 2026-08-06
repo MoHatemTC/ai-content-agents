@@ -48,7 +48,18 @@ def _no_live_calls(monkeypatch: pytest.MonkeyPatch):
 
     Without it these tests make real API calls - they did, briefly, and the
     suite went from 27 s to 128 s.
+
+    The credentials are set because the pages check whether a gateway is
+    reachable before offering to generate at all, and stop with a message when
+    it is not. These tests are about a *configured* deployment - one with a
+    fake gateway behind it - so they have to look like one. Whether the pages
+    degrade correctly when nothing is configured is a separate question, and
+    ``test_page_loads`` covers it: the whole suite runs with no credentials in
+    CI, and those pages must still load.
     """
+    monkeypatch.setenv("LITELLM_API_KEY", "sk-test-not-a-real-key")
+    monkeypatch.setenv("LITELLM_BASE_URL", "https://gateway.invalid/v1")
+
     from src.study.flashcard_agent import FlashcardAgent
     from src.study.revision_agent import RevisionAgent
     from src.study.study_plan_agent import StudyPlanAgent

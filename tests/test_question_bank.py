@@ -1,6 +1,7 @@
 
 from src.agents.question_bank_agent import QuestionBankAgent
 from src.validation.schemas import QuestionBankOutput
+from tests.conftest import CompliantAgentsClient
 
 
 def test_question_bank_generation():
@@ -16,7 +17,7 @@ def test_question_bank_generation():
 # Use this while developing or when the
 # API is unavailable.
 # ==========================================
-    agent = QuestionBankAgent(mock_mode=True)
+    agent = QuestionBankAgent(client=CompliantAgentsClient())
 
 # ==========================================
 # REAL API MODE

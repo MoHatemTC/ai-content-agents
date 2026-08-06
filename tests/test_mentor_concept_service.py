@@ -9,6 +9,7 @@ import pytest
 
 from src.services.mentor_concept import MentorConceptService
 from src.validation.review_schema import GeneratedOutput, OutputStatus
+from tests.conftest import CompliantAgentsClient
 
 
 APP_LAYER_FILES = (
@@ -39,7 +40,7 @@ def test_service_delegates_to_reviewable_generation(
     output_type: str,
 ) -> None:
     """Application generation uses the reviewable agent method exactly once."""
-    service = MentorConceptService(mock_mode=True)
+    service = MentorConceptService(client=CompliantAgentsClient())
     agent = getattr(service, agent_attribute)
     reviewable = _reviewable(output_type)
     agent.generate_reviewable = Mock(return_value=reviewable)

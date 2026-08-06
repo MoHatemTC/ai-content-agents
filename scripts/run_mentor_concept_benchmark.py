@@ -12,6 +12,7 @@ from src.agents.concept_agent import ConceptAgent
 from src.agents.mentor_agent import MentorAgent
 from src.evaluation.benchmark import BenchmarkInput, run_benchmark
 from src.retrieval.models import Chunk, GroundedContext, RetrievedChunk, RetrievalScope
+from tests.conftest import CompliantAgentsClient
 
 
 def _context(*, chunk_id: str, text: str) -> GroundedContext:
@@ -80,13 +81,13 @@ def main() -> None:
         ),
     ]
 
-    mentor_agent = MentorAgent(mock_mode=True)
+    mentor_agent = MentorAgent(client=CompliantAgentsClient())
     mentor_grounded = run_benchmark(mentor_agent, grounded_inputs)
     mentor_difficulty = run_benchmark(mentor_agent, difficulty_inputs)
     _print_report(label="MENTOR_GROUNDED_BENCHMARK", report=mentor_grounded)
     _print_report(label="MENTOR_DIFFICULTY_BENCHMARK", report=mentor_difficulty)
 
-    concept_agent = ConceptAgent(mock_mode=True)
+    concept_agent = ConceptAgent(client=CompliantAgentsClient())
     concept_grounded = run_benchmark(concept_agent, grounded_inputs)
     concept_difficulty = run_benchmark(concept_agent, difficulty_inputs)
     _print_report(label="CONCEPT_GROUNDED_BENCHMARK", report=concept_grounded)

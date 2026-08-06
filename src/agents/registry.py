@@ -34,32 +34,32 @@ class AgentRegistry:
     - Return agents and schemas by name.
     """
 
-    def __init__(self, mock_mode: bool | None = None) -> None:
+    def __init__(self, *, client: Any | None = None) -> None:
         """
         Initialize the registry.
 
         Args:
-            mock_mode:
-                Controls whether agents use mock responses.
-                If None, each agent uses the MOCK_MODE
-                environment variable.
+            client:
+                An OpenAI-compatible client shared by every agent. Defaults
+                to one built from the configured gateway; tests inject a
+                double. There is no mode flag - see :mod:`src.llm_gateway`.
         """
 
         self._agents: dict[str, dict[str, Any]] = {
             "mentor": {
-                "agent": MentorAgent(mock_mode=mock_mode),
+                "agent": MentorAgent(client=client),
                 "schema": MentorOutput,
             },
             "concept": {
-                "agent": ConceptAgent(mock_mode=mock_mode),
+                "agent": ConceptAgent(client=client),
                 "schema": ConceptOutput,
             },
             "question_bank": {
-                "agent": QuestionBankAgent(mock_mode=mock_mode),
+                "agent": QuestionBankAgent(client=client),
                 "schema": QuestionBankOutput,
             },
             "test_help": {
-                "agent": TestHelpAgent(mock_mode=mock_mode),
+                "agent": TestHelpAgent(client=client),
                 "schema": TestHelpOutput,
             },
         }

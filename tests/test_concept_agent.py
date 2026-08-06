@@ -1,6 +1,7 @@
 from src.agents.concept_agent import ConceptAgent
 from src.retrieval.models import Chunk, GroundedContext, RetrievedChunk, RetrievalScope
 from src.validation.schemas import ConceptOutput
+from tests.conftest import CompliantAgentsClient
 
 
 def test_concept_agent_generation():
@@ -9,7 +10,7 @@ def test_concept_agent_generation():
     a valid ConceptOutput object.
     """
 
-    agent = ConceptAgent(mock_mode=True)
+    agent = ConceptAgent(client=CompliantAgentsClient())
 
     result = agent.generate(
         content="""
@@ -53,7 +54,7 @@ def test_concept_agent_generation_with_grounded_context():
             )
         ],
     )
-    agent = ConceptAgent(mock_mode=True)
+    agent = ConceptAgent(client=CompliantAgentsClient())
 
     prompt = agent._build_prompt(context, difficulty="beginner")
     result = agent.generate(

@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from src.agents.mentor_agent import MentorAgent
+from tests.conftest import CompliantAgentsClient
 
 
 def test_invalid_yaml():
@@ -19,7 +20,7 @@ def test_invalid_yaml():
 
     try:
         with pytest.raises(Exception):
-            MentorAgent(mock_mode=True)
+            MentorAgent(client=CompliantAgentsClient())
 
     finally:
         yaml_path.write_text(original)

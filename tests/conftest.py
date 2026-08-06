@@ -323,6 +323,113 @@ class CompliantStudyClient:
         )
 
 
+class CompliantAgentsClient:
+    """A fake gateway for the four content agents in ``src/agents``.
+
+    Mentor, concept, question-bank and test-help prompts each open with a
+    distinct role line, and all four render grounded content as ``[chunk_id]``
+    marker lines followed by the chunk text. This reads both back out and
+    answers with output that cites real ids and quotes real text, so the
+    grounding and support validators see something they can actually verify -
+    which is what the deleted ``_mock_response`` bodies did, from inside the
+    production classes.
+
+    An unrecognised prompt raises. A double that answers a prompt it does not
+    understand turns a wiring mistake into a confusing failure elsewhere.
+    """
+
+    _CHUNK = re.compile(r"^\[([^\]\n]+)\]\n(.*?)(?=\n\n\[|\Z)", re.DOTALL | re.MULTILINE)
+    _CONTENT = re.compile(
+        r"Educational Content:\n(.*?)\n\s*(?:User Question|Requested Question Type):",
+        re.DOTALL,
+    )
+    _DIFFICULTY = re.compile(r"Difficulty:\n\s*(\S+)")
+    _COUNT = re.compile(r"Number of Questions:\s*\n?\s*(\d+)")
+    _TYPE = re.compile(r"Requested Question Type:\n\s*(\S+)")
+
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+        self.chat = self
+        self.completions = self
+
+    def _grounding(self, prompt: str) -> tuple[str, str]:
+        """Return a ``(segment_id, text)`` pair drawn from the prompt itself."""
+        block = self._CONTENT.search(prompt)
+        content = block.group(1).strip() if block else ""
+
+        chunks = self._CHUNK.findall(content)
+        if chunks:
+            chunk_id, text = chunks[0]
+            return chunk_id.strip(), text.strip()
+
+        # Ungrounded call: the agent was handed a plain string, so there are no
+        # ids to cite. Quote the content so support validation still has
+        # something real to check.
+        return "chunk_001", (content or "Relevant content excerpt.")
+
+    def _questions(self, prompt: str, segment_id: str, text: str) -> str:
+        count_match = self._COUNT.search(prompt)
+        type_match = self._TYPE.search(prompt)
+        difficulty = self._DIFFICULTY.search(prompt)
+        question_type = type_match.group(1) if type_match else "mcq"
+        questions = [
+            {
+                "question": f"Question {index + 1} about the supplied content?",
+                "options": ["for", "while", "if", "switch"]
+                if question_type == "mcq"
+                else None,
+                "correct_answer": "while",
+                "rationale": text[:240],
+                "difficulty": difficulty.group(1) if difficulty else "beginner",
+                "type": question_type,
+                "references": [{"segment_id": segment_id, "text": text[:240]}],
+            }
+            for index in range(int(count_match.group(1)) if count_match else 1)
+        ]
+        return json.dumps({"questions": questions, "requires_human_review": True})
+
+    def create(self, **kwargs: Any) -> Reply:
+        self.calls.append(kwargs)
+        prompt = kwargs["messages"][0]["content"]
+        segment_id, text = self._grounding(prompt)
+        references = [{"segment_id": segment_id, "text": text[:240]}]
+
+        if "educational mentor" in prompt:
+            return Reply(
+                json.dumps(
+                    {
+                        "explanation": text,
+                        "key_points": [text],
+                        "next_steps": [text],
+                        "references": references,
+                        "requires_human_review": True,
+                    }
+                )
+            )
+
+        if "concept explanation assistant" in prompt:
+            return Reply(
+                json.dumps(
+                    {
+                        "definition": text,
+                        "explanation": text,
+                        "key_points": [text],
+                        "references": references,
+                        "requires_human_review": True,
+                    }
+                )
+            )
+
+        if "assessment specialist" in prompt or "test preparation assistant" in prompt:
+            return Reply(self._questions(prompt, segment_id, text))
+
+        raise AssertionError(
+            "CompliantAgentsClient does not recognise this prompt; it serves the "
+            "mentor, concept, question-bank and test-help agents. Prompt began: "
+            f"{prompt[:200]!r}"
+        )
+
+
 def compliant_study_agents():
     """A (flashcard, plan, revision) triple wired to compliant fake gateways.
 

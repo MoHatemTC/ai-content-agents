@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock
 
 from src.agents.mentor_agent import MentorAgent
+from tests.conftest import CompliantAgentsClient
 
 
 def test_api_mock_response():
@@ -9,7 +10,7 @@ def test_api_mock_response():
     without making a real network request.
     """
 
-    agent = MentorAgent(mock_mode=True)
+    agent = MentorAgent(client=CompliantAgentsClient())
 
     mock_response = MagicMock()
 

@@ -3,11 +3,12 @@
 from src.agents.concept_agent import ConceptAgent
 from src.validation.review_schema import GeneratedOutput, OutputStatus
 from src.validation.schemas import ConceptOutput
+from tests.conftest import CompliantAgentsClient
 
 
 def test_generate_reviewable_creates_pending_concept_output():
     """A concept explanation is recorded for review instead of finalized."""
-    agent = ConceptAgent(mock_mode=True)
+    agent = ConceptAgent(client=CompliantAgentsClient())
     content = "Python provides two main loop types: for and while."
 
     generated = agent.generate(
@@ -31,7 +32,7 @@ def test_generate_reviewable_creates_pending_concept_output():
 
 def test_generate_reviewable_delegates_to_generate_once(monkeypatch):
     """The review path delegates generation exactly once."""
-    agent = ConceptAgent(mock_mode=True)
+    agent = ConceptAgent(client=CompliantAgentsClient())
     generated = ConceptOutput.model_validate(
         {
             "definition": "A loop repeats instructions.",

@@ -11,13 +11,14 @@ and validates the response using the ConceptOutput schema.
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Optional
 
 import yaml
 from dotenv import load_dotenv
+
+from src.llm_gateway import build_client, default_model
 from pydantic import ValidationError
 
 from src.models.batch import BatchGenerationFailure, BatchGenerationResult
@@ -42,48 +43,11 @@ class ConceptAgent:
     - Validate output using Pydantic
     """
 
-    def __init__(self, mock_mode: Optional[bool] = None) -> None:
-        """Initialize the Concept Agent."""
 
-        if mock_mode is None:
-            self.mock_mode = (
-                os.getenv("MOCK_MODE", "true").lower() == "true"
-            )
-        else:
-            self.mock_mode = mock_mode
-
+    def __init__(self, *, client: Any | None = None, model: str | None = None) -> None:
         self.prompt = self._load_prompt()
-
-        if not self.mock_mode:
-            try:
-                from openai import OpenAI
-            except ModuleNotFoundError as e:
-                raise ModuleNotFoundError(
-                    "openai is required when MOCK_MODE=false. Install it or enable mock mode."
-                ) from e
-
-            api_key = os.getenv("LITELLM_API_KEY")
-            base_url = os.getenv("LITELLM_BASE_URL")
-            self.model = os.getenv("DEFAULT_MODEL", "FW-Kimi-K2.6")
-
-            if not api_key:
-                raise ValueError(
-                    "Missing LITELLM_API_KEY environment variable."
-                )
-
-            if not base_url:
-                raise ValueError(
-                    "Missing LITELLM_BASE_URL environment variable."
-                )
-
-            self.client = OpenAI(
-                api_key=api_key,
-                base_url=base_url,
-                timeout=60.0,
-            )
-        else:
-            self.client = None
-            self.model = None
+        self.client = client if client is not None else build_client()
+        self.model = model or default_model()
     
 
     def _load_prompt(self) -> dict[str, Any]:
@@ -178,11 +142,6 @@ class ConceptAgent:
             Raw LLM response.
         """
 
-        if self.client is None:
-            raise RuntimeError(
-                "LLM client is not initialized because mock mode is enabled."
-            )
-
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
@@ -248,60 +207,7 @@ class ConceptAgent:
             difficulty=difficulty.value,
         )
 
-        if self.mock_mode:
-            chunk_id = (
-                context.chunk_ids[0]
-                if context is not None and context.chunk_ids
-                else "chunk_001"
-            )
-            chunk_text = (
-                context.chunks[0].chunk.text
-                if context is not None and context.chunks
-                else "Relevant content excerpt."
-            )
-            if context is not None:
-                definition = chunk_text.strip()
-                explanation = chunk_text.strip()
-                key_points = [chunk_text.strip()]
-            elif difficulty is DifficultyLevel.BEGINNER:
-                definition = "A loop repeats instructions."
-                explanation = "Python has for and while loops."
-                key_points = ["loops repeat instructions", "for loops", "while loops"]
-            elif difficulty is DifficultyLevel.INTERMEDIATE:
-                definition = "A loop repeats a block of code according to a rule."
-                explanation = "Python has for and while loops."
-                key_points = ["for loops iterate over iterables", "while loops are condition-based"]
-            else:
-                definition = (
-                    "A loop is a control-flow construct that repeats a block based on iteration "
-                    "over an iterable or evaluation of a condition."
-                )
-                explanation = (
-                    "Python typically uses for loops for iteration over iterables and while loops "
-                    "for condition-driven repetition. The choice depends on whether you are iterating "
-                    "over a known collection or continuing until a stopping condition is reached."
-                )
-                key_points = [
-                    "for loops iterate over iterables",
-                    "while loops repeat based on a condition",
-                    "choose based on iteration vs condition control",
-                ]
-            raw_response = json.dumps(
-                {
-                    "definition": definition,
-                    "explanation": explanation,
-                    "key_points": key_points,
-                    "references": [
-                        {
-                            "segment_id": chunk_id,
-                            "text": chunk_text[:240],
-                        }
-                    ],
-                    "requires_human_review": True,
-                }
-            )
-        else:
-            raw_response = self._call_llm(prompt)
+        raw_response = self._call_llm(prompt)
 
         try:
             response_json = json.loads(raw_response)

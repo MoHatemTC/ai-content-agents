@@ -48,11 +48,9 @@ Acceleration measures how quickly velocity changes over time.
 Momentum is the product of an object's mass and its velocity.
 """
 
-
 def _index() -> ChunkIndex:
     """A Chroma index with a collection name unique to this test."""
     return ChunkIndex(RetrievalConfig(collection_name=f"test-{uuid4().hex}"))
-
 
 class _StubAgent:
     """An agent that cites whatever it was actually given — the grounded ideal."""
@@ -77,7 +75,6 @@ class _StubAgent:
             references=[ContentReference(segment_id=segment_id, text="excerpt")],
         ).model_dump_json()
 
-
 @pytest.fixture()
 def pipeline(tmp_path: Path) -> Pipeline:
     """A pipeline wired to a throwaway database, index and stub agent."""
@@ -87,11 +84,9 @@ def pipeline(tmp_path: Path) -> Pipeline:
         agents={"mentor": _StubAgent()},
     )
 
-
 # --------------------------------------------------------------------------- #
 # The ingestion -> retrieval bridge
 # --------------------------------------------------------------------------- #
-
 
 def test_bridge_renames_the_id_field_and_drops_offsets() -> None:
     from src.ingestion.schema import Chunk as IngestionChunk
@@ -115,7 +110,6 @@ def test_bridge_renames_the_id_field_and_drops_offsets() -> None:
     assert converted[0].session_id == "session-1"
     assert not hasattr(converted[0], "start_char")
 
-
 def test_bridge_skips_blank_chunks_instead_of_failing() -> None:
     from src.ingestion.schema import Chunk as IngestionChunk
 
@@ -128,7 +122,6 @@ def test_bridge_skips_blank_chunks_instead_of_failing() -> None:
 
     assert [chunk.chunk_id for chunk in converted] == ["doc-c0001"]
 
-
 def test_ingested_material_becomes_retrievable(pipeline: Pipeline) -> None:
     document = pipeline.ingest_text(PHYSICS_NOTES, title="physics notes")
 
@@ -140,11 +133,9 @@ def test_ingested_material_becomes_retrievable(pipeline: Pipeline) -> None:
     assert all(chunk_id.startswith(document.id) for chunk_id in context.chunk_ids)
     assert "Newton" in context.as_prompt_content()
 
-
 # --------------------------------------------------------------------------- #
 # The pipeline
 # --------------------------------------------------------------------------- #
-
 
 def test_pipeline_records_provenance_end_to_end(pipeline: Pipeline) -> None:
     result = pipeline.ingest_and_run(
@@ -158,7 +149,6 @@ def test_pipeline_records_provenance_end_to_end(pipeline: Pipeline) -> None:
     assert run.source_chunk_ids == result.grounded_context.chunk_ids
     assert result.outputs[0].validation_passed is True
 
-
 def test_agent_receives_the_grounded_content(tmp_path: Path) -> None:
     agent = _StubAgent()
     pipe = Pipeline.build(
@@ -169,7 +159,6 @@ def test_agent_receives_the_grounded_content(tmp_path: Path) -> None:
 
     assert agent.seen_content is not None
     assert "Newton" in agent.seen_content or "Momentum" in agent.seen_content
-
 
 def test_pipeline_refuses_to_run_agents_without_grounding(pipeline: Pipeline) -> None:
     """The core promise: no grounding, no generation."""
@@ -183,7 +172,6 @@ def test_pipeline_refuses_to_run_agents_without_grounding(pipeline: Pipeline) ->
     assert result.error is not None
     assert result.results == []
     assert pipeline.platform_store.list_agent_runs() == []
-
 
 def test_pipeline_flags_a_hallucinated_citation(tmp_path: Path) -> None:
     """A model citing an id it was never given is caught before review."""
@@ -202,7 +190,6 @@ def test_pipeline_flags_a_hallucinated_citation(tmp_path: Path) -> None:
         for violation in output.validation_report["guardrail_violations"]
     )
 
-
 def test_reingesting_a_document_does_not_duplicate_chunks(pipeline: Pipeline) -> None:
     document = pipeline.ingest_text(PHYSICS_NOTES, title="physics notes")
     before = len(pipeline.index)
@@ -214,11 +201,9 @@ def test_reingesting_a_document_does_not_duplicate_chunks(pipeline: Pipeline) ->
         "momentum", RetrievalScope(document_id=document.id)
     ).is_sufficient
 
-
 # --------------------------------------------------------------------------- #
 # The full scenario: generate -> review -> export
 # --------------------------------------------------------------------------- #
-
 
 def test_generated_output_cannot_be_exported_until_approved(
     pipeline: Pipeline,
@@ -230,7 +215,6 @@ def test_generated_output_cannot_be_exported_until_approved(
 
     with pytest.raises(ExportBlockedError):
         export_outputs([output], ExportFormat.JSON)
-
 
 def test_full_scenario_generate_review_export(pipeline: Pipeline) -> None:
     """The demo path, start to finish."""
@@ -262,7 +246,6 @@ def test_full_scenario_generate_review_export(pipeline: Pipeline) -> None:
     assert "reviewed" in document
     assert [r.action.value for r in service.history(output.id)] == ["edit", "approve"]
 
-
 def test_rejected_output_never_reaches_an_export(pipeline: Pipeline) -> None:
     result = pipeline.ingest_and_run(
         PHYSICS_NOTES, "what is newton's second law", title="physics notes"
@@ -277,11 +260,9 @@ def test_rejected_output_never_reaches_an_export(pipeline: Pipeline) -> None:
     )
     assert b'"count": 0' in exported
 
-
 # --------------------------------------------------------------------------- #
 # Batch automation
 # --------------------------------------------------------------------------- #
-
 
 def _batch_pipeline(tmp_path: Path, agent: object | None = None) -> Pipeline:
     """A pipeline for batch tests, wired to a stub agent."""
@@ -290,7 +271,6 @@ def _batch_pipeline(tmp_path: Path, agent: object | None = None) -> Pipeline:
         index=_index(),
         agents={"mentor": agent or _StubAgent()},
     )
-
 
 def test_batch_processes_every_document(tmp_path: Path) -> None:
     pipe = _batch_pipeline(tmp_path)
@@ -301,7 +281,6 @@ def test_batch_processes_every_document(tmp_path: Path) -> None:
     assert report.failed_items == []
     assert len(report.output_ids) == 2
     assert report.elapsed_seconds >= 0
-
 
 def test_batch_leaves_everything_pending_review(tmp_path: Path) -> None:
     """A batch must never bypass the gate by approving its own work."""
@@ -314,7 +293,6 @@ def test_batch_leaves_everything_pending_review(tmp_path: Path) -> None:
     assert all(output.status is OutputStatus.PENDING for output in outputs)
     assert pipe.platform_store.list_reviews() == []
 
-
 def test_batch_scores_only_its_own_runs(tmp_path: Path) -> None:
     pipe = _batch_pipeline(tmp_path)
     pipe.ingest_and_run(PHYSICS_NOTES, "what is force", title="earlier work")
@@ -323,7 +301,6 @@ def test_batch_scores_only_its_own_runs(tmp_path: Path) -> None:
 
     assert report.evaluation is not None
     assert report.evaluation.overall.outputs == 1
-
 
 def test_one_failing_document_does_not_stop_the_batch(tmp_path: Path) -> None:
     class _Exploding:
@@ -350,7 +327,6 @@ def test_one_failing_document_does_not_stop_the_batch(tmp_path: Path) -> None:
     assert len(report.items) == 2
     assert len(report.output_ids) == 1  # the second document still ran
 
-
 def test_batch_report_renders_readably(tmp_path: Path) -> None:
     report = run_batch(DEMO_DATASET, pipeline=_batch_pipeline(tmp_path), limit=1)
 
@@ -360,7 +336,6 @@ def test_batch_report_renders_readably(tmp_path: Path) -> None:
     assert "pending human review" in rendered
     assert "Evaluation" in rendered
 
-
 def test_batch_logs_its_start_and_finish(tmp_path: Path) -> None:
     pipe = _batch_pipeline(tmp_path)
 
@@ -368,7 +343,6 @@ def test_batch_logs_its_start_and_finish(tmp_path: Path) -> None:
 
     logged = {event.event_type for event in pipe.platform_store.list_events()}
     assert {BATCH_STARTED, BATCH_COMPLETED} <= logged
-
 
 def test_dataset_can_be_loaded_from_a_file(tmp_path: Path) -> None:
     path = tmp_path / "dataset.json"
@@ -382,41 +356,12 @@ def test_dataset_can_be_loaded_from_a_file(tmp_path: Path) -> None:
     assert len(dataset) == 1
     assert dataset[0].query == "a question"
 
-
 def test_malformed_dataset_is_rejected_clearly(tmp_path: Path) -> None:
     path = tmp_path / "dataset.json"
     path.write_text(json.dumps([{"title": "missing the rest"}]), encoding="utf-8")
 
     with pytest.raises(ValueError, match="title"):
         load_dataset(path)
-
-
-def test_cli_reports_success_for_a_clean_batch(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    dataset = tmp_path / "dataset.json"
-    dataset.write_text(
-        json.dumps(
-            [{"title": "Physics", "text": PHYSICS_NOTES, "query": "what is force"}]
-        ),
-        encoding="utf-8",
-    )
-
-    exit_code = automation_main(
-        [
-            "--dataset",
-            str(dataset),
-            "--db",
-            str(tmp_path / "cli.db"),
-            "--offline",
-            "--agents",
-            "mentor",
-        ]
-    )
-
-    assert exit_code == 0
-    assert "Batch run" in capsys.readouterr().out
-
 
 # --------------------------------------------------------------------------- #
 # Live: the real agents against the real endpoint
@@ -426,7 +371,6 @@ live = pytest.mark.skipif(
     not os.getenv("LITELLM_API_KEY"),
     reason="Live pipeline tests need LITELLM_API_KEY; set it in .env to run them.",
 )
-
 
 @live
 def test_live_pipeline_produces_a_reviewable_output(tmp_path: Path) -> None:
@@ -439,7 +383,7 @@ def test_live_pipeline_produces_a_reviewable_output(tmp_path: Path) -> None:
     pipe = Pipeline.build(
         db_path=str(tmp_path / "live.db"),
         index=_index(),
-        mock_mode=False,
+
         max_retries=1,
         retry_backoff=0.5,
     )
@@ -463,14 +407,13 @@ def test_live_pipeline_produces_a_reviewable_output(tmp_path: Path) -> None:
     assert output.validation_report  # a verdict was recorded either way
     assert output.schema_name == "MentorOutput"
 
-
 @live
 def test_live_output_is_judged_against_its_grounding(tmp_path: Path) -> None:
     """Whatever the model cites, the platform checks it against what it was given."""
     pipe = Pipeline.build(
         db_path=str(tmp_path / "live.db"),
         index=_index(),
-        mock_mode=False,
+
         max_retries=1,
         retry_backoff=0.5,
     )
@@ -497,3 +440,38 @@ def test_live_output_is_judged_against_its_grounding(tmp_path: Path) -> None:
     else:
         # A failing one must say why, rather than failing silently.
         assert report["schema_errors"] or report["guardrail_violations"]
+
+
+@live
+def test_cli_reports_success_for_a_clean_batch(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The CLI entry point runs a batch end to end and reports success.
+
+    Live because it has to be: the ``--offline`` flag it used to pass is
+    gone with mock mode, and the CLI builds its own pipeline, so there is
+    no seam to inject a fake client through. The batch logic itself stays
+    covered offline by the ``run_batch(pipeline=...)`` tests above; what is
+    only exercised here is argument parsing through to a real run.
+    """
+    dataset = tmp_path / "dataset.json"
+    dataset.write_text(
+        json.dumps(
+            [{"title": "Physics", "text": PHYSICS_NOTES, "query": "what is force"}]
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = automation_main(
+        [
+            "--dataset",
+            str(dataset),
+            "--db",
+            str(tmp_path / "cli.db"),
+            "--agents",
+            "mentor",
+        ]
+    )
+
+    assert exit_code == 0
+    assert "Batch run" in capsys.readouterr().out

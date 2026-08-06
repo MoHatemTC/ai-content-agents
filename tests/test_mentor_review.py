@@ -3,11 +3,12 @@
 from src.agents.mentor_agent import MentorAgent
 from src.validation.review_schema import GeneratedOutput, OutputStatus
 from src.validation.schemas import MentorOutput
+from tests.conftest import CompliantAgentsClient
 
 
 def test_generate_reviewable_creates_pending_mentor_output():
     """A mentor response is recorded for review instead of being finalized."""
-    agent = MentorAgent(mock_mode=True)
+    agent = MentorAgent(client=CompliantAgentsClient())
     content = "Python has two loop types: for and while."
 
     generated = agent.generate(
@@ -31,7 +32,7 @@ def test_generate_reviewable_creates_pending_mentor_output():
 
 def test_generate_reviewable_delegates_to_generate_once(monkeypatch):
     """The review path delegates generation exactly once."""
-    agent = MentorAgent(mock_mode=True)
+    agent = MentorAgent(client=CompliantAgentsClient())
     generated = MentorOutput.model_validate(
         {
             "explanation": "A loop repeats instructions.",

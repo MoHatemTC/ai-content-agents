@@ -10,6 +10,7 @@ from src.agents.mentor_agent import MentorAgent
 from src.retrieval.models import Chunk, GroundedContext, RetrievedChunk, RetrievalScope
 from src.validation.schemas import ConceptOutput, ContentReference, MentorOutput
 from src.validation.support_validator import extract_claim_text, validate_support
+from tests.conftest import CompliantAgentsClient
 
 
 def _context(text: str) -> GroundedContext:
@@ -107,7 +108,7 @@ def test_support_validation_accepts_paraphrased_supported_claim() -> None:
 
 @pytest.mark.parametrize("agent_class", [MentorAgent, ConceptAgent])
 def test_agents_accept_supported_difficulty(agent_class: type) -> None:
-    result = agent_class(mock_mode=True).generate(
+    result = agent_class(client=CompliantAgentsClient()).generate(
         content="Python has for loops.",
         user_question="Explain loops.",
         difficulty="advanced",
@@ -119,7 +120,7 @@ def test_agents_accept_supported_difficulty(agent_class: type) -> None:
 @pytest.mark.parametrize("agent_class", [MentorAgent, ConceptAgent])
 def test_agents_reject_invalid_difficulty(agent_class: type) -> None:
     with pytest.raises(ValueError, match="Invalid difficulty"):
-        agent_class(mock_mode=True).generate(
+        agent_class(client=CompliantAgentsClient()).generate(
             content="Python has for loops.",
             user_question="Explain loops.",
             difficulty="expert",
@@ -172,15 +173,13 @@ def test_agents_report_clear_empty_api_responses(
     response: object,
     message: str,
 ) -> None:
-    agent = agent_class(mock_mode=True)
-    agent.client = SimpleNamespace(
-        chat=SimpleNamespace(
-            completions=SimpleNamespace(
-                create=lambda **_: response,
+    agent = agent_class(
+        client=SimpleNamespace(
+            chat=SimpleNamespace(
+                completions=SimpleNamespace(create=lambda **_: response)
             )
         )
     )
-    agent.mock_mode = False
 
     with pytest.raises(RuntimeError, match=message):
         agent._call_llm("prompt")
