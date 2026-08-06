@@ -66,7 +66,10 @@ def test_prose_is_readable(checker: QualityChecker) -> None:
 @pytest.mark.parametrize(
     ("label", "text"),
     [
-        ("box-drawing mojibake", "".join(chr(0x2580 + index % 60) for index in range(400))),
+        (
+            "box-drawing mojibake",
+            "".join(chr(0x2580 + index % 60) for index in range(400)),
+        ),
         ("control characters", "".join(chr(index % 30 + 1) for index in range(400))),
     ],
 )

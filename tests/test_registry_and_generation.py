@@ -1,7 +1,8 @@
-from src.registry import AgentRegistry
-from src.generation import MockGenerator
 from datetime import date, timedelta
-from src.schemas import FlashcardSet, StudyPlan, RevisionSession
+
+from src.generation import MockGenerator
+from src.registry import AgentRegistry
+from src.schemas import FlashcardSet, RevisionSession, StudyPlan
 
 
 def test_registry_loads_three_agents():
@@ -38,10 +39,10 @@ def test_unknown_agent_raises_nothing():
 def test_mock_generator_flashcards_valid():
     registry = AgentRegistry()
     generator = MockGenerator(registry)
-    flashcards = generator.generate("flashcard_generator", {
-        "material": "Python Programming Fundamentals",
-        "count": 3
-    })
+    flashcards = generator.generate(
+        "flashcard_generator",
+        {"material": "Python Programming Fundamentals", "count": 3},
+    )
     assert isinstance(flashcards, FlashcardSet)
     assert len(flashcards.cards) == 3
 
@@ -49,12 +50,15 @@ def test_mock_generator_flashcards_valid():
 def test_mock_generator_study_plan_valid():
     registry = AgentRegistry()
     generator = MockGenerator(registry)
-    study_plan = generator.generate("study_plan_generator", {
-        "goal": "Prepare for Python Certification Exam",
-        "topics": ["Data Types", "Control Flow", "Functions", "OOP"],
-        "start_date": str(date.today()),
-        "end_date": str(date.today() + timedelta(days=30))
-    })
+    study_plan = generator.generate(
+        "study_plan_generator",
+        {
+            "goal": "Prepare for Python Certification Exam",
+            "topics": ["Data Types", "Control Flow", "Functions", "OOP"],
+            "start_date": str(date.today()),
+            "end_date": str(date.today() + timedelta(days=30)),
+        },
+    )
     assert isinstance(study_plan, StudyPlan)
     assert len(study_plan.topic_schedule) == 4
 
@@ -62,9 +66,9 @@ def test_mock_generator_study_plan_valid():
 def test_mock_generator_revision_valid():
     registry = AgentRegistry()
     generator = MockGenerator(registry)
-    revision = generator.generate("revision_plan_generator", {
-        "topics": ["Data Types", "Functions"],
-        "start_date": str(date.today())
-    })
+    revision = generator.generate(
+        "revision_plan_generator",
+        {"topics": ["Data Types", "Functions"], "start_date": str(date.today())},
+    )
     assert isinstance(revision, RevisionSession)
     assert len(revision.items) == 2

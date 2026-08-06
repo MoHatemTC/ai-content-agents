@@ -1,7 +1,9 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any
-from src.registry import AgentRegistry
+from typing import Any
+
 from pydantic import BaseModel
+
+from src.registry import AgentRegistry
 
 
 class BaseGenerator(ABC):
@@ -9,5 +11,5 @@ class BaseGenerator(ABC):
         self.registry = registry
 
     @abstractmethod
-    def generate(self, agent_name: str, inputs: Dict[str, Any]) -> BaseModel:
+    def generate(self, agent_name: str, inputs: dict[str, Any]) -> BaseModel:
         pass

@@ -1,8 +1,5 @@
-
 from __future__ import annotations
 
-
-from typing import List, Optional
 from datetime import datetime
 
 from pydantic import BaseModel, Field
@@ -42,7 +39,6 @@ class Document(BaseModel):
 
 
 class Chunk(BaseModel):
-
     """A stable, retrieval-ready chunk belonging to a Document."""
 
     id: str = Field(
@@ -99,21 +95,13 @@ class DocumentMetadata(BaseModel):
     id: str = Field(..., description="Unique document identifier")
     title: str = Field(..., description="Document title")
     source_type: str = Field(..., description="Source of the document")
-    file_type: Optional[str] = Field(
-        None,
-        description="Document file extension"
-    )
-    size: int = Field(
-        ...,
-        description="Document size measured in characters"
-    )
+    file_type: str | None = Field(None, description="Document file extension")
+    size: int = Field(..., description="Document size measured in characters")
     chunk_count: int = Field(
-        ...,
-        description="Number of chunks generated from the document"
+        ..., description="Number of chunks generated from the document"
     )
     created_at: datetime = Field(
-        ...,
-        description="Timestamp when the document was ingested"
+        ..., description="Timestamp when the document was ingested"
     )
 
 
@@ -143,12 +131,10 @@ class BatchResult(BaseModel):
             Files that could not be processed.
     """
 
-    documents: List[Document] = Field(
-        default_factory=list,
-        description="Successfully ingested documents"
+    documents: list[Document] = Field(
+        default_factory=list, description="Successfully ingested documents"
     )
 
-    failed_files: List[FailedFile] = Field(
-        default_factory=list,
-        description="Files that failed during batch ingestion"
-    )    
+    failed_files: list[FailedFile] = Field(
+        default_factory=list, description="Files that failed during batch ingestion"
+    )

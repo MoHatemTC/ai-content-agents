@@ -11,17 +11,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Optional
+from typing import Any
 
 import yaml
 from dotenv import load_dotenv
-
-from src.llm_gateway import build_client, default_model
 from pydantic import ValidationError
 
+from src.llm_gateway import build_client, default_model
 from src.models.batch import BatchGenerationFailure, BatchGenerationResult
-from src.retrieval.models import GroundedContext
 from src.retrieval.grounding import verify_references
+from src.retrieval.models import GroundedContext
 from src.validation.review_schema import AgentRun, GeneratedOutput
 from src.validation.schemas import DifficultyLevel, MentorOutput, validate_difficulty
 from src.validation.support_validator import extract_claim_text, validate_support
@@ -41,7 +40,6 @@ class MentorAgent:
     - Validate output using Pydantic
     """
 
-
     def __init__(self, *, client: Any | None = None, model: str | None = None) -> None:
         self.prompt = self._load_prompt()
         self.client = client if client is not None else build_client()
@@ -55,41 +53,30 @@ class MentorAgent:
             Dictionary containing the YAML configuration.
         """
 
-        prompt_path = (
-            Path(__file__).resolve().parent.parent
-            / "prompts"
-            / "mentor.yaml"
-        )
+        prompt_path = Path(__file__).resolve().parent.parent / "prompts" / "mentor.yaml"
 
         if not prompt_path.exists():
-            raise FileNotFoundError(
-                f"Prompt file not found: {prompt_path}"
-            )
+            raise FileNotFoundError(f"Prompt file not found: {prompt_path}")
 
         try:
             with open(prompt_path, "r", encoding="utf-8") as file:
                 data = yaml.safe_load(file)
 
         except yaml.YAMLError as e:
-            raise ValueError(
-                "Invalid YAML syntax in mentor.yaml."
-            ) from e
+            raise ValueError("Invalid YAML syntax in mentor.yaml.") from e
 
         if data is None:
             raise ValueError("mentor.yaml is empty.")
 
         if not isinstance(data, dict):
-            raise TypeError(
-                "mentor.yaml must contain a YAML dictionary."
-            )
+            raise TypeError("mentor.yaml must contain a YAML dictionary.")
 
         return data
-    
 
     def _build_prompt(
         self,
         content: str | GroundedContext,
-        user_question: Optional[str] = None,
+        user_question: str | None = None,
         difficulty: str = "beginner",
     ) -> str:
         """
@@ -168,7 +155,7 @@ class MentorAgent:
     def generate(
         self,
         content: str,
-        user_question: Optional[str] = None,
+        user_question: str | None = None,
         difficulty: str | DifficultyLevel = DifficultyLevel.BEGINNER,
         context: GroundedContext | None = None,
     ) -> MentorOutput:
@@ -207,7 +194,6 @@ class MentorAgent:
             response_json = json.loads(raw_response)
         except json.JSONDecodeError as e:
             raise ValueError("The LLM returned invalid JSON.") from e
-        
 
         try:
             result = MentorOutput.model_validate(response_json)
@@ -236,13 +222,12 @@ class MentorAgent:
                     "The generated explanation contains unsupported claims."
                 )
 
-
         return result
 
     def generate_reviewable(
         self,
         content: str,
-        user_question: Optional[str] = None,
+        user_question: str | None = None,
         difficulty: str = "beginner",
         context: GroundedContext | None = None,
     ) -> GeneratedOutput:

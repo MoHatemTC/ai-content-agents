@@ -25,13 +25,66 @@ from .schema import Chunk
 # the cases where it does not, and they matter here because study material is
 # full of them: "See Fig. 21.5" and "Use e.g. water" are single sentences.
 _ABBREVIATIONS = frozenset(
-    """
-    fig figs eq eqs no nos vol ch chap sec ref refs p pp al etc vs cf approx
-    dr mr mrs ms prof st jr sr inc ltd co dept est min max avg
-    i.e e.g a.m p.m
-    jan feb mar apr jun jul aug sep sept oct nov dec
-    mon tue wed thu fri sat sun
-    """.split()
+    [
+        "fig",
+        "figs",
+        "eq",
+        "eqs",
+        "no",
+        "nos",
+        "vol",
+        "ch",
+        "chap",
+        "sec",
+        "ref",
+        "refs",
+        "p",
+        "pp",
+        "al",
+        "etc",
+        "vs",
+        "cf",
+        "approx",
+        "dr",
+        "mr",
+        "mrs",
+        "ms",
+        "prof",
+        "st",
+        "jr",
+        "sr",
+        "inc",
+        "ltd",
+        "co",
+        "dept",
+        "est",
+        "min",
+        "max",
+        "avg",
+        "i.e",
+        "e.g",
+        "a.m",
+        "p.m",
+        "jan",
+        "feb",
+        "mar",
+        "apr",
+        "jun",
+        "jul",
+        "aug",
+        "sep",
+        "sept",
+        "oct",
+        "nov",
+        "dec",
+        "mon",
+        "tue",
+        "wed",
+        "thu",
+        "fri",
+        "sat",
+        "sun",
+    ]
 )
 
 # The token immediately before a candidate boundary's period.
@@ -182,9 +235,7 @@ class TextChunker:
         original_end = end
 
         while (
-            end > start
-            and not text[end - 1].isspace()
-            and text[end - 1] not in ".!?"
+            end > start and not text[end - 1].isspace() and text[end - 1] not in ".!?"
         ):
             end -= 1
 

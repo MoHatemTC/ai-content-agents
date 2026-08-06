@@ -544,8 +544,8 @@ class GeneratedOutput(BaseModel):
 
 ```python
 class OutputStatus(str, Enum):
-    PENDING = "pending"    # Initial state; requires human review
-    EDITED = "edited"      # Human made changes
+    PENDING = "pending"  # Initial state; requires human review
+    EDITED = "edited"  # Human made changes
     APPROVED = "approved"  # Human approved; export allowed
 ```
 
@@ -588,7 +588,7 @@ Agent output citations take the form:
 ```python
 ContentReference(
     segment_id="chunk_001",  # Chunk ID from retrieval
-    text="Relevant content excerpt..."  # Full text (for human review)
+    text="Relevant content excerpt...",  # Full text (for human review)
 )
 ```
 
@@ -710,7 +710,7 @@ def assert_exportable(output: GeneratedOutput) -> None:
 ```python
 class ReviewAction(str, Enum):
     APPROVE = "approve"  # Accept output; set status = APPROVED
-    EDIT = "edit"        # Modify payload; set status = EDITED
+    EDIT = "edit"  # Modify payload; set status = EDITED
     COMMENT = "comment"  # Add notes; status unchanged
 ```
 
@@ -766,16 +766,18 @@ def extract_claim_text(output: MentorOutput | ConceptOutput) -> list[str]:
 ### Validate Support
 
 ```python
-def validate_support(claims: list[str], context: GroundedContext) -> SupportValidationResult:
+def validate_support(
+    claims: list[str], context: GroundedContext
+) -> SupportValidationResult:
     """Check each claim against source content.
-    
+
     Algorithm:
     1. Extract normalized content words from claim
     2. Extract normalized content words from source
     3. Calculate overlap: claim_tokens ∩ source_tokens
     4. Require ≥60% overlap
     5. Detect negations (claim says "no X" but source says "X is...")
-    
+
     Returns: SupportValidationResult(
         supported: bool,
         unsupported_claims: list[str]
@@ -950,21 +952,23 @@ class BatchGenerationResult(BaseModel):
 ### generate_batch()
 
 ```python
-def generate_batch(self, items: list[dict[str, Any]]) -> BatchGenerationResult[MentorOutput]:
+def generate_batch(
+    self, items: list[dict[str, Any]]
+) -> BatchGenerationResult[MentorOutput]:
     """Generate outputs for multiple inputs.
-    
+
     Each item is a dict with:
         - content: str (required)
         - user_question: str (optional)
         - difficulty: str (optional, default "beginner")
         - context: GroundedContext (optional)
-    
+
     Behavior:
     - Processes all items regardless of individual failures
     - Records failures with original item index and error message
     - Preserves input order in successes
     - Returns timing information
-    
+
     Example:
         result = agent.generate_batch([
             {"content": "Python loops...", "user_question": "What is a for loop?"},
@@ -1133,10 +1137,12 @@ OUTPUT (after submit):
 # src/app.py imports:
 from src.services.mentor_concept import MentorConceptService
 
+
 # Initialize once (cached):
 @st.cache_resource
 def get_mentor_concept_service():
     return MentorConceptService()
+
 
 # Usage:
 mentor_concept_service = get_mentor_concept_service()
@@ -1259,7 +1265,7 @@ def test_mentor_agent_generates_valid_output():
     result = agent.generate(
         content="Python loops repeat code.",
         user_question="What is a loop?",
-        difficulty="beginner"
+        difficulty="beginner",
     )
     assert isinstance(result, MentorOutput)
     assert len(result.explanation) > 0
@@ -1271,10 +1277,7 @@ def test_mentor_agent_generates_valid_output():
 def test_mentor_with_grounded_context():
     agent = MentorAgent(mock_mode=True)
     context = build_grounded_context(...)
-    result = agent.generate(
-        content="...",
-        context=context
-    )
+    result = agent.generate(content="...", context=context)
     # Verify references exist in context
     assert verify_references(result.references, context).valid
 ```
@@ -1384,8 +1387,7 @@ Tests check the `RUN_LIVE_TESTS` environment variable:
 
 ```python
 @pytest.mark.skipif(
-    not os.getenv("RUN_LIVE_TESTS"),
-    reason="Requires RUN_LIVE_TESTS=true"
+    not os.getenv("RUN_LIVE_TESTS"), reason="Requires RUN_LIVE_TESTS=true"
 )
 def test_mentor_agent_live():
     # Calls real API
@@ -1539,9 +1541,11 @@ def test_mentor_agent_live():
 **Future**: LLM-based entailment checking
 
 ```python
-def validate_support_semantic(claims: list[str], context: GroundedContext) -> SupportValidationResult:
+def validate_support_semantic(
+    claims: list[str], context: GroundedContext
+) -> SupportValidationResult:
     """Use LLM to check if claims logically follow from source.
-    
+
     Example:
         Claim: "Python lists are ordered"
         Source: "A Python list maintains the insertion order of elements"

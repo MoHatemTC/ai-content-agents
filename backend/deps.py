@@ -23,23 +23,24 @@ from fastapi import Depends, Header, HTTPException, Request
 
 from backend.auth import service as auth_service
 from backend.auth.schemas import AuthUser
-from backend.config import Settings, get_settings
+from backend.config import Settings
+from backend.config import get_settings as _get_env_settings
 from backend.db import connect
 
 
-def settings_dependency() -> Settings:
-    """FastAPI dependency returning the process-wide :class:`Settings`."""
-    return get_settings()
+def get_settings(request: Request) -> Settings:
+    """FastAPI dependency returning app settings from app.state if available, else environment settings."""
+    if hasattr(request.app.state, "settings"):
+        return request.app.state.settings
+    return _get_env_settings()
+
+
+settings_dependency = get_settings
 
 
 def app_settings(request: Request) -> Settings:
-    """Return the settings instance bound to this app (from ``app.state``).
-
-    Prefer this inside routers that need to match the settings the app was
-    created with (e.g. a test-provided database path) rather than the
-    environment-cached singleton.
-    """
-    return request.app.state.settings
+    """Return the settings instance bound to this app (from ``app.state``)."""
+    return get_settings(request)
 
 
 def get_db(request: Request):
@@ -79,3 +80,26 @@ def require_role(*roles: str) -> Callable[..., AuthUser]:
         return user
 
     return _require
+
+
+def require_workspace_member(db_path: str, workspace_id: str, user: AuthUser) -> None:
+    """Ensure workspace exists and caller is owner/member."""
+    from backend.errors import ApiError
+
+    conn = connect(db_path)
+    try:
+        row = conn.execute(
+            "SELECT owner_id FROM workspaces WHERE id = ?", (workspace_id,)
+        ).fetchone()
+        if row is None:
+            raise ApiError(
+                status_code=404, code="not_found", message="Workspace not found"
+            )
+        if row[0] != user.id:
+            raise ApiError(
+                status_code=403,
+                code="forbidden",
+                message="Not allowed to access this workspace",
+            )
+    finally:
+        conn.close()

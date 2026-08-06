@@ -66,7 +66,11 @@ def vision_ocr_enabled() -> bool:
     Returns:
         ``True`` when ``ENABLE_VISION_OCR`` is set to a truthy value.
     """
-    return os.getenv("ENABLE_VISION_OCR", "false").strip().lower() in {"1", "true", "yes"}
+    return os.getenv("ENABLE_VISION_OCR", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
 
 
 def vision_ocr_availability() -> tuple[bool, str]:

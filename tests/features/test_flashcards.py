@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 import pytest
 
 from src.study.batch import default_demo_dataset, run_flashcard_batch
@@ -12,7 +11,6 @@ from src.study.flashcard_agent import (
 )
 from src.study.formatters import format_flashcard_set
 from tests.conftest import FakeLLMClient, flashcard_reply
-
 
 SAMPLE_CONTENT = (
     "Python Programming Basics. Python is a high-level interpreted language. "
@@ -71,9 +69,7 @@ class TestFlashcardAgent:
 
     def test_generate_qa_format(self):
         agent = _agent(_grounded(card_format="qa", card_count=3))
-        card_set = agent.generate(
-            SAMPLE_CONTENT, card_format="qa", card_count=3
-        )
+        card_set = agent.generate(SAMPLE_CONTENT, card_format="qa", card_count=3)
         assert all(c.format == "qa" for c in card_set.cards)
         assert len(card_set.cards) == 3
 
@@ -185,27 +181,35 @@ class TestTopicAllowListQuality:
         the typesetting at the top of the syllabus, and the flashcards drilled
         "Fig", "Section" and "Example".
         """
-        topics = {t.lower() for t in FlashcardAgent.extract_topics(TEXTBOOK_EXTRACT, 30)}
+        topics = {
+            t.lower() for t in FlashcardAgent.extract_topics(TEXTBOOK_EXTRACT, 30)
+        }
 
         for junk in ("fig", "figure", "example", "section", "problem", "shown"):
             assert junk not in topics, f"{junk!r} is typesetting, not subject matter"
 
     def test_function_words_are_not_topics(self):
         """The old stopword list held ~50 entries and let these through."""
-        topics = {t.lower() for t in FlashcardAgent.extract_topics(TEXTBOOK_EXTRACT, 30)}
+        topics = {
+            t.lower() for t in FlashcardAgent.extract_topics(TEXTBOOK_EXTRACT, 30)
+        }
 
         for junk in ("between", "each", "same", "which", "use", "the"):
             assert junk not in topics
 
     def test_real_subject_matter_survives(self):
         """Filtering must not be so aggressive that the topics vanish."""
-        topics = {t.lower() for t in FlashcardAgent.extract_topics(TEXTBOOK_EXTRACT, 30)}
+        topics = {
+            t.lower() for t in FlashcardAgent.extract_topics(TEXTBOOK_EXTRACT, 30)
+        }
 
         assert {"charge", "energy", "field"} & topics
 
     def test_multi_word_terms_are_preferred(self):
         """Real topics look like "kinetic energy", not "energy"."""
-        topics = {t.lower() for t in FlashcardAgent.extract_topics(TEXTBOOK_EXTRACT, 30)}
+        topics = {
+            t.lower() for t in FlashcardAgent.extract_topics(TEXTBOOK_EXTRACT, 30)
+        }
 
         assert any(" " in topic for topic in topics), topics
         assert "kinetic energy" in topics or "potential energy" in topics

@@ -58,7 +58,10 @@ class TestBenchmarkQuality:
         dataset = default_demo_dataset()
         report = run_full_batch(dataset, card_count=5, agents=compliant_study_agents())
         bench = benchmark_quality(
-            report, dataset, expected_card_format="term-definition", expected_card_count=5
+            report,
+            dataset,
+            expected_card_format="term-definition",
+            expected_card_count=5,
         )
         assert isinstance(bench, BenchmarkReport)
         d = bench.to_dict()

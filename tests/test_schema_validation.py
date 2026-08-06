@@ -9,9 +9,7 @@ from src.validation.schemas import (
 
 def test_question_bank_schema_requires_questions():
 
-    invalid_data = {
-        "requires_human_review": True
-    }
+    invalid_data = {"requires_human_review": True}
 
     with pytest.raises(ValidationError):
         QuestionBankOutput.model_validate(invalid_data)
@@ -19,9 +17,7 @@ def test_question_bank_schema_requires_questions():
 
 def test_test_help_schema_requires_questions():
 
-    invalid_data = {
-        "requires_human_review": True
-    }
+    invalid_data = {"requires_human_review": True}
 
     with pytest.raises(ValidationError):
         TestHelpOutput.model_validate(invalid_data)
@@ -42,10 +38,7 @@ def test_question_bank_schema_accepts_valid_output():
                 "difficulty": "beginner",
                 "type": "mcq",
                 "references": [
-                    {
-                        "segment_id": "seg1",
-                        "text": "Python is a programming language."
-                    }
+                    {"segment_id": "seg1", "text": "Python is a programming language."}
                 ],
             }
         ],

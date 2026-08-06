@@ -5,13 +5,16 @@ These tests verify that the batch ingestion service correctly processes
 multiple files, reports failures for invalid files, and ingests
 directories containing supported documents.
 """
+
 from __future__ import annotations
 
 import os
 import tempfile
+
 import pytest
 
 from src.ingestion.batch import BatchIngestion
+
 
 def test_ingest_multiple_files():
     """
@@ -35,6 +38,7 @@ def test_ingest_multiple_files():
 
     finally:
         os.unlink(db_path)
+
 
 def test_ingest_invalid_file():
     """
@@ -60,6 +64,7 @@ def test_ingest_invalid_file():
 
     finally:
         os.unlink(db_path)
+
 
 def test_ingest_directory():
     """
@@ -110,6 +115,8 @@ def test_ingest_directory():
 
     finally:
         os.unlink(db_path)
+
+
 def test_ingest_missing_directory():
     """
     Verify that ingesting a non-existent directory raises
@@ -161,5 +168,3 @@ def test_ignore_unsupported_files():
 
     finally:
         os.unlink(db_path)
-
-                            

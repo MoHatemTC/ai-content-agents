@@ -261,8 +261,11 @@ def test_generate_sizes_the_budget_from_the_cards_requested() -> None:
         {
             "title": "Heat",
             "cards": [
-                {"front": "Conduction", "back": "Energy by contact.",
-                 "source_topic": "Conduction"}
+                {
+                    "front": "Conduction",
+                    "back": "Energy by contact.",
+                    "source_topic": "Conduction",
+                }
             ],
         }
     )

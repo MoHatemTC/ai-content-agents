@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from src.agents.concept_agent import ConceptAgent
 from src.agents.mentor_agent import MentorAgent
 from src.evaluation import BenchmarkInput, BenchmarkReport, run_benchmark
-
 
 DEFAULT_DATASET_PATH = (
     Path(__file__).resolve().parents[2] / "data" / "demo_benchmark.json"
@@ -113,10 +113,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     reports = run_demo_benchmark(load_demo_inputs(args.dataset))
-    print("\n\n".join(
-        format_benchmark_summary(agent_name, report)
-        for agent_name, report in reports.items()
-    ))
+    print(
+        "\n\n".join(
+            format_benchmark_summary(agent_name, report)
+            for agent_name, report in reports.items()
+        )
+    )
     if args.output_json is not None:
         save_benchmark_reports(reports, args.output_json)
         print(f"\nSaved benchmark report to {args.output_json}")

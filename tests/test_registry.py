@@ -1,16 +1,15 @@
-from src.agents.registry import AgentRegistry
-from src.agents.mentor_agent import MentorAgent
 from src.agents.concept_agent import ConceptAgent
+from src.agents.mentor_agent import MentorAgent
 from src.agents.question_bank_agent import QuestionBankAgent
+from src.agents.registry import AgentRegistry
 from src.agents.test_help_agent import TestHelpAgent
-from tests.conftest import CompliantAgentsClient
-
 from src.validation.schemas import (
-    MentorOutput,
     ConceptOutput,
+    MentorOutput,
     QuestionBankOutput,
     TestHelpOutput,
 )
+from tests.conftest import CompliantAgentsClient
 
 
 def test_registry_returns_correct_agents():

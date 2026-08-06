@@ -15,12 +15,10 @@ from typing import Any
 
 import yaml
 from dotenv import load_dotenv
+from pydantic import ValidationError
 
 from src.llm_gateway import build_client, default_model
-
 from src.validation.schemas import TestHelpOutput
-
-from pydantic import ValidationError
 
 __test__ = False
 
@@ -37,8 +35,8 @@ class TestHelpAgent:
     - Send prompt to LiteLLM
     - Validate output using TestHelpOutput
     """
-    __test__ = False
 
+    __test__ = False
 
     def __init__(self, *, client: Any | None = None, model: str | None = None) -> None:
         self.prompt = self._load_prompt()
@@ -54,25 +52,19 @@ class TestHelpAgent:
         """
 
         prompt_path = (
-            Path(__file__).resolve().parent.parent
-            / "prompts"
-            / "test_help.yaml"
+            Path(__file__).resolve().parent.parent / "prompts" / "test_help.yaml"
         )
 
         # Check if the YAML file exists
         if not prompt_path.exists():
-            raise FileNotFoundError(
-                f"Prompt file not found: {prompt_path}"
-            )
+            raise FileNotFoundError(f"Prompt file not found: {prompt_path}")
 
         try:
             with open(prompt_path, "r", encoding="utf-8") as file:
                 data = yaml.safe_load(file)
 
         except yaml.YAMLError as e:
-            raise ValueError(
-                "Invalid YAML syntax in test_help.yaml."
-            ) from e
+            raise ValueError("Invalid YAML syntax in test_help.yaml.") from e
 
         # Check if the YAML file is empty
         if data is None:
@@ -80,12 +72,9 @@ class TestHelpAgent:
 
         # Ensure the YAML content is a dictionary
         if not isinstance(data, dict):
-            raise TypeError(
-                "test_help.yaml must contain a YAML dictionary."
-            )
+            raise TypeError("test_help.yaml must contain a YAML dictionary.")
 
         return data
-    
 
     def _build_prompt(
         self,
@@ -189,10 +178,8 @@ class TestHelpAgent:
             difficulty=difficulty,
             num_questions=num_questions,
         )
-        
 
         raw_response = self._call_llm(prompt)
-
 
         # print("\n=== RAW LLM RESPONSE ===")
         # print(raw_response) # to debug/check the raw response from the LLM
@@ -202,7 +189,6 @@ class TestHelpAgent:
             response_json = json.loads(raw_response)
         except json.JSONDecodeError as e:
             raise ValueError("The LLM returned invalid JSON.") from e
-        
 
         try:
             return TestHelpOutput.model_validate(response_json)

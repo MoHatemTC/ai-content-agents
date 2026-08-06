@@ -197,7 +197,9 @@ def run_flashcard_batch(
             logger.exception("Flashcard batch failed for %r", item.title)
             results.append(
                 BatchFlashcardResult(
-                    title=item.title, card_set=FlashcardSet(title=item.title, cards=[]), error=str(exc)
+                    title=item.title,
+                    card_set=FlashcardSet(title=item.title, cards=[]),
+                    error=str(exc),
                 )
             )
     return results
@@ -256,7 +258,9 @@ def run_revision_batch(
             results.append(BatchRevisionResult(title=item.title, session=session))
         except Exception as exc:
             logger.exception("Revision batch failed for %r", item.title)
-            results.append(BatchRevisionResult(title=item.title, session=None, error=str(exc)))
+            results.append(
+                BatchRevisionResult(title=item.title, session=None, error=str(exc))
+            )
     return results
 
 

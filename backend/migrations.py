@@ -28,6 +28,7 @@ from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
 
 from backend.auth.migrations import MIGRATIONS as AUTH_MIGRATIONS
+from backend.chat.migrations import MIGRATIONS as CHATS_MIGRATIONS
 from backend.documents.migrations import MIGRATIONS as DOCUMENTS_MIGRATIONS
 from backend.workspaces.migrations import MIGRATIONS as WORKSPACES_MIGRATIONS
 
@@ -37,6 +38,7 @@ MIGRATIONS: list[tuple[str, Migration]] = [
     *AUTH_MIGRATIONS,
     *WORKSPACES_MIGRATIONS,
     *DOCUMENTS_MIGRATIONS,
+    *CHATS_MIGRATIONS,
 ]
 
 

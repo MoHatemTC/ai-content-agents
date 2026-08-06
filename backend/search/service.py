@@ -24,6 +24,7 @@ values depend on their owning milestones and simply produce empty results.
 from __future__ import annotations
 
 import sqlite3
+from typing import Any
 
 from src.retrieval.config import RetrievalConfig
 from src.retrieval.index import ChunkIndex
@@ -132,6 +133,7 @@ def build_grounded_context(
     top_k: int = 5,
     chroma_dir: str | None = None,
     document_id: str | None = None,
+    document_ids: list[str] | None = None,
     session_id: str | None = None,
 ) -> GroundedContext:
     """Retrieve a grounded context for generation (M5 plumbing).
@@ -143,10 +145,39 @@ def build_grounded_context(
     """
     index = _workspace_index(workspace_id, chroma_dir, max(top_k, 1))
     retriever = ChromaRetriever(index)
+    target_doc_id = document_id or (document_ids[0] if document_ids else None)
     scope = RetrievalScope(
-        document_id=document_id,
+        document_id=target_doc_id,
         session_id=session_id,
         workspace_id=workspace_id,
     )
     chunks = retriever.retrieve(query, scope, top_k=top_k)
+    if not chunks and len(index) > 0:
+        where = scope.to_where()
+        get_kwargs: dict[str, Any] = {"limit": top_k, "include": ["documents", "metadatas"]}
+        if where:
+            get_kwargs["where"] = where
+        raw = index._collection.get(**get_kwargs)
+        if raw and raw.get("ids"):
+            from src.retrieval.models import Chunk, RetrievedChunk
+            fallback_chunks = []
+            ids = raw["ids"]
+            docs = raw.get("documents") or []
+            metas = raw.get("metadatas") or []
+            for position, (chunk_id, text, metadata) in enumerate(
+                zip(ids, docs, metas), start=1
+            ):
+                meta_dict = metadata if isinstance(metadata, dict) else {}
+                doc_id = str(meta_dict.get("document_id") or target_doc_id or "doc-001")
+                sess_id = str(meta_dict["session_id"]) if meta_dict.get("session_id") else None
+                ord_val = int(meta_dict.get("ordinal", position - 1))
+                c = Chunk(
+                    chunk_id=chunk_id,
+                    document_id=doc_id,
+                    session_id=sess_id,
+                    ordinal=max(0, ord_val),
+                    text=text,
+                )
+                fallback_chunks.append(RetrievedChunk(chunk=c, score=0.5, rank=position))
+            chunks = fallback_chunks
     return GroundedContext(query=query, scope=scope, chunks=chunks)

@@ -117,17 +117,13 @@ class StudyPlanAgent:
 
     def _call_llm(self, prompt: str, max_tokens: int | None = None) -> str:
         """Send the prompt to the gateway and return the reply body."""
-        return call_llm(
-            self.client, self.model, prompt, max_tokens=max_tokens
-        )
+        return call_llm(self.client, self.model, prompt, max_tokens=max_tokens)
 
     # ------------------------------------------------------------------
     # Validation
     # ------------------------------------------------------------------
 
-    def _validate_plan(
-        self, plan: StudyPlan, extracted_topics: list[str]
-    ) -> None:
+    def _validate_plan(self, plan: StudyPlan, extracted_topics: list[str]) -> None:
         """Validate topic membership, dates, and difficulty values.
 
         Raises:
@@ -135,9 +131,7 @@ class StudyPlanAgent:
             ValueError: If any structural rule (dates, difficulty) is broken.
         """
         allowed = set(extracted_topics)
-        bad_topics = [
-            s.topic for s in plan.topic_schedule if s.topic not in allowed
-        ]
+        bad_topics = [s.topic for s in plan.topic_schedule if s.topic not in allowed]
         if bad_topics:
             raise PlanGroundingError(
                 "Plan schedules topics not in extraction allow-list: "
@@ -148,17 +142,13 @@ class StudyPlanAgent:
             raise ValueError("Plan start_date must be <= end_date")
 
         if plan.overall_difficulty not in {"easy", "medium", "hard"}:
-            raise ValueError(
-                f"overall_difficulty invalid: {plan.overall_difficulty!r}"
-            )
+            raise ValueError(f"overall_difficulty invalid: {plan.overall_difficulty!r}")
 
         for s in plan.topic_schedule:
             if s.start_date > s.end_date:
                 raise ValueError(f"Topic schedule invalid dates: {s.topic}")
             if s.start_date < plan.start_date or s.end_date > plan.end_date:
-                raise ValueError(
-                    f"Topic schedule outside plan window: {s.topic}"
-                )
+                raise ValueError(f"Topic schedule outside plan window: {s.topic}")
             if s.difficulty not in {"easy", "medium", "hard"}:
                 raise ValueError(
                     f"Topic schedule difficulty invalid: {s.topic} -> {s.difficulty!r}"
@@ -221,9 +211,7 @@ class StudyPlanAgent:
         run_id = f"sp-{uuid4().hex[:8]}"
         extracted_topics = FlashcardAgent.extract_topics(content)
         if not extracted_topics:
-            extracted_topics = [
-                learner_goal.strip() or "General learning content"
-            ]
+            extracted_topics = [learner_goal.strip() or "General learning content"]
 
         prompt = self._build_prompt(
             extracted_topics, learner_goal, difficulty, sd, ed, hours_per_week

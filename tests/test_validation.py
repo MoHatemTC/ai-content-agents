@@ -82,7 +82,12 @@ def test_apply_review_approve_from_pending() -> None:
 
 def test_apply_review_edit_then_approve() -> None:
     output = _make_output()
-    apply_review(output, "nour", ReviewAction.EDIT, edited_payload={"question": "q2", "answer": "a2", "references": ["chunk-1"]})
+    apply_review(
+        output,
+        "nour",
+        ReviewAction.EDIT,
+        edited_payload={"question": "q2", "answer": "a2", "references": ["chunk-1"]},
+    )
     assert output.status is OutputStatus.EDITED
     apply_review(output, "nour", ReviewAction.APPROVE)
     assert output.status is OutputStatus.APPROVED
@@ -117,7 +122,9 @@ def test_apply_review_approve_on_approved_is_illegal() -> None:
 def test_apply_review_comment_on_approved_is_allowed() -> None:
     # Approved is terminal for status changes only — audit comments still append.
     output = _make_output(OutputStatus.APPROVED)
-    review = apply_review(output, "nour", ReviewAction.COMMENT, notes="exported in batch 3")
+    review = apply_review(
+        output, "nour", ReviewAction.COMMENT, notes="exported in batch 3"
+    )
     assert output.status is OutputStatus.APPROVED
     assert review.previous_status is review.new_status is OutputStatus.APPROVED
     assert review.notes == "exported in batch 3"
@@ -146,11 +153,19 @@ def test_review_is_immutable() -> None:
 def test_review_history_reconstructable() -> None:
     output = _make_output()
     history: list[Review] = [
-        apply_review(output, "nour", ReviewAction.EDIT, edited_payload={"question": "q", "answer": "a", "references": ["c1"]}),
+        apply_review(
+            output,
+            "nour",
+            ReviewAction.EDIT,
+            edited_payload={"question": "q", "answer": "a", "references": ["c1"]},
+        ),
         apply_review(output, "nour", ReviewAction.APPROVE),
     ]
     # The chain of statuses is continuous and ends approved.
-    assert [r.new_status for r in history] == [OutputStatus.EDITED, OutputStatus.APPROVED]
+    assert [r.new_status for r in history] == [
+        OutputStatus.EDITED,
+        OutputStatus.APPROVED,
+    ]
     assert history[1].previous_status is history[0].new_status
 
 

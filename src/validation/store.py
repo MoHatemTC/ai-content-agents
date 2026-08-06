@@ -67,9 +67,7 @@ class PlatformStore:
     """
 
     def __init__(self, db_path: str | None = None) -> None:
-        self.db_path: str = (
-            db_path or os.getenv("PLATFORM_DB_PATH") or DEFAULT_DB_PATH
-        )
+        self.db_path: str = db_path or os.getenv("PLATFORM_DB_PATH") or DEFAULT_DB_PATH
         self._init_db()
 
     # ------------------------------------------------------------------ #
@@ -157,8 +155,7 @@ class PlatformStore:
                 "ON generated_outputs (status)",
                 "CREATE INDEX IF NOT EXISTS idx_outputs_run "
                 "ON generated_outputs (agent_run_id)",
-                "CREATE INDEX IF NOT EXISTS idx_reviews_output "
-                "ON reviews (output_id)",
+                "CREATE INDEX IF NOT EXISTS idx_reviews_output ON reviews (output_id)",
                 "CREATE INDEX IF NOT EXISTS idx_events_type "
                 "ON system_events (event_type)",
             ):

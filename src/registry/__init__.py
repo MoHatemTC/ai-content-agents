@@ -1,3 +1,3 @@
-from .agent_registry import AgentRegistry, AgentConfig
+from .agent_registry import AgentConfig, AgentRegistry
 
-__all__ = ["AgentRegistry", "AgentConfig"]
+__all__ = ["AgentConfig", "AgentRegistry"]

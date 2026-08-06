@@ -115,11 +115,7 @@ def validate_support(
     claim_list = (
         _split_statements(claims)
         if isinstance(claims, str)
-        else [
-            statement
-            for claim in claims
-            for statement in _split_statements(claim)
-        ]
+        else [statement for claim in claims for statement in _split_statements(claim)]
     )
     source_text = " ".join(chunk.chunk.text for chunk in context.chunks)
     source_tokens = _content_tokens(source_text)

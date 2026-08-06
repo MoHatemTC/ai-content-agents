@@ -40,6 +40,7 @@ from .schemas import (
 )
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+upload_router = APIRouter(tags=["documents"])
 
 Db = Annotated[sqlite3.Connection, Depends(get_db)]
 User = Annotated[AuthUser, Depends(get_current_user)]
@@ -105,6 +106,7 @@ def _stage_error(key: str, detail: str = "") -> ApiError:
     )
 
 
+@upload_router.post("/upload", response_model=UploadDocumentResponse, status_code=201)
 @router.post("/upload", response_model=UploadDocumentResponse, status_code=201)
 def upload_document(
     db: Db,

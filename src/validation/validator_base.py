@@ -102,9 +102,14 @@ class ValidatorBase:
             try:
                 data: object = json.loads(raw_output)
             except json.JSONDecodeError as exc:
-                logger.info("validation failed: output_schema=%s invalid JSON", output_schema.__name__)
+                logger.info(
+                    "validation failed: output_schema=%s invalid JSON",
+                    output_schema.__name__,
+                )
                 return (
-                    ValidationResult(passed=False, schema_errors=[f"invalid JSON: {exc}"]),
+                    ValidationResult(
+                        passed=False, schema_errors=[f"invalid JSON: {exc}"]
+                    ),
                     None,
                 )
         else:

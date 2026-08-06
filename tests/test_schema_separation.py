@@ -2,8 +2,8 @@ import pytest
 from pydantic import ValidationError
 
 from src.validation.schemas import (
-    MentorOutput,
     ConceptOutput,
+    MentorOutput,
 )
 
 

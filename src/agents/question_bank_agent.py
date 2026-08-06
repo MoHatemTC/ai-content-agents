@@ -15,12 +15,10 @@ from typing import Any
 
 import yaml
 from dotenv import load_dotenv
+from pydantic import ValidationError
 
 from src.llm_gateway import build_client, default_model
-
 from src.validation.schemas import QuestionBankOutput
-
-from pydantic import ValidationError
 
 load_dotenv()
 
@@ -36,7 +34,6 @@ class QuestionBankAgent:
     - Validate output using QuestionBankOutput
     """
 
-
     def __init__(self, *, client: Any | None = None, model: str | None = None) -> None:
         self.prompt = self._load_prompt()
         self.client = client if client is not None else build_client()
@@ -51,25 +48,19 @@ class QuestionBankAgent:
         """
 
         prompt_path = (
-            Path(__file__).resolve().parent.parent
-            / "prompts"
-            / "question_bank.yaml"
+            Path(__file__).resolve().parent.parent / "prompts" / "question_bank.yaml"
         )
 
         # Check if the YAML file exists
         if not prompt_path.exists():
-            raise FileNotFoundError(
-                f"Prompt file not found: {prompt_path}"
-            )
+            raise FileNotFoundError(f"Prompt file not found: {prompt_path}")
 
         try:
             with open(prompt_path, "r", encoding="utf-8") as file:
                 data = yaml.safe_load(file)
 
         except yaml.YAMLError as e:
-            raise ValueError(
-                "Invalid YAML syntax in question_bank.yaml."
-            ) from e
+            raise ValueError("Invalid YAML syntax in question_bank.yaml.") from e
 
         # Check if the YAML file is empty
         if data is None:
@@ -77,12 +68,9 @@ class QuestionBankAgent:
 
         # Ensure the YAML content is a dictionary
         if not isinstance(data, dict):
-            raise TypeError(
-                "question_bank.yaml must contain a YAML dictionary."
-            )
+            raise TypeError("question_bank.yaml must contain a YAML dictionary.")
 
         return data
-    
 
     def _build_prompt(
         self,
@@ -147,16 +135,12 @@ class QuestionBankAgent:
         )
 
         if not response.choices:
-            raise ValueError(
-                "The LLM returned no choices."
-            )
+            raise ValueError("The LLM returned no choices.")
 
         message = response.choices[0].message
 
         if message is None:
-            raise ValueError(
-                "The LLM returned an empty message."
-            )
+            raise ValueError("The LLM returned an empty message.")
 
         content = message.content
 
@@ -169,7 +153,6 @@ class QuestionBankAgent:
             )
 
         return content.strip()
-
 
     def generate(
         self,
@@ -204,10 +187,8 @@ class QuestionBankAgent:
             difficulty=difficulty,
             num_questions=num_questions,
         )
-        
 
         raw_response = self._call_llm(prompt)
-
 
         # print("\n=== RAW LLM RESPONSE ===")
         # print(raw_response) # to debug/check the raw response from the LLM
@@ -217,7 +198,6 @@ class QuestionBankAgent:
             response_json = json.loads(raw_response)
         except json.JSONDecodeError as e:
             raise ValueError("The LLM returned invalid JSON.") from e
-        
 
         try:
             return QuestionBankOutput.model_validate(response_json)

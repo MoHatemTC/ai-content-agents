@@ -8,8 +8,6 @@ implementation.
 
 from __future__ import annotations
 
-from typing import List, Optional
-
 from .schema import Document, DocumentMetadata
 from .store import SQLiteStore
 
@@ -55,7 +53,7 @@ class ContentLibrary:
             created_at=document.created_at,
         )
 
-    def list_documents(self) -> List[DocumentMetadata]:
+    def list_documents(self) -> list[DocumentMetadata]:
         """
         Retrieve metadata for every stored document.
 
@@ -64,12 +62,9 @@ class ContentLibrary:
         """
         documents = self.store.get_all_documents()
 
-        return [
-            self._build_metadata(document)
-            for document in documents
-        ]
+        return [self._build_metadata(document) for document in documents]
 
-    def get_document(self, document_id: str) -> Optional[Document]:
+    def get_document(self, document_id: str) -> Document | None:
         """
         Retrieve a document by its identifier.
 
@@ -82,10 +77,7 @@ class ContentLibrary:
         """
         return self.store.get_document_by_id(document_id)
 
-    def get_document_metadata(
-        self,
-        document_id: str
-    ) -> Optional[DocumentMetadata]:
+    def get_document_metadata(self, document_id: str) -> DocumentMetadata | None:
         """
         Retrieve metadata for a single document.
 

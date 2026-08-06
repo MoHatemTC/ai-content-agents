@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from src.agents.concept_agent import ConceptAgent
 from src.agents.mentor_agent import MentorAgent
-from src.retrieval.models import Chunk, GroundedContext, RetrievedChunk, RetrievalScope
+from src.retrieval.models import Chunk, GroundedContext, RetrievalScope, RetrievedChunk
 from src.validation.schemas import ConceptOutput, ContentReference, MentorOutput
 from src.validation.support_validator import extract_claim_text, validate_support
 from tests.conftest import CompliantAgentsClient
@@ -40,12 +40,12 @@ def test_support_validation_flags_unsupported_key_point_and_next_step() -> None:
         references=[ContentReference(segment_id="chunk-1", text="loops")],
     )
 
-    result = validate_support(extract_claim_text(output), _context("Python has for loops."))
+    result = validate_support(
+        extract_claim_text(output), _context("Python has for loops.")
+    )
 
     assert result.supported is False
-    assert result.unsupported_claims == [
-        "Python automatically parallelizes loops."
-    ]
+    assert result.unsupported_claims == ["Python automatically parallelizes loops."]
 
 
 def test_support_validation_flags_unsupported_concept_definition() -> None:
@@ -56,7 +56,9 @@ def test_support_validation_flags_unsupported_concept_definition() -> None:
         references=[ContentReference(segment_id="chunk-1", text="loops")],
     )
 
-    result = validate_support(extract_claim_text(output), _context("Python has for loops."))
+    result = validate_support(
+        extract_claim_text(output), _context("Python has for loops.")
+    )
 
     assert result.supported is False
     assert result.unsupported_claims == [
@@ -72,7 +74,9 @@ def test_support_validation_returns_each_unsupported_claim() -> None:
         references=[ContentReference(segment_id="chunk-1", text="loops")],
     )
 
-    result = validate_support(extract_claim_text(output), _context("Python has for loops."))
+    result = validate_support(
+        extract_claim_text(output), _context("Python has for loops.")
+    )
 
     assert result.supported is False
     assert result.unsupported_claims == [
@@ -89,7 +93,9 @@ def test_support_validation_accepts_fully_supported_output() -> None:
         references=[ContentReference(segment_id="chunk-1", text="loops")],
     )
 
-    result = validate_support(extract_claim_text(output), _context("Python has for loops."))
+    result = validate_support(
+        extract_claim_text(output), _context("Python has for loops.")
+    )
 
     assert result.supported is True
     assert result.unsupported_claims == []
@@ -163,7 +169,9 @@ def test_explanation_outputs_always_require_human_review(output_class: type) -> 
         (SimpleNamespace(choices=[]), "LLM returned no choices"),
         (SimpleNamespace(choices=[SimpleNamespace(message=None)]), "empty message"),
         (
-            SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=None))]),
+            SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content=None))]
+            ),
             "empty response",
         ),
     ],

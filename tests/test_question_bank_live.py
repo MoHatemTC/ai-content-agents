@@ -1,9 +1,9 @@
 import os
+
 import pytest
 
 from src.agents.question_bank_agent import QuestionBankAgent
 from src.validation.schemas import QuestionBankOutput
-
 
 pytestmark = pytest.mark.skipif(
     os.getenv("RUN_LIVE_TESTS", "").lower() != "true",

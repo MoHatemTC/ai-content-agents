@@ -6,6 +6,7 @@ same as the rest of the suite, so no network access or timing flakiness is
 required for correctness assertions (only non-negativity is asserted about
 elapsed time, never a specific duration).
 """
+
 from __future__ import annotations
 
 from uuid import uuid4

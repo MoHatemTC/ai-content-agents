@@ -16,13 +16,13 @@ import pytest
 
 from src.exports import ExportFormat, export_approved_run, export_outputs
 from src.retrieval.models import Chunk, GroundedContext, RetrievalScope, RetrievedChunk
+from src.validation.evaluation import EvaluationHarness
 from src.validation.grounding_rule import PlatformGroundingRule
 from src.validation.guardrails import (
     GuardrailContext,
     ReferencesPresentRule,
     Severity,
 )
-from src.validation.evaluation import EvaluationHarness
 from src.validation.history import (
     EXPORT_BLOCKED,
     EXPORT_COMPLETED,
@@ -36,7 +36,6 @@ from src.validation.orchestrator import (
     RegistryAgentAdapter,
     UpstreamResponseError,
 )
-from src.validation.review_service import ReviewService
 from src.validation.review_schema import (
     AgentRun,
     ExportBlockedError,
@@ -51,6 +50,7 @@ from src.validation.review_schema import (
     assert_exportable,
     is_legal_transition,
 )
+from src.validation.review_service import ReviewService
 from src.validation.schemas import (
     ContentReference,
     DifficultyLevel,
@@ -406,7 +406,9 @@ def test_grounding_rule_passes_when_every_citation_was_retrieved() -> None:
 def test_grounding_rule_flags_a_fabricated_citation() -> None:
     """The exact failure the mock agents exhibit: citing 'chunk_001'."""
     rule = PlatformGroundingRule()
-    context = GuardrailContext(grounded_context=_grounded_context("physics-notes-c0000"))
+    context = GuardrailContext(
+        grounded_context=_grounded_context("physics-notes-c0000")
+    )
 
     violation = rule.check(_mentor_output("chunk_001"), context)
 
@@ -419,7 +421,9 @@ def test_grounding_rule_flags_a_fabricated_citation() -> None:
 def test_grounding_rule_reaches_nested_references() -> None:
     """QuestionBankOutput cites per question, not at the top level."""
     rule = PlatformGroundingRule()
-    context = GuardrailContext(grounded_context=_grounded_context("physics-notes-c0000"))
+    context = GuardrailContext(
+        grounded_context=_grounded_context("physics-notes-c0000")
+    )
     output = QuestionBankOutput(
         questions=[
             QuestionItem(
@@ -443,7 +447,9 @@ def test_grounding_rule_reaches_nested_references() -> None:
 def test_ungrounded_output_fails_validation_end_to_end() -> None:
     """Wired into DEFAULT_RULES, a fabricated citation fails the whole verdict."""
     validator = ValidatorBase()
-    context = GuardrailContext(grounded_context=_grounded_context("physics-notes-c0000"))
+    context = GuardrailContext(
+        grounded_context=_grounded_context("physics-notes-c0000")
+    )
 
     result, model = validator.validate(
         _mentor_output("chunk_001").model_dump(), MentorOutput, context=context
@@ -451,12 +457,16 @@ def test_ungrounded_output_fails_validation_end_to_end() -> None:
 
     assert model is not None  # schema was fine; grounding was not
     assert result.passed is False
-    assert any(v.rule_name == "grounding_verification" for v in result.guardrail_violations)
+    assert any(
+        v.rule_name == "grounding_verification" for v in result.guardrail_violations
+    )
 
 
 def test_grounded_output_passes_validation_end_to_end() -> None:
     validator = ValidatorBase()
-    context = GuardrailContext(grounded_context=_grounded_context("physics-notes-c0000"))
+    context = GuardrailContext(
+        grounded_context=_grounded_context("physics-notes-c0000")
+    )
 
     result, _ = validator.validate(
         _mentor_output("physics-notes-c0000").model_dump(),
@@ -470,7 +480,9 @@ def test_grounded_output_passes_validation_end_to_end() -> None:
 
 def test_grounding_rule_reports_every_fabricated_id() -> None:
     rule = PlatformGroundingRule()
-    context = GuardrailContext(grounded_context=_grounded_context("physics-notes-c0000"))
+    context = GuardrailContext(
+        grounded_context=_grounded_context("physics-notes-c0000")
+    )
 
     violation = rule.check(_mentor_output("fake-a", "fake-b"), context)
 
@@ -670,9 +682,7 @@ def test_error_shaped_success_response_becomes_a_legible_error() -> None:
     """
     adapter = RegistryAgentAdapter(
         name="mentor",
-        agent=_FakeAgentModule(
-            TypeError("'NoneType' object is not subscriptable")
-        ),
+        agent=_FakeAgentModule(TypeError("'NoneType' object is not subscriptable")),
         schema=MentorOutput,
     )
 
@@ -682,7 +692,10 @@ def test_error_shaped_success_response_becomes_a_legible_error() -> None:
 
 def test_error_shaped_response_is_retried(store: PlatformStore) -> None:
     """It is a transient provider limit, so it belongs in the retry policy."""
-    assert UpstreamResponseError in Orchestrator(store, agents={"a": _StubAgent()}).transient_errors
+    assert (
+        UpstreamResponseError
+        in Orchestrator(store, agents={"a": _StubAgent()}).transient_errors
+    )
 
     agent = _StubAgent(
         UpstreamResponseError("provider saturated"),
@@ -1012,7 +1025,13 @@ def _record(
         return None
 
     violations = (
-        [{"rule_name": "grounding_verification", "message": "fabricated", "severity": "error"}]
+        [
+            {
+                "rule_name": "grounding_verification",
+                "message": "fabricated",
+                "severity": "error",
+            }
+        ]
         if grounding_violation
         else []
     )
@@ -1204,13 +1223,11 @@ def test_packages_import_in_any_order(first_import: str) -> None:
         cwd=Path(__file__).resolve().parents[2],
     )
 
-    assert result.returncode == 0, (
-        f"`{first_import}` failed:\n{result.stderr[-1500:]}"
-    )
+    assert result.returncode == 0, f"`{first_import}` failed:\n{result.stderr[-1500:]}"
 
 
 def test_public_api_is_reachable_and_bounded() -> None:
-    import src.validation as validation
+    from src import validation
 
     assert validation.Pipeline is not None
     assert "ReviewService" in dir(validation)
@@ -1220,14 +1237,14 @@ def test_public_api_is_reachable_and_bounded() -> None:
 
 def test_public_api_lists_agree() -> None:
     """__all__ is spelled out for the linters; it must match the lazy map."""
-    import src.validation as validation
+    from src import validation
 
     assert sorted(validation.__all__) == sorted(validation._EXPORTS)
 
 
 def test_every_public_name_actually_resolves() -> None:
     """A typo in the lazy map would otherwise only surface on first access."""
-    import src.validation as validation
+    from src import validation
 
     for name in validation.__all__:
         assert getattr(validation, name) is not None, name

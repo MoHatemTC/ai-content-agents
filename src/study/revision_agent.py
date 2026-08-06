@@ -126,9 +126,7 @@ class RevisionAgent:
 
     def _call_llm(self, prompt: str, max_tokens: int | None = None) -> str:
         """Send the prompt to the gateway and return the reply body."""
-        return call_llm(
-            self.client, self.model, prompt, max_tokens=max_tokens
-        )
+        return call_llm(self.client, self.model, prompt, max_tokens=max_tokens)
 
     # ------------------------------------------------------------------
     # Validation

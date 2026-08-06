@@ -20,7 +20,10 @@ def main() -> None:
     print("BATCH_SUMMARY", json.dumps(report.summary(), indent=2, sort_keys=True))
     print("BENCHMARK", json.dumps(benchmark.to_dict(), indent=2, sort_keys=True))
     print("FLASHCARD_COUNTS", [len(r.card_set.cards) for r in report.flashcards])
-    print("FLASHCARD_FORMATS", [sorted({c.format for c in r.card_set.cards}) for r in report.flashcards])
+    print(
+        "FLASHCARD_FORMATS",
+        [sorted({c.format for c in r.card_set.cards}) for r in report.flashcards],
+    )
     sample_flashcards = report.flashcards[0].card_set
     sample_plan = report.plans[0].plan
     sample_revision = report.revisions[0].session
@@ -35,7 +38,10 @@ def main() -> None:
         print("SAMPLE_REVISION_TOPICS", [i.topic for i in sample_revision.items])
         print(
             "SAMPLE_REVISION_OFFSETS",
-            [(i.next_revision_date - sample_revision.session_date).days for i in sample_revision.items],
+            [
+                (i.next_revision_date - sample_revision.session_date).days
+                for i in sample_revision.items
+            ],
         )
 
 

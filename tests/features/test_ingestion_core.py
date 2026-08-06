@@ -1,13 +1,13 @@
-
 from __future__ import annotations
 
-import tempfile
 import os
-from src.ingestion.schema import Document, Chunk
-from src.ingestion.parser import TextParser
-from src.ingestion.cleaner import TextCleaner
+import tempfile
+
 from src.ingestion.chunker import TextChunker
+from src.ingestion.cleaner import TextCleaner
 from src.ingestion.dedupe import Deduplicator
+from src.ingestion.parser import TextParser
+from src.ingestion.schema import Chunk, Document
 from src.ingestion.store import SQLiteStore
 
 
@@ -48,9 +48,7 @@ def test_store():
     try:
         store = SQLiteStore(db_path)
         doc = Document(
-            title="Test Doc",
-            content="This is test content.",
-            source_type="paste"
+            title="Test Doc", content="This is test content.", source_type="paste"
         )
         saved_doc = store.add_document(doc)
         assert saved_doc.id is not None
@@ -61,14 +59,14 @@ def test_store():
                 id=f"{saved_doc.id}-c0000",
                 document_id=saved_doc.id,
                 text="chunk 1",
-                ordinal=0
+                ordinal=0,
             ),
             Chunk(
                 id=f"{saved_doc.id}-c0001",
                 document_id=saved_doc.id,
                 text="chunk 2",
-                ordinal=1
-            )
+                ordinal=1,
+            ),
         ]
         saved_chunks = store.add_chunks(chunks)
         assert len(saved_chunks) == 2

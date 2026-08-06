@@ -27,11 +27,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend import __version__
 from backend.auth.router import router as auth_router
 from backend.auth.seed import seed_if_empty
+from backend.chat.router import router as chat_router
 from backend.config import Settings, get_settings
 from backend.db import connect
-from backend.documents.router import router as documents_router
+from backend.documents.router import (
+    router as documents_router,
+)
+from backend.documents.router import (
+    upload_router as documents_upload_router,
+)
 from backend.errors import register_exception_handlers
+from backend.exports.router import router as exports_router
+from backend.generation.router import router as generation_router
 from backend.migrations import run_pending
+from backend.review.router import router as review_router
 from backend.routers import health
 from backend.search.router import router as search_router
 from backend.workspaces.router import router as workspaces_router
@@ -74,8 +83,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(auth_router)
     app.include_router(workspaces_router)
+    app.include_router(documents_upload_router)
     app.include_router(documents_router)
     app.include_router(search_router)
+    app.include_router(generation_router)
+    app.include_router(chat_router)
+    app.include_router(review_router)
+    app.include_router(exports_router)
     return app
 
 

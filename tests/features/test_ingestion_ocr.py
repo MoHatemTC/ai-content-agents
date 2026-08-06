@@ -123,8 +123,15 @@ def test_ocr_is_off_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.parametrize(
     ("value", "expected"),
-    [("true", True), ("TRUE", True), ("1", True), ("yes", True),
-     ("false", False), ("", False), ("no", False)],
+    [
+        ("true", True),
+        ("TRUE", True),
+        ("1", True),
+        ("yes", True),
+        ("false", False),
+        ("", False),
+        ("no", False),
+    ],
 )
 def test_enable_ocr_parsing(
     monkeypatch: pytest.MonkeyPatch, value: str, expected: bool
@@ -311,9 +318,7 @@ def test_real_ocr_noise_is_rejected() -> None:
 
 def test_real_vision_transcription_is_accepted() -> None:
     """The same page, read properly, must pass the same gate."""
-    readable, why = ocr_looks_readable(
-        REAL_VISION_TRANSCRIPTION, mean_confidence=90.0
-    )
+    readable, why = ocr_looks_readable(REAL_VISION_TRANSCRIPTION, mean_confidence=90.0)
 
     assert readable is True, why
 

@@ -18,11 +18,9 @@ from datetime import date
 
 from pydantic import BaseModel, Field
 
-
 # ---------------------------------------------------------------------------
 # Flashcard schema
 # ---------------------------------------------------------------------------
-
 
 
 class TopicSchedule(BaseModel):
@@ -48,9 +46,7 @@ class StudyPlan(BaseModel):
     goal: str
     start_date: date
     end_date: date
-    overall_difficulty: str = Field(
-        "medium", description="Planner-level difficulty."
-    )
+    overall_difficulty: str = Field("medium", description="Planner-level difficulty.")
     available_hours_per_week: float | None = Field(
         None, description="Learner's weekly study budget."
     )

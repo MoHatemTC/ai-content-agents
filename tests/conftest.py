@@ -32,8 +32,8 @@ FakeLLMClient``) as well as available as fixtures.
 from __future__ import annotations
 
 import json
-import re
 import os
+import re
 from datetime import date, timedelta
 from typing import Any
 
@@ -338,7 +338,9 @@ class CompliantAgentsClient:
     understand turns a wiring mistake into a confusing failure elsewhere.
     """
 
-    _CHUNK = re.compile(r"^\[([^\]\n]+)\]\n(.*?)(?=\n\n\[|\Z)", re.DOTALL | re.MULTILINE)
+    _CHUNK = re.compile(
+        r"^\[([^\]\n]+)\]\n(.*?)(?=\n\n\[|\Z)", re.DOTALL | re.MULTILINE
+    )
     _CONTENT = re.compile(
         r"Educational Content:\n(.*?)\n\s*(?:User Question|Requested Question Type):",
         re.DOTALL,

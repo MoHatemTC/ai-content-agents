@@ -170,8 +170,12 @@ class BatchReport:
         ]
 
         for item in self.items:
-            status = f"FAILED - {item.error}" if item.error else (
-                f"{len(item.output_ids)} output(s), {item.validated} passed validation"
+            status = (
+                f"FAILED - {item.error}"
+                if item.error
+                else (
+                    f"{len(item.output_ids)} output(s), {item.validated} passed validation"
+                )
             )
             lines.append(f"  {item.title}: {status}")
 
@@ -189,9 +193,7 @@ class BatchReport:
                 )
                 for row in rows:
                     lines.append(
-                        "  ".join(
-                            str(row[h]).ljust(w) for h, w in zip(headers, widths)
-                        )
+                        "  ".join(str(row[h]).ljust(w) for h, w in zip(headers, widths))
                     )
 
         return "\n".join(lines)
@@ -303,7 +305,7 @@ def _run_one(
             title=document.title,
             agents=agents,
         )
-    except Exception as exc:  # noqa: BLE001 - one bad document must not stop the batch
+    except Exception as exc:
         item.error = f"{type(exc).__name__}: {exc}"
         logger.exception("batch item %r failed", document.title)
         return item
@@ -356,7 +358,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(levelname)s %(name)s: %(message)s"
+    )
 
     dataset = load_dataset(args.dataset) if args.dataset else None
     report = run_batch(

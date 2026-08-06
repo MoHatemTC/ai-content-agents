@@ -7,11 +7,12 @@ outputs follow a consistent format.
 """
 
 from enum import Enum
-from typing import List, Literal, Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 __test__ = False
+
 
 class ContentReference(BaseModel):
     """
@@ -61,39 +62,27 @@ class QuestionItem(BaseModel):
     and Test Help agents.
     """
 
-    question: str = Field(
-        ...,
-        description="The generated question."
-    )
+    question: str = Field(..., description="The generated question.")
 
-    options: Optional[List[str]] = Field(
+    options: list[str] | None = Field(
         default=None,
-        description="Available answer choices for MCQ and True/False questions. Leave null for Short Answer questions."
+        description="Available answer choices for MCQ and True/False questions. Leave null for Short Answer questions.",
     )
 
     correct_answer: str = Field(
-        ...,
-        description="Correct answer corresponding to the generated question."
+        ..., description="Correct answer corresponding to the generated question."
     )
 
-    rationale: str = Field(
-        ...,
-        description="Explanation of why the answer is correct."
-    )
+    rationale: str = Field(..., description="Explanation of why the answer is correct.")
 
     difficulty: DifficultyLevel = Field(
-        ...,
-        description="Difficulty level of the question."
+        ..., description="Difficulty level of the question."
     )
 
-    type: QuestionType = Field(
-        ...,
-        description="Type of the generated question."
-    )
+    type: QuestionType = Field(..., description="Type of the generated question.")
 
     references: list[ContentReference] = Field(
-        ...,
-        description="Grounding references used to generate the question."
+        ..., description="Grounding references used to generate the question."
     )
 
 
@@ -106,8 +95,7 @@ class QuestionBankOutput(BaseModel):
     """
 
     questions: list[QuestionItem] = Field(
-        ...,
-        description="List of generated questions."
+        ..., description="List of generated questions."
     )
 
     requires_human_review: bool = Field(
@@ -115,7 +103,7 @@ class QuestionBankOutput(BaseModel):
         description=(
             "Indicates that the generated questions must be "
             "reviewed by a human before being presented."
-        )
+        ),
     )
 
 
@@ -126,13 +114,13 @@ class TestHelpOutput(BaseModel):
     This agent generates grounded questions for assessment
     support. All outputs require human review.
     """
+
     __test__ = False
 
     model_config = ConfigDict(protected_namespaces=())
 
     questions: list[QuestionItem] = Field(
-        ...,
-        description="List of generated questions."
+        ..., description="List of generated questions."
     )
 
     requires_human_review: bool = Field(
@@ -140,7 +128,7 @@ class TestHelpOutput(BaseModel):
         description=(
             "Indicates that the generated questions must be "
             "reviewed by a human before being presented."
-        )
+        ),
     )
 
 
@@ -153,23 +141,19 @@ class MentorOutput(BaseModel):
     """
 
     explanation: str = Field(
-        ...,
-        description="Detailed explanation of the educational content."
+        ..., description="Detailed explanation of the educational content."
     )
 
     key_points: list[str] = Field(
-        ...,
-        description="Important concepts or takeaways from the content."
+        ..., description="Important concepts or takeaways from the content."
     )
 
     next_steps: list[str] = Field(
-        ...,
-        description="Recommended actions or topics for the learner to study next."
+        ..., description="Recommended actions or topics for the learner to study next."
     )
 
     references: list[ContentReference] = Field(
-        ...,
-        description="Content chunks or references used to generate the response."
+        ..., description="Content chunks or references used to generate the response."
     )
 
     requires_human_review: Literal[True] = Field(
@@ -188,23 +172,18 @@ class ConceptOutput(BaseModel):
     """
 
     definition: str = Field(
-        ...,
-        description="Short definition of the requested concept."
+        ..., description="Short definition of the requested concept."
     )
 
-    explanation: str = Field(
-        ...,
-        description="Detailed explanation of the concept."
-    )
+    explanation: str = Field(..., description="Detailed explanation of the concept.")
 
     key_points: list[str] = Field(
-        ...,
-        description="Important points that summarize the concept."
+        ..., description="Important points that summarize the concept."
     )
 
     references: list[ContentReference] = Field(
         ...,
-        description="Content chunks or references used to generate the explanation."
+        description="Content chunks or references used to generate the explanation.",
     )
 
     requires_human_review: Literal[True] = Field(
@@ -212,4 +191,3 @@ class ConceptOutput(BaseModel):
         frozen=True,
         description="Indicates that the explanation requires human review before use.",
     )
-    

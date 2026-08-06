@@ -1,7 +1,7 @@
 """Offline tests for benchmark orchestration and metric aggregation."""
 
 from src.evaluation import BenchmarkInput, run_benchmark
-from src.retrieval.models import Chunk, GroundedContext, RetrievedChunk, RetrievalScope
+from src.retrieval.models import Chunk, GroundedContext, RetrievalScope, RetrievedChunk
 from src.validation.schemas import ContentReference, MentorOutput
 
 

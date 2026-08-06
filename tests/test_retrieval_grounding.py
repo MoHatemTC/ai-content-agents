@@ -6,6 +6,7 @@ recall@k / MRR / grounding-confidence evaluation harness. Offline and
 deterministic, following the same pattern as the rest of the suite: a
 unique Chroma collection per test, hashing embedder injected explicitly.
 """
+
 from __future__ import annotations
 
 from uuid import uuid4
@@ -24,7 +25,10 @@ from src.retrieval.grounding import build_grounded_context
 from src.retrieval.index import ChunkIndex, HashingEmbeddingFunction
 from src.retrieval.models import Chunk, RetrievalScope
 from src.retrieval.retriever import ChromaRetriever
-from src.retrieval.verifier import GroundingContextMissingError, GroundingVerificationRule
+from src.retrieval.verifier import (
+    GroundingContextMissingError,
+    GroundingVerificationRule,
+)
 from src.validation.guardrails import GuardrailContext
 from src.validation.schemas import ContentReference, MentorOutput
 
@@ -76,7 +80,9 @@ class TestGroundingVerificationRule:
     def test_passes_when_all_citations_were_retrieved(self) -> None:
         retriever = seeded_retriever()
         context = build_grounded_context(
-            "newton force acceleration", RetrievalScope(document_id="physics-notes"), retriever
+            "newton force acceleration",
+            RetrievalScope(document_id="physics-notes"),
+            retriever,
         )
         output = make_mentor_output(context.to_content_references())
         rule = GroundingVerificationRule().for_context(context)
@@ -85,7 +91,9 @@ class TestGroundingVerificationRule:
     def test_fails_on_fabricated_segment_id(self) -> None:
         retriever = seeded_retriever()
         context = build_grounded_context(
-            "newton force acceleration", RetrievalScope(document_id="physics-notes"), retriever
+            "newton force acceleration",
+            RetrievalScope(document_id="physics-notes"),
+            retriever,
         )
         fabricated = ContentReference(segment_id="made-up-c9999", text="invented")
         output = make_mentor_output([fabricated])

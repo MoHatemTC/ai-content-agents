@@ -5,7 +5,6 @@ import pytest
 from src.agents.concept_agent import ConceptAgent
 from src.validation.schemas import ConceptOutput
 
-
 pytestmark = pytest.mark.skipif(
     os.getenv("RUN_LIVE_TESTS", "").lower() != "true",
     reason="Set RUN_LIVE_TESTS=true to run live API tests.",

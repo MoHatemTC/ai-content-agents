@@ -1,4 +1,3 @@
-
 from src.agents.question_bank_agent import QuestionBankAgent
 from src.validation.schemas import QuestionBankOutput
 from tests.conftest import CompliantAgentsClient
@@ -10,29 +9,29 @@ def test_question_bank_generation():
     a valid QuestionBankOutput object.
     """
 
-# ==========================================
-# MOCK MODE
-# Forces the agent to use the hardcoded
-# mock response instead of calling LiteLLM.
-# Use this while developing or when the
-# API is unavailable.
-# ==========================================
+    # ==========================================
+    # MOCK MODE
+    # Forces the agent to use the hardcoded
+    # mock response instead of calling LiteLLM.
+    # Use this while developing or when the
+    # API is unavailable.
+    # ==========================================
     agent = QuestionBankAgent(client=CompliantAgentsClient())
 
-# ==========================================
-# REAL API MODE
-# Forces the agent to call LiteLLM.
-# This ignores the MOCK_MODE value in .env.
-# Uncomment when the API is working.
-# ==========================================
-#    agent = QuestionBankAgent(mock_mode=False)
+    # ==========================================
+    # REAL API MODE
+    # Forces the agent to call LiteLLM.
+    # This ignores the MOCK_MODE value in .env.
+    # Uncomment when the API is working.
+    # ==========================================
+    #    agent = QuestionBankAgent(mock_mode=False)
 
-# ==========================================
-# ENVIRONMENT MODE
-# Uses the MOCK_MODE value from .env.
-# If MOCK_MODE=true  -> uses mock response.
-# If MOCK_MODE=false -> uses LiteLLM.
-# ==========================================
+    # ==========================================
+    # ENVIRONMENT MODE
+    # Uses the MOCK_MODE value from .env.
+    # If MOCK_MODE=true  -> uses mock response.
+    # If MOCK_MODE=false -> uses LiteLLM.
+    # ==========================================
 
     # agent = QuestionBankAgent()
 

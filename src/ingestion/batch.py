@@ -7,8 +7,8 @@ entire directories in a single operation.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from .loader import ContentLoader
 from .schema import BatchResult, FailedFile
@@ -22,9 +22,10 @@ class BatchIngestion:
     collections of files and reporting both successful and failed
     ingestions.
     """
-   # Supported file types for ingestion
+
+    # Supported file types for ingestion
     SUPPORTED_EXTENSIONS = {".txt", ".pdf", ".docx", ".md"}
-    
+
     def __init__(self, db_path: str = "ingestion.db") -> None:
         """
         Initialize the batch ingestion service.
@@ -84,7 +85,7 @@ class BatchIngestion:
             raise FileNotFoundError(f"Directory '{directory}' does not exist.")
 
         if not directory.is_dir():
-           raise NotADirectoryError(f"'{directory}' is not a directory.")
+            raise NotADirectoryError(f"'{directory}' is not a directory.")
 
         files = []
 

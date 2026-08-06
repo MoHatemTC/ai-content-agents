@@ -85,10 +85,7 @@ class AgentRegistry:
         if entry is None:
             available = ", ".join(self._agents.keys())
 
-            raise KeyError(
-                f"Unknown agent '{name}'. "
-                f"Available agents: {available}"
-            )
+            raise KeyError(f"Unknown agent '{name}'. Available agents: {available}")
 
         return entry["agent"]
 
@@ -113,10 +110,7 @@ class AgentRegistry:
         if entry is None:
             available = ", ".join(self._agents.keys())
 
-            raise KeyError(
-                f"Unknown agent '{name}'. "
-                f"Available agents: {available}"
-            )
+            raise KeyError(f"Unknown agent '{name}'. Available agents: {available}")
 
         return entry["schema"]
 

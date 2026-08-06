@@ -4,11 +4,13 @@ import pytest
 
 from src.agents.concept_agent import ConceptAgent
 from src.agents.mentor_agent import MentorAgent
-from src.retrieval.models import Chunk, GroundedContext, RetrievedChunk, RetrievalScope
+from src.retrieval.models import Chunk, GroundedContext, RetrievalScope, RetrievedChunk
 from tests.conftest import CompliantAgentsClient
 
 
-def _context(*, chunk_id: str = "chunk-1", text: str = "Python has for and while loops.") -> GroundedContext:
+def _context(
+    *, chunk_id: str = "chunk-1", text: str = "Python has for and while loops."
+) -> GroundedContext:
     return GroundedContext(
         query="loops",
         scope=RetrievalScope(document_id="doc-1"),
@@ -27,11 +29,15 @@ def _context(*, chunk_id: str = "chunk-1", text: str = "Python has for and while
     )
 
 
-def test_week4_mentor_grounding_requires_valid_references_and_supported_claims() -> None:
+def test_week4_mentor_grounding_requires_valid_references_and_supported_claims() -> (
+    None
+):
     context = _context(chunk_id="chunk-mentor", text="Python has for and while loops.")
     agent = MentorAgent(client=CompliantAgentsClient())
 
-    prompt = agent._build_prompt(context, user_question="Explain loops.", difficulty="beginner")
+    prompt = agent._build_prompt(
+        context, user_question="Explain loops.", difficulty="beginner"
+    )
     result = agent.generate(
         content="Raw content remains supported.",
         user_question="Explain loops.",
@@ -44,11 +50,15 @@ def test_week4_mentor_grounding_requires_valid_references_and_supported_claims()
     assert result.references[0].segment_id == "chunk-mentor"
 
 
-def test_week4_concept_grounding_requires_valid_references_and_supported_claims() -> None:
+def test_week4_concept_grounding_requires_valid_references_and_supported_claims() -> (
+    None
+):
     context = _context(chunk_id="chunk-concept", text="Python has for and while loops.")
     agent = ConceptAgent(client=CompliantAgentsClient())
 
-    prompt = agent._build_prompt(context, user_question="What is a loop?", difficulty="beginner")
+    prompt = agent._build_prompt(
+        context, user_question="What is a loop?", difficulty="beginner"
+    )
     result = agent.generate(
         content="Raw content remains supported.",
         user_question="What is a loop?",
@@ -83,7 +93,9 @@ def test_week4_difficulty_control_reaches_the_model(agent_class: type) -> None:
 @pytest.mark.parametrize("agent_class", [MentorAgent, ConceptAgent])
 def test_week4_outputs_default_to_human_review(agent_class: type) -> None:
     agent = agent_class(client=CompliantAgentsClient())
-    result = agent.generate(content="Python has for and while loops.", difficulty="beginner")
+    result = agent.generate(
+        content="Python has for and while loops.", difficulty="beginner"
+    )
 
     assert result.requires_human_review is True
 
@@ -113,7 +125,9 @@ def test_week4_support_check_blocks_off_content_mentor_claims(monkeypatch) -> No
                 "explanation": "Python has for loops.",
                 "key_points": ["Python has for loops."],
                 "next_steps": ["Python automatically parallelizes loops."],
-                "references": [{"segment_id": "chunk-mentor", "text": "Python has for loops."}],
+                "references": [
+                    {"segment_id": "chunk-mentor", "text": "Python has for loops."}
+                ],
                 "requires_human_review": True,
             }
         )
@@ -139,7 +153,9 @@ def test_week4_support_check_blocks_off_content_concept_claims(monkeypatch) -> N
                 "definition": "Loops are compiled into machine code automatically.",
                 "explanation": "Python has for loops.",
                 "key_points": ["for loops"],
-                "references": [{"segment_id": "chunk-concept", "text": "Python has for loops."}],
+                "references": [
+                    {"segment_id": "chunk-concept", "text": "Python has for loops."}
+                ],
                 "requires_human_review": True,
             }
         )

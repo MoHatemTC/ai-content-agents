@@ -10,19 +10,19 @@ Phase 8 Progress
 
 ✓ M4 Retrieval
 
-□ M5 Generation
+✓ M5 Generation
 
-□ M6 Chat
+✓ M6 Chat
 
-□ M7 Review
+✓ M7 Review
 
-□ M8 Export
+✓ M8 Export
 
-□ M9 Analytics
+□ M9 Analytics (Future Phase)
 
-□ M10 Catalogue
+~ M10 Catalogue (Document search implemented via M4)
 
-□ M11 Final Integration
+□ M11 Final Integration (Backend complete; frontend deployment in production phase)
 
 ──────────────────────────────────────────────────────────────────────────
 M3 APPROVAL-GATE CONFIRMATIONS (2026-08-06, before M4 starts)

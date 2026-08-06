@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -13,27 +12,28 @@ if str(project_root) not in sys.path:
 
 import streamlit as st
 
+from src.generation import MockGenerator
+from src.ingestion.batch import BatchIngestion
+from src.ingestion.demo_data import DemoDataLoader
+from src.ingestion.library import ContentLibrary
+from src.ingestion.loader import ContentLoader
+from src.llm_gateway import gateway_availability
+from src.registry import AgentRegistry
+from src.retrieval import ChunkIndex, RetrievalConfig
+from src.services.mentor_concept import MentorConceptService
 from src.study.batch import default_demo_dataset, run_full_batch
 from src.study.evaluation import benchmark_quality
-from src.ingestion.loader import ContentLoader
-from src.ingestion.batch import BatchIngestion
-from src.ingestion.library import ContentLibrary
-from src.ingestion.demo_data import DemoDataLoader
-from src.registry import AgentRegistry
-from src.generation import MockGenerator
-from src.llm_gateway import gateway_availability
 from src.study.flashcard_agent import FlashcardAgent
 from src.study.formatters import (
     format_flashcard_set,
     format_revision_session,
     format_study_plan,
 )
+from src.study.grounding import NoGroundingError, grounded_content, index_chunks
 from src.study.revision_agent import RevisionAgent
 from src.study.study_plan_agent import StudyPlanAgent
-from src.services.mentor_concept import MentorConceptService
 from src.ui_common import render_current_content_status
-from src.retrieval import ChunkIndex, RetrievalConfig
-from src.study.grounding import NoGroundingError, grounded_content, index_chunks
+
 
 # ---------------------------------------------------------------------------
 # Initialize shared services
@@ -41,6 +41,7 @@ from src.study.grounding import NoGroundingError, grounded_content, index_chunks
 @st.cache_resource
 def get_loader():
     return ContentLoader()
+
 
 @st.cache_resource
 def get_batch():
@@ -56,21 +57,26 @@ def get_library():
 def get_demo():
     return DemoDataLoader()
 
+
 @st.cache_resource
 def get_registry():
     return AgentRegistry()
+
 
 @st.cache_resource
 def get_generator():
     return MockGenerator(get_registry())
 
+
 @st.cache_resource
 def get_flashcard_agent():
     return FlashcardAgent()
 
+
 @st.cache_resource
 def get_study_plan_agent():
     return StudyPlanAgent()
+
 
 @st.cache_resource
 def get_revision_agent():
@@ -92,6 +98,7 @@ def get_chunk_index():
     directory = os.getenv("CHROMA_DIR", "").strip()
     config = RetrievalConfig(persist_directory=directory) if directory else None
     return ChunkIndex(config=config)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -164,12 +171,12 @@ def ground(focus: str, topics: list[str]):
     return content, cited_ids
 
 
-
 # ---------------------------------------------------------------------------
 # Page config + sidebar nav
 # ---------------------------------------------------------------------------
 def get_mentor_concept_service():
     return MentorConceptService()
+
 
 # Set page config
 st.set_page_config(page_title="AI Study Assistant", page_icon="📚", layout="wide")
@@ -186,7 +193,7 @@ page = st.sidebar.radio(
         "📦 Batch & Benchmark",
         "🧭 Mentor",
         "💡 Concept Explanation",
-    ]
+    ],
 )
 
 loader = get_loader()
@@ -268,15 +275,17 @@ if page == "🏠 Home":
 # ---------------------------------------------------------------------------
 elif page == "📤 Upload Content":
     st.title("Upload Content")
-    
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📁 Upload File",
-    "📝 Paste Text",
-    "📂 Batch Upload",
-    "📚 Content Library",
-    "🎓 Demo Dataset",
-    ])
-    
+
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+        [
+            "📁 Upload File",
+            "📝 Paste Text",
+            "📂 Batch Upload",
+            "📚 Content Library",
+            "🎓 Demo Dataset",
+        ]
+    )
+
     with tab1:
         uploaded_file = st.file_uploader(
             "Choose a file", type=["txt", "pdf", "docx", "md"]
@@ -299,7 +308,7 @@ elif page == "📤 Upload Content":
                             else doc.content
                         )
             except Exception as e:
-                st.error(f"Error processing file: {str(e)}")
+                st.error(f"Error processing file: {e!s}")
 
     with tab2:
         title = st.text_input("Title (optional)", "Pasted Text")
@@ -323,16 +332,18 @@ elif page == "📤 Upload Content":
                 st.success(f"Successfully processed {document.title}!")
                 st.session_state.current_doc = document
                 st.session_state.current_chunks = chunks
-                    
+
                 st.write(f"Document ID: {document.id}")
                 st.write(f"Number of chunks: {len(chunks)}")
-                    
+
                 with st.expander("View Document Content"):
-                      st.text(document.content[:2000] + "..." if len(document.content) > 2000 else document.content)
+                    st.text(
+                        document.content[:2000] + "..."
+                        if len(document.content) > 2000
+                        else document.content
+                    )
             except Exception as e:
-                st.error(f"Error processing text: {str(e)}")
-
-
+                st.error(f"Error processing text: {e!s}")
 
     with tab3:
         st.subheader("Batch Upload")
@@ -345,15 +356,11 @@ elif page == "📤 Upload Content":
         )
 
         if st.button("Upload Files", key="upload_files"):
-
             if not uploaded_files:
                 st.warning("Please select one or more files.")
 
             else:
-                files = [
-                    (file.name, file.read())
-                    for file in uploaded_files
-                ]
+                files = [(file.name, file.read()) for file in uploaded_files]
 
                 progress = st.progress(0, text="Preparing batch upload...")
 
@@ -364,7 +371,9 @@ elif page == "📤 Upload Content":
                 progress.empty()
                 if result.documents:
                     st.session_state.current_doc = result.documents[0]
-                    st.session_state.current_chunks = loader.store.get_chunks_by_document_id(result.documents[0].id)
+                    st.session_state.current_chunks = (
+                        loader.store.get_chunks_by_document_id(result.documents[0].id)
+                    )
                     st.success(
                         f"Successfully uploaded {len(result.documents)} file(s). Set '{result.documents[0].title}' as active content."
                     )
@@ -384,15 +393,15 @@ elif page == "📤 Upload Content":
 
         # Always load the documents
         documents = library.list_documents()
-    
+
         if not documents:
             st.info("No documents have been uploaded yet.")
-    
+
         else:
             current_id = getattr(st.session_state.get("current_doc"), "id", None)
             for doc in documents:
                 col1, col2 = st.columns([4, 2])
-                
+
                 with col1:
                     active_badge = " 🟢 **[ACTIVE]**" if current_id == doc.id else ""
                     st.markdown(f"### {doc.title}{active_badge}")
@@ -403,23 +412,19 @@ elif page == "📤 Upload Content":
                     st.write(
                         f"**Created:** {doc.created_at.strftime('%Y-%m-%d %H:%M')}"
                     )
-                
+
                 with col2:
-                    if st.button(
-                        "📌 Select Active",
-                        key=f"select_{doc.id}"
-                    ):
+                    if st.button("📌 Select Active", key=f"select_{doc.id}"):
                         loaded_doc = library.get_document(doc.id)
                         if loaded_doc:
                             chunks = loader.store.get_chunks_by_document_id(doc.id)
                             st.session_state.current_doc = loaded_doc
                             st.session_state.current_chunks = chunks
-                            st.success(f"Selected '{loaded_doc.title}' as active content!")
+                            st.success(
+                                f"Selected '{loaded_doc.title}' as active content!"
+                            )
                             st.rerun()
-                    if st.button(
-                                 "🗑️ Delete",
-                                key=f"delete_{doc.id}"
-                                ):
+                    if st.button("🗑️ Delete", key=f"delete_{doc.id}"):
                         if library.delete_document(doc.id):
                             if current_id == doc.id:
                                 st.session_state.current_doc = None
@@ -428,43 +433,37 @@ elif page == "📤 Upload Content":
                             st.rerun()
                         else:
                             st.error("Failed to delete document.")
-                
+
                 st.divider()
-                
-    
+
     with tab5:
-            st.subheader("Demo Dataset")
-    
-            st.write(
-                "Load a sample educational dataset into the content library."
-            )
-    
-            if st.button("Load Demo Dataset", key="load_demo"):
-    
-                try:
-                    progress = st.progress(0, text="Loading demo dataset...")
+        st.subheader("Demo Dataset")
 
-                    count = demo.load_demo_data()
+        st.write("Load a sample educational dataset into the content library.")
 
-                    docs = library.list_documents()
-                    if docs:
-                        loaded_doc = library.get_document(docs[0].id)
-                        if loaded_doc:
-                            chunks = loader.store.get_chunks_by_document_id(loaded_doc.id)
-                            st.session_state.current_doc = loaded_doc
-                            st.session_state.current_chunks = chunks
+        if st.button("Load Demo Dataset", key="load_demo"):
+            try:
+                progress = st.progress(0, text="Loading demo dataset...")
 
-                    progress.progress(100, text="Demo dataset loaded!")
-                    progress.empty()
+                count = demo.load_demo_data()
 
-                    st.success(
-                               f"Successfully loaded {count} demo document(s)."
-                    )
+                docs = library.list_documents()
+                if docs:
+                    loaded_doc = library.get_document(docs[0].id)
+                    if loaded_doc:
+                        chunks = loader.store.get_chunks_by_document_id(loaded_doc.id)
+                        st.session_state.current_doc = loaded_doc
+                        st.session_state.current_chunks = chunks
 
-                    st.rerun()
-    
-                except Exception as e:
-                    st.error(f"Failed to load demo dataset: {e}")
+                progress.progress(100, text="Demo dataset loaded!")
+                progress.empty()
+
+                st.success(f"Successfully loaded {count} demo document(s).")
+
+                st.rerun()
+
+            except Exception as e:
+                st.error(f"Failed to load demo dataset: {e}")
 
     # One call covers all five ingestion paths above - single file, paste,
     # batch, library and demo - because each of them sets current_doc and
@@ -485,7 +484,9 @@ elif page == "🃏 Generate Flashcards":
             col1, col2 = st.columns(2)
             with col1:
                 card_format = st.radio(
-                    "Card format", ["term-definition", "qa"], horizontal=True,
+                    "Card format",
+                    ["term-definition", "qa"],
+                    horizontal=True,
                     help="term-definition: front = term. Q-A: front = a question.",
                 )
                 card_count = st.slider("Card count", min_value=1, max_value=25, value=8)
@@ -559,7 +560,9 @@ elif page == "📅 Study Plan":
                 difficulty = st.radio(
                     "Overall difficulty", ["easy", "medium", "hard"], horizontal=True
                 )
-                hours_per_week = st.slider("Hours per week", min_value=1, max_value=30, value=10)
+                hours_per_week = st.slider(
+                    "Hours per week", min_value=1, max_value=30, value=10
+                )
             with col2:
                 start_date = st.date_input("Plan start", today)
                 end_date = st.date_input("Plan end", today + timedelta(days=28))
@@ -595,9 +598,7 @@ elif page == "📅 Study Plan":
                     f"{plan.start_date} → {plan.end_date} · difficulty={plan.overall_difficulty} · "
                     f"{plan.available_hours_per_week} h/week"
                 )
-                st.caption(
-                    "Scheduled source topics: " + ", ".join(plan.source_topics)
-                )
+                st.caption("Scheduled source topics: " + ", ".join(plan.source_topics))
                 for s in plan.topic_schedule:
                     with st.expander(f"📌 {s.topic} ({s.difficulty})"):
                         st.write(f"Dates: {s.start_date} → {s.end_date}")
@@ -662,7 +663,8 @@ elif page == "🔄 Revision Plan":
                     if session.notes:
                         st.caption(session.notes)
                     st.caption(
-                        "Selected weak topics: " + ", ".join(session.selected_weak_topics)
+                        "Selected weak topics: "
+                        + ", ".join(session.selected_weak_topics)
                     )
                     for i, item in enumerate(session.items, start=1):
                         with st.expander(f"{i}. {item.topic} [{item.difficulty}]"):

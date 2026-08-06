@@ -36,7 +36,7 @@ class DemoDataLoader:
             Loops allow repeated execution of code.
 
             Python emphasizes readability and simplicity.
-            """
+            """,
         ),
         (
             "Database Fundamentals",
@@ -50,7 +50,7 @@ class DemoDataLoader:
             Primary keys uniquely identify records.
 
             Foreign keys establish relationships between tables.
-            """
+            """,
         ),
         (
             "Computer Networks",
@@ -64,7 +64,7 @@ class DemoDataLoader:
             IP is responsible for addressing and routing packets.
 
             Routers forward packets between networks.
-            """
+            """,
         ),
         (
             "Operating Systems",
@@ -78,7 +78,7 @@ class DemoDataLoader:
             It controls file systems.
 
             It provides an interface between users and hardware.
-            """
+            """,
         ),
         (
             "Object-Oriented Programming",
@@ -92,7 +92,7 @@ class DemoDataLoader:
             Encapsulation improves maintainability.
 
             Inheritance and polymorphism encourage code reuse.
-            """
+            """,
         ),
     ]
 

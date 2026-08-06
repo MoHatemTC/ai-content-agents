@@ -1,4 +1,3 @@
-
 from src.agents.test_help_agent import TestHelpAgent
 from src.validation.schemas import TestHelpOutput
 from tests.conftest import CompliantAgentsClient
@@ -10,32 +9,32 @@ def test_test_help_generation():
     a valid TestHelpOutput object.
     """
 
-# ==========================================
-# MOCK MODE
-# Forces the agent to use the hardcoded
-# mock response instead of calling LiteLLM.
-# Use this while developing or when the
-# API is unavailable.
-# ==========================================
+    # ==========================================
+    # MOCK MODE
+    # Forces the agent to use the hardcoded
+    # mock response instead of calling LiteLLM.
+    # Use this while developing or when the
+    # API is unavailable.
+    # ==========================================
     agent = TestHelpAgent(client=CompliantAgentsClient())
 
-# ==========================================
-# REAL API MODE
-# Forces the agent to call LiteLLM.
-# This ignores the MOCK_MODE value in .env.
-# Uncomment when the API is working.
-# ==========================================
-#    agent = TestHelpAgent(mock_mode=False)
+    # ==========================================
+    # REAL API MODE
+    # Forces the agent to call LiteLLM.
+    # This ignores the MOCK_MODE value in .env.
+    # Uncomment when the API is working.
+    # ==========================================
+    #    agent = TestHelpAgent(mock_mode=False)
 
-# ==========================================
-# ENVIRONMENT MODE
-# Uses the MOCK_MODE value from .env.
-# If MOCK_MODE=true  -> uses mock response.
-# If MOCK_MODE=false -> uses LiteLLM.
-# ==========================================
+    # ==========================================
+    # ENVIRONMENT MODE
+    # Uses the MOCK_MODE value from .env.
+    # If MOCK_MODE=true  -> uses mock response.
+    # If MOCK_MODE=false -> uses LiteLLM.
+    # ==========================================
 
     # agent = HelpAgent()
-    
+
     result = agent.generate(
         content="""
 Python provides two loop types: for and while.

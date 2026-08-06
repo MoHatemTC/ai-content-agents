@@ -1,12 +1,12 @@
 from .flashcards import Flashcard, FlashcardSet
-from .study_plan import StudyPlan, TopicSchedule
 from .revision import RevisionItem, RevisionSession
+from .study_plan import StudyPlan, TopicSchedule
 
 __all__ = [
     "Flashcard",
     "FlashcardSet",
-    "StudyPlan",
-    "TopicSchedule",
     "RevisionItem",
     "RevisionSession",
+    "StudyPlan",
+    "TopicSchedule",
 ]

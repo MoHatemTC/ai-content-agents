@@ -55,6 +55,7 @@ def test_chunks_do_not_split_words():
         if chunk.end_char < len(text):
             assert text[chunk.end_char].isspace()
 
+
 def test_overlap_is_preserved():
     text = (
         "This is sentence one. "
@@ -88,11 +89,7 @@ def test_long_word_does_not_loop():
 def test_sentence_split():
     chunker = TextChunker()
 
-    text = (
-        "Sentence one. "
-        "Sentence two! "
-        "Sentence three?"
-    )
+    text = "Sentence one. Sentence two! Sentence three?"
 
     spans = chunker._split_sentences(text)
 
@@ -105,15 +102,10 @@ def test_sentence_split():
     ]
 
 
-
 def test_sentence_packing():
     chunker = TextChunker(chunk_size=40, overlap=10)
 
-    text = (
-        "Sentence one. "
-        "Sentence two. "
-        "Sentence three."
-    )
+    text = "Sentence one. Sentence two. Sentence three."
 
     spans = chunker._pack_sentences(text)
 
@@ -147,12 +139,9 @@ def test_long_sentence_is_split():
     assert len(chunks) > 1
 
     for start, end in spans:
-
         if end < len(text):
-            assert (
-                text[end - 1].isspace()
-                or text[end - 1] in ".!?"
-            )
+            assert text[end - 1].isspace() or text[end - 1] in ".!?"
+
 
 # --------------------------------------------------------------------------- #
 # chunk_size is a ceiling, not a target
@@ -333,9 +322,7 @@ def test_ordinals_are_contiguous() -> None:
     chunks = TextChunker(chunk_size=90, overlap=15).chunk(PROSE, "doc")
 
     assert [c.ordinal for c in chunks] == list(range(len(chunks)))
-    assert [c.id for c in chunks] == [
-        f"doc-c{i:04d}" for i in range(len(chunks))
-    ]
+    assert [c.id for c in chunks] == [f"doc-c{i:04d}" for i in range(len(chunks))]
 
 
 # --------------------------------------------------------------------------- #
