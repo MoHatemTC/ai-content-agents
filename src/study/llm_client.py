@@ -46,6 +46,16 @@ DEFAULT_MAX_TOKENS = 2000
 DEFAULT_TEMPERATURE = 0.2
 DEFAULT_ATTEMPTS = 2
 
+# Output allowance per requested item, and for the surrounding JSON. Measured on
+# real textbook passages, where 20 flashcards cost 3,059 completion tokens -
+# ~153 each - against 45 each for the same count drawn from a short paragraph.
+PER_ITEM_TOKENS = 200
+OUTPUT_OVERHEAD_TOKENS = 400
+
+# Upper bound whatever is requested, so a slider set to its maximum cannot ask
+# the gateway for more than it will fund. It refuses on the *requested* ceiling.
+MAX_OUTPUT_TOKENS = 8000
+
 _FENCE = re.compile(r"^\s*```(?:json)?\s*(?P<body>.*?)\s*```\s*$", re.DOTALL)
 
 
@@ -73,6 +83,36 @@ def max_tokens_default() -> int:
     except ValueError:
         logger.warning("LLM_MAX_TOKENS=%r is not an integer; using default", raw)
         return DEFAULT_MAX_TOKENS
+
+
+def output_budget(
+    item_count: int,
+    *,
+    per_item: int = PER_ITEM_TOKENS,
+    overhead: int = OUTPUT_OVERHEAD_TOKENS,
+) -> int:
+    """Size the output cap to what was actually asked for.
+
+    A fixed cap is wrong in both directions: too small for a large request and
+    wasteful for a small one. Asking for 20 flashcards from dense textbook prose
+    needed 3,059 completion tokens against a flat 2,000 ceiling, and failed with
+    ``finish_reason=length`` and unparseable half-written JSON. The same 20 cards
+    from a short paragraph needed 895 - the source material, not just the count,
+    decides how much the model writes, so the per-item allowance is generous.
+
+    Args:
+        item_count: How many cards, scheduled topics or revision items were
+            requested.
+        per_item: Token allowance per item. Measured worst case is ~153.
+        overhead: Allowance for the wrapper fields - title, description and the
+            surrounding JSON.
+
+    Returns:
+        A cap of at least :func:`max_tokens_default`, never above
+        :data:`MAX_OUTPUT_TOKENS`.
+    """
+    scaled = overhead + max(0, item_count) * per_item
+    return min(MAX_OUTPUT_TOKENS, max(max_tokens_default(), scaled))
 
 
 def schema_block(schema: type[BaseModel]) -> str:
