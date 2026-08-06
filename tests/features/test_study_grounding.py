@@ -214,3 +214,78 @@ def test_indexing_an_empty_document_is_not_an_error() -> None:
     index = _fresh_index()
 
     assert index_chunks(index, DOC, []) == 0
+
+
+# --------------------------------------------------------------------------- #
+# Indexing cost: paid once, not on every restart
+# --------------------------------------------------------------------------- #
+
+
+def test_a_persisted_index_survives_being_reopened(tmp_path) -> None:
+    """Embedding is ~95% of ingest cost and its rate cannot be tuned.
+
+    Measured on a 1,598-page textbook: 114.6s of 121.2s total. The only way not
+    to pay that repeatedly is not to discard it, and without a persist directory
+    Chroma runs in memory, so every restart re-embedded everything.
+
+    Reopening must find the chunks *and* still answer queries - a collection
+    that loads but cannot embed a query is the failure mode this guards.
+    """
+    config = RetrievalConfig(
+        persist_directory=str(tmp_path / "chroma"),
+        collection_name=f"persist-{uuid4().hex[:8]}",
+    )
+    chunks = [_IngestionChunk(i, t) for i, t in enumerate(PASSAGES)]
+
+    first = ChunkIndex(config=config, embedding_function=HashingEmbeddingFunction())
+    index_chunks(first, DOC, chunks)
+    del first
+
+    reopened = ChunkIndex(config=config, embedding_function=HashingEmbeddingFunction())
+    assert len(reopened) == len(PASSAGES)
+
+    _content, cited, _ctx = grounded_content(
+        index=reopened, document_id=DOC, focus="conduction", topics=[], top_k=2
+    )
+    assert cited
+
+
+def test_the_cached_embedder_can_be_rebuilt_from_its_stored_config() -> None:
+    """Chroma stores the embedding function against a persisted collection.
+
+    It reports the wrapper by name and rebuilds it from ``get_config()`` when
+    nothing is passed in. A config that omits the embedder being wrapped
+    produces a collection that loads fine and then fails every query with "You
+    must provide an embedding function", so the round trip has to carry it.
+
+    ``ChunkIndex`` currently always supplies an embedder itself, so Chroma does
+    not exercise this path today — which is exactly why it needs testing
+    directly rather than through the index, where it would pass either way.
+    """
+    from src.retrieval.performance import CachingEmbeddingFunction
+
+    original = CachingEmbeddingFunction(HashingEmbeddingFunction(dim=128))
+    rebuilt = CachingEmbeddingFunction.build_from_config(original.get_config())
+
+    assert rebuilt.name() == original.name()
+    # Same inner embedder, same dimensionality: a rebuilt embedder that differs
+    # produces vectors incompatible with the ones already in the collection.
+    assert rebuilt(["conduction"])[0].shape == original(["conduction"])[0].shape
+    assert list(rebuilt(["conduction"])[0]) == list(original(["conduction"])[0])
+
+
+def test_the_default_embedder_caches_repeated_text() -> None:
+    """A class of students asks about the same few concepts.
+
+    Repeated query text should be embedded once. This also pins the wrapper in
+    place: without it, every identical query pays full embedding cost again.
+    """
+    from src.retrieval.index import _default_embedding_function
+
+    embedder = _default_embedding_function()
+    assert hasattr(embedder, "stats"), "the default embedder is no longer cached"
+
+    embedder(["thermal conduction"])
+    embedder(["thermal conduction"])
+
+    assert embedder.stats()["hits"] >= 1

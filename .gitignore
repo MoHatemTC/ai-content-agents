@@ -22,3 +22,8 @@ build/
 .ruff_cache/
 .coverage
 htmlcov/
+
+# Persisted Chroma index (CHROMA_DIR). Derived data, ~19 MB per 1,000 chunks,
+# and only valid for the embedding model that wrote it. Disposable: delete it
+# and re-ingest to rebuild.
+.chroma/

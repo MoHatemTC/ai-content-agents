@@ -169,17 +169,34 @@ class HashingEmbeddingFunction(EmbeddingFunction[Documents]):
 
 
 def _default_embedding_function() -> EmbeddingFunction[Documents] | None:
-    """Pick the embedder per the repo's ``MOCK_MODE`` convention.
+    """Pick the embedder per the repo's ``MOCK_MODE`` convention, cached.
+
+    The chosen embedder is wrapped in
+    :class:`~src.retrieval.performance.CachingEmbeddingFunction` so repeated
+    texts are embedded once. Embedding dominates ingest cost and its rate is
+    fixed, so not repeating work is the only lever available; in practice this
+    serves the repeated *query* embeddings a class of students asking about the
+    same few concepts produces.
+
+    The wrapping happens here rather than at each call site on purpose. Chroma
+    records the embedding function on a persisted collection and cannot rebuild
+    this wrapper from its config, so a collection written with it and reopened
+    without it loads but fails on query with "You must provide an embedding
+    function". Deciding once, centrally, means no caller can pair them wrongly.
 
     Returns:
-        The offline hashing embedder when ``MOCK_MODE`` is true (default),
-        or ``None`` (Chroma's default ONNX model) when live mode is enabled.
+        The caching wrapper around the offline hashing embedder when
+        ``MOCK_MODE`` is true, or around Chroma's default ONNX model otherwise.
     """
-    mock_mode = os.getenv("MOCK_MODE", "true").lower() == "true"
-    if mock_mode:
-        return HashingEmbeddingFunction()
+    from src.retrieval.performance import CachingEmbeddingFunction
+
+    if os.getenv("MOCK_MODE", "true").lower() == "true":
+        return CachingEmbeddingFunction(HashingEmbeddingFunction())
+
+    from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
+
     logger.info("MOCK_MODE=false: using Chroma's default embedding model")
-    return None
+    return CachingEmbeddingFunction(DefaultEmbeddingFunction())
 
 
 class ChunkIndex:

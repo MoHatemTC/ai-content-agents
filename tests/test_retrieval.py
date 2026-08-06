@@ -85,8 +85,13 @@ class TestRetrievalConfig:
         config = RetrievalConfig()
         assert config.top_k == 5
         assert config.min_score == 0.0
-        assert config.chunk_size == 800
-        assert config.chunk_overlap == 100
+        # ~500 tokens. Raised from 800 because embedding is 97% of ingest cost
+        # and its rate is fixed, so chunk count is the only lever: the physics
+        # textbook went from 8,513 chunks to 4,004. It also moves the chunker
+        # into the 300-800 token band that retrieval guidance recommends, where
+        # 800 characters (~200 tokens) sat below it.
+        assert config.chunk_size == 2000
+        assert config.chunk_overlap == 200
         assert config.collection_name == "content_chunks"
         assert config.persist_directory is None
 

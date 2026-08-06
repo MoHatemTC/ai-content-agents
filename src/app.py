@@ -1,6 +1,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from datetime import timedelta
 from pathlib import Path
@@ -30,7 +31,7 @@ from src.study.revision_agent import RevisionAgent
 from src.study.study_plan_agent import StudyPlanAgent
 from src.services.mentor_concept import MentorConceptService
 from src.ui_common import render_current_content_status
-from src.retrieval import ChunkIndex
+from src.retrieval import ChunkIndex, RetrievalConfig
 from src.study.grounding import NoGroundingError, grounded_content, index_chunks
 
 # ---------------------------------------------------------------------------
@@ -77,7 +78,19 @@ def get_revision_agent():
 
 @st.cache_resource
 def get_chunk_index():
-    return ChunkIndex()
+    """The retrieval index, persisted when CHROMA_DIR is set.
+
+    Embedding a large document costs minutes and the rate cannot be tuned, so
+    the only way not to pay it repeatedly is not to throw it away. Without a
+    persist directory Chroma runs in memory and every restart re-embeds
+    everything from scratch.
+
+    Left unset the index stays in memory, which keeps tests and fresh clones
+    free of on-disk state.
+    """
+    directory = os.getenv("CHROMA_DIR", "").strip()
+    config = RetrievalConfig(persist_directory=directory) if directory else None
+    return ChunkIndex(config=config)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -86,14 +99,50 @@ def get_chunk_index():
 PENDING_BADGE = ":warning: **PENDING HUMAN REVIEW — not final.**"
 
 
+def ensure_indexed(show_progress: bool = False) -> bool:
+    """Embed the active document's chunks if that has not happened yet.
+
+    Embedding is 97% of ingest cost - 115s for a 1,598-page textbook, against
+    5s to parse it - and the rate is fixed, so the question is not how to make
+    it faster but where the learner has to stand and wait for it. Doing it on
+    upload, where a wait is expected and progress is visible, is far better than
+    doing it on the Generate click, where it reads as the app having hung.
+
+    Called from the upload page for that reason, and again from :func:`ground`
+    as a fallback, so a document ingested before this existed still works
+    without being re-uploaded.
+
+    Args:
+        show_progress: Show a progress message. True on the upload page, where
+            the wait is the point; False on generation, where it is a fallback.
+
+    Returns:
+        Whether any indexing was actually performed.
+    """
+    doc = st.session_state.get("current_doc")
+    chunks = st.session_state.get("current_chunks") or []
+    if doc is None or not chunks:
+        return False
+
+    indexed = st.session_state.setdefault("indexed_documents", set())
+    if doc.id in indexed:
+        return False
+
+    message = f"Preparing {len(chunks):,} passages for retrieval..."
+    if show_progress:
+        with st.status(message, expanded=False) as status:
+            index_chunks(get_chunk_index(), doc.id, chunks)
+            status.update(label=f"Indexed {len(chunks):,} passages", state="complete")
+    else:
+        with st.spinner(message):
+            index_chunks(get_chunk_index(), doc.id, chunks)
+
+    indexed.add(doc.id)
+    return True
+
+
 def ground(focus: str, topics: list[str]):
     """Retrieve the passages this generation should be built from.
-
-    Indexing happens here rather than in each upload path because there are
-    five of them - single file, paste, batch, library and demo - and one lazy
-    call cannot be forgotten by a sixth. ``add_document`` replaces a document's
-    chunks wholesale, so re-indexing is safe; the session set only avoids
-    re-embedding thousands of chunks on every click.
 
     Args:
         focus: What the learner asked the material to cover; may be blank.
@@ -105,18 +154,11 @@ def ground(focus: str, topics: list[str]):
     Raises:
         NoGroundingError: If nothing could be retrieved.
     """
+    ensure_indexed()
     doc = st.session_state.get("current_doc")
-    chunks = st.session_state.get("current_chunks") or []
-    index = get_chunk_index()
-
-    indexed = st.session_state.setdefault("indexed_documents", set())
-    if doc.id not in indexed:
-        with st.spinner(f"Indexing {len(chunks)} passages for retrieval..."):
-            index_chunks(index, doc.id, chunks)
-        indexed.add(doc.id)
 
     content, cited_ids, _ = grounded_content(
-        index=index, document_id=doc.id, focus=focus, topics=topics
+        index=get_chunk_index(), document_id=doc.id, focus=focus, topics=topics
     )
     return content, cited_ids
 
@@ -395,8 +437,15 @@ elif page == "📤 Upload Content":
     
                 except Exception as e:
                     st.error(f"Failed to load demo dataset: {e}")
-    
-    
+
+    # One call covers all five ingestion paths above - single file, paste,
+    # batch, library and demo - because each of them sets current_doc and
+    # Streamlit reruns this script afterwards. Indexing here means the wait
+    # lands on the page where the learner just asked for work to be done,
+    # rather than on their first Generate click.
+    ensure_indexed(show_progress=True)
+
+
 # Page: Generate Flashcards
 elif page == "🃏 Generate Flashcards":
     st.title("🃏 Grounded Flashcard Generator")
