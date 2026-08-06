@@ -17,9 +17,11 @@ import pytest
 from src.schemas import FlashcardSet
 from src.study.llm_client import (
     DEFAULT_MAX_TOKENS,
+    MAX_OUTPUT_TOKENS,
     UpstreamResponseError,
     call_llm,
     max_tokens_default,
+    output_budget,
     parse_json,
     schema_block,
     sentence_about,
@@ -259,3 +261,75 @@ def test_a_complete_reply_is_not_mistaken_for_truncation() -> None:
     choice = type("C", (), {"message": message, "finish_reason": "stop"})
 
     assert call_llm(FakeClient(_Reply(choices=[choice])), "m", "p") == '{"a": 1}'
+
+
+# --------------------------------------------------------------------------- #
+# The output cap has to match what was asked for
+# --------------------------------------------------------------------------- #
+
+
+def test_the_budget_grows_with_the_request() -> None:
+    """A fixed cap fails the moment someone moves the slider.
+
+    Twenty flashcards from real textbook passages needed 3,059 completion
+    tokens against a flat 2,000 ceiling, and came back as half-written JSON.
+    """
+    assert output_budget(20) > output_budget(8)
+    assert output_budget(20) >= 3059, "would still truncate the measured case"
+
+
+def test_the_budget_never_drops_below_the_configured_default() -> None:
+    """A small request must not get a smaller allowance than the baseline."""
+    assert output_budget(1) >= DEFAULT_MAX_TOKENS
+    assert output_budget(0) >= DEFAULT_MAX_TOKENS
+
+
+def test_the_budget_is_capped() -> None:
+    """The gateway refuses on the requested ceiling, not on usage."""
+    assert output_budget(10_000) == MAX_OUTPUT_TOKENS
+
+
+def _live_agent(reply: str):
+    """A flashcard agent on its live path, wired to a fake gateway.
+
+    Constructed in mock mode so no credentials are needed, then switched onto
+    the live path with a fake client. No network call is made.
+    """
+    from src.study.flashcard_agent import FlashcardAgent
+
+    agent = FlashcardAgent(mock_mode=True)
+    agent.mock_mode = False
+    agent.client = FakeClient(_Reply(content=reply))
+    agent.model = "test-model"
+    return agent
+
+
+def test_generate_sizes_the_budget_from_the_cards_requested() -> None:
+    """The budget has to be computed *and* sent, from inside generate().
+
+    An earlier version of this test called ``_call_llm`` directly with a budget
+    it had computed itself, so it passed even with the agent reverted to a flat
+    cap - it proved the parameter was forwarded, never that anything set it.
+    """
+    content = "Conduction moves energy by contact. Convection carries heat in a fluid."
+    reply = json.dumps(
+        {
+            "title": "Heat",
+            "cards": [
+                {"front": "Conduction", "back": "Energy by contact.",
+                 "source_topic": "Conduction"}
+            ],
+        }
+    )
+
+    small = _live_agent(reply)
+    small.generate(content, card_format="term-definition", card_count=5)
+
+    large = _live_agent(reply)
+    large.generate(content, card_format="term-definition", card_count=25)
+
+    small_cap = small.client.calls[0]["max_tokens"]
+    large_cap = large.client.calls[0]["max_tokens"]
+
+    assert large_cap > small_cap, "the cap does not grow with the card count"
+    assert large_cap >= 3059, "would still truncate the measured 20-card case"

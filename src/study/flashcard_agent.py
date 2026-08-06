@@ -40,6 +40,7 @@ from src.schemas import Flashcard, FlashcardSet
 from src.study.llm_client import (
     UpstreamResponseError,
     call_llm,
+    output_budget,
     parse_json,
     schema_block,
     sentence_about,
@@ -302,7 +303,7 @@ class FlashcardAgent:
     # LLM + mock responses
     # ------------------------------------------------------------------
 
-    def _call_llm(self, prompt: str) -> str:
+    def _call_llm(self, prompt: str, max_tokens: int | None = None) -> str:
         """Send the prompt to LiteLLM and return the raw text response.
 
         Args:
@@ -314,7 +315,9 @@ class FlashcardAgent:
         Raises:
             UpstreamResponseError: If the gateway returned no usable choice.
         """
-        return call_llm(self.client, self.model, prompt)
+        return call_llm(
+            self.client, self.model, prompt, max_tokens=max_tokens
+        )
 
     @staticmethod
     def _mock_response(
@@ -472,7 +475,7 @@ class FlashcardAgent:
             )
         else:
             try:
-                text = self._call_llm(prompt)
+                text = self._call_llm(prompt, output_budget(card_count))
             except UpstreamResponseError:
                 # Already says what the gateway did and whether it is worth
                 # retrying; wrapping it in RuntimeError("call failed") would

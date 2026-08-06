@@ -29,6 +29,7 @@ from src.study.flashcard_agent import FlashcardAgent
 from src.study.llm_client import (
     UpstreamResponseError,
     call_llm,
+    output_budget,
     parse_json,
     schema_block,
 )
@@ -138,9 +139,11 @@ class RevisionAgent:
     # LLM / mock
     # ------------------------------------------------------------------
 
-    def _call_llm(self, prompt: str) -> str:
+    def _call_llm(self, prompt: str, max_tokens: int | None = None) -> str:
         """Send the prompt to the gateway and return the reply body."""
-        return call_llm(self.client, self.model, prompt)
+        return call_llm(
+            self.client, self.model, prompt, max_tokens=max_tokens
+        )
 
     @staticmethod
     def _mock_response(
@@ -281,7 +284,7 @@ class RevisionAgent:
             raw = self._mock_response(extracted_topics, selected_topics, sdate)
         else:  # pragma: no cover - live path
             try:
-                text = self._call_llm(prompt)
+                text = self._call_llm(prompt, output_budget(len(selected_topics)))
             except UpstreamResponseError:
                 logger.exception("Revision LLM call failed")
                 raise

@@ -25,6 +25,7 @@ from src.study.flashcard_agent import FlashcardAgent
 from src.study.llm_client import (
     UpstreamResponseError,
     call_llm,
+    output_budget,
     parse_json,
     schema_block,
 )
@@ -130,9 +131,11 @@ class StudyPlanAgent:
     # LLM / mock
     # ------------------------------------------------------------------
 
-    def _call_llm(self, prompt: str) -> str:
+    def _call_llm(self, prompt: str, max_tokens: int | None = None) -> str:
         """Send the prompt to the gateway and return the reply body."""
-        return call_llm(self.client, self.model, prompt)
+        return call_llm(
+            self.client, self.model, prompt, max_tokens=max_tokens
+        )
 
     @staticmethod
     def _mock_response(
@@ -293,7 +296,7 @@ class StudyPlanAgent:
             )
         else:  # pragma: no cover - live path
             try:
-                text = self._call_llm(prompt)
+                text = self._call_llm(prompt, output_budget(len(extracted_topics)))
             except UpstreamResponseError:
                 logger.exception("Study plan LLM call failed")
                 raise
