@@ -21,6 +21,7 @@ from streamlit.testing.v1 import AppTest
 from src.ingestion.loader import ContentLoader
 from src.ingestion.schema import Chunk, Document
 from src.ui_common import chunk_ids, render_current_content_status
+from tests.conftest import CompliantStudyClient
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STUDY_UI = REPO_ROOT / "src" / "study" / "ui.py"
@@ -34,6 +35,46 @@ def _clear_streamlit_caches():
     st.cache_resource.clear()
     yield
     st.cache_resource.clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_live_calls(monkeypatch: pytest.MonkeyPatch):
+    """Give every agent the pages build a fake gateway.
+
+    These tests execute the real pages, so the pages construct their own
+    agents and there is no call site to inject at. Patching the constructor
+    default is the seam: an explicit ``client=`` still wins, so this only
+    catches the agents the page builds for itself.
+
+    Without it these tests make real API calls - they did, briefly, and the
+    suite went from 27 s to 128 s.
+
+    The credentials are set because the pages check whether a gateway is
+    reachable before offering to generate at all, and stop with a message when
+    it is not. These tests are about a *configured* deployment - one with a
+    fake gateway behind it - so they have to look like one. Whether the pages
+    degrade correctly when nothing is configured is a separate question, and
+    ``test_page_loads`` covers it: the whole suite runs with no credentials in
+    CI, and those pages must still load.
+    """
+    monkeypatch.setenv("LITELLM_API_KEY", "sk-test-not-a-real-key")
+    monkeypatch.setenv("LITELLM_BASE_URL", "https://gateway.invalid/v1")
+
+    from src.study.flashcard_agent import FlashcardAgent
+    from src.study.revision_agent import RevisionAgent
+    from src.study.study_plan_agent import StudyPlanAgent
+
+    for agent_class in (FlashcardAgent, StudyPlanAgent, RevisionAgent):
+        original = agent_class.__init__
+
+        def patched(self, *, client=None, model=None, _original=original):
+            _original(
+                self,
+                client=client if client is not None else CompliantStudyClient(),
+                model=model or "test-model",
+            )
+
+        monkeypatch.setattr(agent_class, "__init__", patched)
 
 
 DOC_TITLE = "Diplomacy Primer"
@@ -155,7 +196,8 @@ def test_flashcards_page_records_the_chunk_ids() -> None:
     from src.study.flashcard_agent import FlashcardAgent
 
     chunks = _chunks(count=3)
-    card_set = FlashcardAgent(mock_mode=True).generate(
+    agent = FlashcardAgent(client=CompliantStudyClient(), model="test-model")
+    card_set = agent.generate(
         "Diplomacy is the practice of negotiation between nations.",
         card_format="qa",
         card_count=2,

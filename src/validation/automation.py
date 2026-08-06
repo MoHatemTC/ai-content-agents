@@ -16,9 +16,8 @@ human, which is the entire point of the review gate.
 
 Run it with::
 
-    python -m src.validation.automation              # live, every agent
+    python -m src.validation.automation              # every agent
     python -m src.validation.automation --limit 1    # one document
-    python -m src.validation.automation --offline    # mock agents, no API calls
 """
 
 from __future__ import annotations
@@ -31,6 +30,7 @@ import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from src.retrieval.config import RetrievalConfig
@@ -230,7 +230,7 @@ def run_batch(
     agents: Sequence[str] | None = None,
     limit: int | None = None,
     db_path: str = "ingestion.db",
-    mock_mode: bool | None = None,
+    client: Any | None = None,
     evaluate: bool = True,
 ) -> BatchReport:
     """Run the pipeline over a dataset and score the result.
@@ -241,7 +241,8 @@ def run_batch(
         agents: Which agents to run per document; defaults to all registered.
         limit: Process at most this many documents.
         db_path: Database file for the ingestion and platform stores.
-        mock_mode: Forced offline/live setting for the agents.
+        client: An OpenAI-compatible client shared by every agent; tests
+            inject a double.
         evaluate: Whether to score the batch afterwards.
 
     Returns:
@@ -257,7 +258,7 @@ def run_batch(
         # A unique collection keeps repeat batches from stacking up in Chroma's
         # process-wide ephemeral client.
         index=ChunkIndex(RetrievalConfig(collection_name=f"batch-{uuid4().hex}")),
-        mock_mode=mock_mode,
+        client=client,
     )
     store: PlatformStore = pipe.platform_store
 
@@ -351,11 +352,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--db", default="ingestion.db", metavar="PATH", help="SQLite database path."
     )
     parser.add_argument(
-        "--offline",
-        action="store_true",
-        help="Force mock agents so the batch makes no API calls.",
-    )
-    parser.add_argument(
         "--no-evaluation", action="store_true", help="Skip the evaluation report."
     )
     args = parser.parse_args(argv)
@@ -368,7 +364,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         agents=args.agents,
         limit=args.limit,
         db_path=args.db,
-        mock_mode=True if args.offline else None,
         evaluate=not args.no_evaluation,
     )
 

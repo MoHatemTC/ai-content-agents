@@ -21,6 +21,7 @@ from src.ingestion.library import ContentLibrary
 from src.ingestion.demo_data import DemoDataLoader
 from src.registry import AgentRegistry
 from src.generation import MockGenerator
+from src.llm_gateway import gateway_availability
 from src.study.flashcard_agent import FlashcardAgent
 from src.study.formatters import (
     format_flashcard_set,
@@ -192,23 +193,50 @@ loader = get_loader()
 batch = get_batch()
 library = get_library()
 demo = get_demo()
-registry = get_registry()
-generator = get_generator()
-fc_agent = get_flashcard_agent()
-sp_agent = get_study_plan_agent()
-rv_agent = get_revision_agent()
-mentor_concept_service = get_mentor_concept_service()
+# `registry` and `generator` used to be built here and then never read. Since
+# AgentRegistry constructs all four content agents, that alone was enough to
+# take the whole page down when the gateway is unconfigured. The factories stay
+# for whoever needs them; nothing calls them at import.
 
-# Say which mode the agents are in. The app spent weeks generating placeholder
-# cards - "See the source text for a fuller treatment" - because the UI forced
-# mock mode regardless of MOCK_MODE, and nothing on screen said so.
-if fc_agent.mock_mode:
-    st.sidebar.warning(
-        "**Mock mode** — output is built from your document but not generated "
-        "by a model. Set `MOCK_MODE=false` in `.env` for real generation."
-    )
-else:
+# Say whether generation can actually happen. The app spent weeks serving
+# placeholder cards - "See the source text for a fuller treatment" - because
+# the UI forced mock mode regardless of config and nothing on screen said so.
+# Mock mode is gone; what is left worth showing is whether the gateway is
+# reachable, and which model answers.
+#
+# The agents are built only when it is, because building one without
+# credentials raises: an unconfigured deployment must land on the message
+# below rather than on a traceback where the page should be. Everything that
+# does not need a model - upload, the library, review queues - keeps working.
+_gateway_ready, _gateway_reason = gateway_availability()
+
+fc_agent = sp_agent = rv_agent = mentor_concept_service = None
+if _gateway_ready:
+    fc_agent = get_flashcard_agent()
+    sp_agent = get_study_plan_agent()
+    rv_agent = get_revision_agent()
+    mentor_concept_service = get_mentor_concept_service()
     st.sidebar.caption(f"🟢 Live · `{fc_agent.model}`")
+else:
+    st.sidebar.error(
+        f"**Generation unavailable** — {_gateway_reason}. Upload, the library "
+        "and the review queue still work; anything that calls a model does not."
+    )
+
+
+def require_generation() -> None:
+    """Halt the page with a clear message when no model can be reached.
+
+    Without this the agents are ``None`` and the first call raises
+    ``AttributeError: 'NoneType' object has no attribute 'generate'``, which
+    tells whoever is looking at it nothing about the cause.
+    """
+    if not _gateway_ready:
+        st.error(
+            f"Generation unavailable — {_gateway_reason}. Set LITELLM_API_KEY "
+            "and LITELLM_BASE_URL in .env, then reload."
+        )
+        st.stop()
 
 
 # ---------------------------------------------------------------------------
@@ -476,6 +504,7 @@ elif page == "🃏 Generate Flashcards":
             submitted = st.form_submit_button("Generate Grounded Flashcards")
 
         if submitted:
+            require_generation()
             try:
                 grounded, cited = ground(focus, allow_list)
                 with st.spinner("Generating cards..."):
@@ -540,6 +569,7 @@ elif page == "📅 Study Plan":
             submitted = st.form_submit_button("Generate Grounded Study Plan")
 
         if submitted:
+            require_generation()
             try:
                 # The learner goal is already the best description of what the
                 # plan should cover, so it doubles as the retrieval query.
@@ -610,6 +640,7 @@ elif page == "🔄 Revision Plan":
             if not selected:
                 st.warning("Pick at least one topic to revise.")
             else:
+                require_generation()
                 try:
                     # The chosen weak topics say exactly which passages this
                     # session needs, so they are the retrieval query.
@@ -695,6 +726,7 @@ elif page == "🧭 Mentor":
             submitted = st.form_submit_button("Generate Mentor Response")
 
         if submitted:
+            require_generation()
             try:
                 with st.spinner("Generating mentor response..."):
                     reviewable = mentor_concept_service.generate_mentor_reviewable(
@@ -737,6 +769,7 @@ elif page == "💡 Concept Explanation":
             submitted = st.form_submit_button("Generate Concept Explanation")
 
         if submitted:
+            require_generation()
             try:
                 with st.spinner("Generating concept explanation..."):
                     reviewable = mentor_concept_service.generate_concept_reviewable(

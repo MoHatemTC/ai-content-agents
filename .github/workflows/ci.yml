@@ -50,6 +50,15 @@ jobs:
         run: python -m ruff check src/ tests/ --select F
 
       - name: Test
-        # MOCK_MODE is pinned in tests/conftest.py, so no test reaches the
-        # gateway. There are no API keys in CI and there should not be.
+        # No API keys in CI, and there should not be. That is now load-bearing
+        # rather than incidental: agents take an injected client and
+        # src.llm_gateway.build_client() raises without credentials, so a test
+        # that forgets to inject a double fails here instead of quietly billing
+        # the gateway. Running credential-free is what enforces it - locally,
+        # a developer's .env hid seven tests that were making real API calls.
         run: python -m pytest tests/ -q
+
+      - name: Lint the rest of the tree
+        # scripts/ is not in the lint step above because it is newer; keep it
+        # honest separately rather than widening that step and risking red.
+        run: python -m ruff check scripts/ --select F

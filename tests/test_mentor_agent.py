@@ -2,6 +2,7 @@
 
 from src.agents.mentor_agent import MentorAgent
 from src.validation.schemas import MentorOutput
+from tests.conftest import CompliantAgentsClient
 
 
 def test_mentor_agent_generation():
@@ -10,7 +11,7 @@ def test_mentor_agent_generation():
     a valid MentorOutput object.
     """
 
-    agent = MentorAgent(mock_mode=True)
+    agent = MentorAgent(client=CompliantAgentsClient())
 
     result = agent.generate(
         content="""

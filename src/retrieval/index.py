@@ -9,12 +9,11 @@ Also provides :func:`split_text_into_chunks` — the ingestion helper that
 turns raw text into :class:`Chunk` records with stable, citation-safe ids —
 and :class:`HashingEmbeddingFunction`, a deterministic offline embedder.
 
-Embedder selection mirrors the repo's ``MOCK_MODE`` convention: when
-``MOCK_MODE=true`` (the team default) the offline hashing embedder is used,
-so fresh clones and the test suite never touch the network; setting
-``MOCK_MODE=false`` opts into Chroma's default ONNX embedding model
-(one-time ~80 MB download, semantic matching). Passing an explicit
-``embedding_function`` always overrides both.
+Embedder selection is ``RETRIEVAL_EMBEDDER``: ``onnx`` (the default) is
+Chroma's default embedding model - semantic matching, one-time ~80 MB
+download - and ``hashing`` is the deterministic offline embedder the test
+suite uses so it never touches the network. Passing an explicit
+``embedding_function`` overrides both.
 """
 
 from __future__ import annotations
@@ -117,8 +116,8 @@ class HashingEmbeddingFunction(EmbeddingFunction[Documents]):
     Tokens are hashed (CRC32 — stable across processes, unlike ``hash()``)
     into a fixed-dimension count vector which is then L2-normalized, so
     cosine similarity rewards shared vocabulary. Not semantic — it exists so
-    tests and ``MOCK_MODE`` runs are deterministic and never download a
-    model — but it preserves the ranking property retrieval tests rely on:
+    tests and ``RETRIEVAL_EMBEDDER=hashing`` runs are deterministic and never
+    download a model — but it preserves the ranking property retrieval tests rely on:
     more shared terms means a higher score.
     """
 
@@ -169,7 +168,18 @@ class HashingEmbeddingFunction(EmbeddingFunction[Documents]):
 
 
 def _default_embedding_function() -> EmbeddingFunction[Documents] | None:
-    """Pick the embedder per the repo's ``MOCK_MODE`` convention, cached.
+    """Pick the embedder named by ``RETRIEVAL_EMBEDDER``, cached.
+
+    ``onnx`` (the default) is Chroma's default model: semantic matching, and a
+    one-time ~80 MB download. ``hashing`` is the deterministic offline embedder,
+    which is what the test suite uses so it never downloads a model.
+
+    This used to key off ``MOCK_MODE``, which conflated two unrelated ideas: a
+    flag about whether agents call a real model decided which embedder indexed
+    documents. Changing it silently invalidated every stored vector. The switch
+    is named for what it selects now, and it is kept - unlike agent mock mode -
+    because its purpose is determinism and offline CI rather than pretending to
+    be a model.
 
     The chosen embedder is wrapped in
     :class:`~src.retrieval.performance.CachingEmbeddingFunction` so repeated
@@ -185,17 +195,30 @@ def _default_embedding_function() -> EmbeddingFunction[Documents] | None:
     function". Deciding once, centrally, means no caller can pair them wrongly.
 
     Returns:
-        The caching wrapper around the offline hashing embedder when
-        ``MOCK_MODE`` is true, or around Chroma's default ONNX model otherwise.
+        The caching wrapper around the selected embedder.
+
+    Raises:
+        ValueError: If ``RETRIEVAL_EMBEDDER`` names something unknown. A typo
+            must not silently fall back to the other embedder - that is how you
+            get an index whose vectors do not match anything.
     """
     from src.retrieval.performance import CachingEmbeddingFunction
 
-    if os.getenv("MOCK_MODE", "true").lower() == "true":
+    choice = os.getenv("RETRIEVAL_EMBEDDER", "onnx").strip().lower() or "onnx"
+
+    if choice == "hashing":
         return CachingEmbeddingFunction(HashingEmbeddingFunction())
+
+    if choice != "onnx":
+        raise ValueError(
+            f"RETRIEVAL_EMBEDDER={choice!r} is not a known embedder. "
+            "Use 'onnx' (Chroma's default model) or 'hashing' (offline, "
+            "deterministic)."
+        )
 
     from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 
-    logger.info("MOCK_MODE=false: using Chroma's default embedding model")
+    logger.info("RETRIEVAL_EMBEDDER=onnx: using Chroma's default embedding model")
     return CachingEmbeddingFunction(DefaultEmbeddingFunction())
 
 
@@ -256,7 +279,7 @@ class ChunkIndex:
             config: Retrieval tunables; ``persist_directory`` selects an
                 on-disk index, otherwise the index is in-memory.
             embedding_function: Explicit embedder override; when omitted the
-                ``MOCK_MODE`` convention picks one (see module docstring).
+                ``RETRIEVAL_EMBEDDER`` setting picks one (see module docstring).
         """
         self._config = config or RetrievalConfig()
         if embedding_function is None:

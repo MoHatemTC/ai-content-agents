@@ -5,6 +5,7 @@ import pytest
 from src.agents.concept_agent import ConceptAgent
 from src.agents.mentor_agent import MentorAgent
 from src.retrieval.models import Chunk, GroundedContext, RetrievedChunk, RetrievalScope
+from tests.conftest import CompliantAgentsClient
 
 
 def _context(*, chunk_id: str = "chunk-1", text: str = "Python has for and while loops.") -> GroundedContext:
@@ -28,7 +29,7 @@ def _context(*, chunk_id: str = "chunk-1", text: str = "Python has for and while
 
 def test_week4_mentor_grounding_requires_valid_references_and_supported_claims() -> None:
     context = _context(chunk_id="chunk-mentor", text="Python has for and while loops.")
-    agent = MentorAgent(mock_mode=True)
+    agent = MentorAgent(client=CompliantAgentsClient())
 
     prompt = agent._build_prompt(context, user_question="Explain loops.", difficulty="beginner")
     result = agent.generate(
@@ -45,7 +46,7 @@ def test_week4_mentor_grounding_requires_valid_references_and_supported_claims()
 
 def test_week4_concept_grounding_requires_valid_references_and_supported_claims() -> None:
     context = _context(chunk_id="chunk-concept", text="Python has for and while loops.")
-    agent = ConceptAgent(mock_mode=True)
+    agent = ConceptAgent(client=CompliantAgentsClient())
 
     prompt = agent._build_prompt(context, user_question="What is a loop?", difficulty="beginner")
     result = agent.generate(
@@ -61,19 +62,27 @@ def test_week4_concept_grounding_requires_valid_references_and_supported_claims(
 
 
 @pytest.mark.parametrize("agent_class", [MentorAgent, ConceptAgent])
-def test_week4_difficulty_control_changes_explanation_depth(agent_class: type) -> None:
-    agent = agent_class(mock_mode=True)
-    beginner = agent.generate(content="Python has for and while loops.", difficulty="beginner")
-    intermediate = agent.generate(content="Python has for and while loops.", difficulty="intermediate")
-    advanced = agent.generate(content="Python has for and while loops.", difficulty="advanced")
+def test_week4_difficulty_control_reaches_the_model(agent_class: type) -> None:
+    """The requested difficulty has to arrive in the prompt.
 
-    assert len(intermediate.explanation) >= len(beginner.explanation)
-    assert len(advanced.explanation) > len(beginner.explanation)
+    This used to assert that an "advanced" explanation came back longer than a
+    "beginner" one - but the only thing producing those strings was the mock,
+    which was written to return progressively longer text. It tested the
+    fixture. What the agent is actually responsible for is asking for the depth
+    the caller requested; what the model then writes is the model's business.
+    """
+    client = CompliantAgentsClient()
+    agent = agent_class(client=client)
+
+    for difficulty in ("beginner", "intermediate", "advanced"):
+        agent.generate(content="Python has for and while loops.", difficulty=difficulty)
+        prompt = client.calls[-1]["messages"][0]["content"]
+        assert difficulty in prompt, f"{difficulty!r} never reached the model"
 
 
 @pytest.mark.parametrize("agent_class", [MentorAgent, ConceptAgent])
 def test_week4_outputs_default_to_human_review(agent_class: type) -> None:
-    agent = agent_class(mock_mode=True)
+    agent = agent_class(client=CompliantAgentsClient())
     result = agent.generate(content="Python has for and while loops.", difficulty="beginner")
 
     assert result.requires_human_review is True
@@ -82,7 +91,7 @@ def test_week4_outputs_default_to_human_review(agent_class: type) -> None:
 @pytest.mark.parametrize("agent_class", [MentorAgent, ConceptAgent])
 def test_week4_grounded_generation_retains_human_review(agent_class: type) -> None:
     context = _context(chunk_id="chunk-review", text="Python has for loops.")
-    agent = agent_class(mock_mode=True)
+    agent = agent_class(client=CompliantAgentsClient())
 
     result = agent.generate(
         content="content",
@@ -96,8 +105,7 @@ def test_week4_grounded_generation_retains_human_review(agent_class: type) -> No
 
 def test_week4_support_check_blocks_off_content_mentor_claims(monkeypatch) -> None:
     context = _context(chunk_id="chunk-mentor", text="Python has for loops.")
-    agent = MentorAgent(mock_mode=True)
-    agent.mock_mode = False
+    agent = MentorAgent(client=CompliantAgentsClient())
 
     def fake_call_llm(_: str) -> str:
         return json.dumps(
@@ -123,8 +131,7 @@ def test_week4_support_check_blocks_off_content_mentor_claims(monkeypatch) -> No
 
 def test_week4_support_check_blocks_off_content_concept_claims(monkeypatch) -> None:
     context = _context(chunk_id="chunk-concept", text="Python has for loops.")
-    agent = ConceptAgent(mock_mode=True)
-    agent.mock_mode = False
+    agent = ConceptAgent(client=CompliantAgentsClient())
 
     def fake_call_llm(_: str) -> str:
         return json.dumps(
@@ -153,8 +160,7 @@ def test_week4_reference_verification_blocks_fabricated_segment_ids(
     agent_class: type, monkeypatch
 ) -> None:
     context = _context(chunk_id="chunk-real", text="Python has for loops.")
-    agent = agent_class(mock_mode=True)
-    agent.mock_mode = False
+    agent = agent_class(client=CompliantAgentsClient())
 
     def fake_call_llm(_: str) -> str:
         payload: dict[str, object]

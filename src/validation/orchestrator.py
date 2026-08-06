@@ -148,11 +148,10 @@ class RegistryAgentAdapter:
     def run_raw(self, content: str, **params: Any) -> str:
         """Return the agent's raw response text.
 
-        Live agents are driven through their prompt-building and LLM-calling
+        Agents are driven through their prompt-building and LLM-calling
         internals rather than ``generate()``, because ``generate()`` validates
         internally and raises on malformed JSON — destroying the very text the
-        reviewer needs to see. In mock mode there is no client to call, so the
-        mock response is round-tripped back to JSON instead.
+        reviewer needs to see.
 
         Args:
             content: The grounded ``{content}`` block for the prompt.
@@ -162,9 +161,6 @@ class RegistryAgentAdapter:
             The unparsed response text.
         """
         call_params = {**self.default_params, **params}
-
-        if getattr(self._agent, "mock_mode", False):
-            return self._agent.generate(content=content, **call_params).model_dump_json()
 
         prompt = self._agent._build_prompt(content=content, **call_params)
         try:
@@ -200,19 +196,19 @@ DEFAULT_AGENT_PARAMS: dict[str, dict[str, Any]] = {
 }
 
 
-def build_default_agents(mock_mode: bool | None = None) -> dict[str, AgentSpec]:
+def build_default_agents(*, client: Any | None = None) -> dict[str, AgentSpec]:
     """Build adapters for every agent in the shared registry.
 
     Args:
-        mock_mode: Forced offline/live setting; ``None`` lets each agent follow
-            the ``MOCK_MODE`` environment variable.
+        client: An OpenAI-compatible client shared by every agent. Defaults to
+            one built from the configured gateway; tests inject a double.
 
     Returns:
         Adapters keyed by registry name.
     """
     from src.agents.registry import AgentRegistry
 
-    registry = AgentRegistry(mock_mode=mock_mode)
+    registry = AgentRegistry(client=client)
     return {
         name: RegistryAgentAdapter(
             name=name,
@@ -265,7 +261,7 @@ class Orchestrator:
     """
 
     store: PlatformStore
-    agents: dict[str, AgentSpec] = field(default_factory=dict)
+    agents: dict[str, AgentSpec] | None = None
     validator: ValidatorBase = field(default_factory=ValidatorBase)
     max_retries: int = 2
     retry_backoff: float = 1.0
@@ -274,7 +270,12 @@ class Orchestrator:
     )
 
     def __post_init__(self) -> None:
-        if not self.agents:
+        # `None` means "not supplied"; an empty dict means "deliberately no
+        # agents". These used to be the same thing, because the check was
+        # falsiness, so asking for an empty registry silently built the full
+        # one. That was invisible while the default agents were free to
+        # construct in mock mode - now they need credentials.
+        if self.agents is None:
             self.agents = build_default_agents()
 
     # ------------------------------------------------------------------ #

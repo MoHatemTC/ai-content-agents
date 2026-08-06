@@ -170,7 +170,7 @@ class Pipeline:
         *,
         db_path: str = "ingestion.db",
         index: ChunkIndex | None = None,
-        mock_mode: bool | None = None,
+        client: Any | None = None,
         agents: dict[str, Any] | None = None,
         **orchestrator_options: Any,
     ) -> Pipeline:
@@ -180,8 +180,9 @@ class Pipeline:
             db_path: SQLite file shared by the ingestion and platform stores.
             index: An existing retrieval index; a fresh one is created if
                 omitted.
-            mock_mode: Forced offline/live setting for the agents; ``None``
-                follows the ``MOCK_MODE`` environment variable.
+            client: An OpenAI-compatible client shared by every agent.
+                Defaults to one built from the configured gateway; tests
+                inject a double.
             agents: Explicit agent registry, mainly for tests.
             **orchestrator_options: Passed through to :class:`Orchestrator`
                 (retry policy and friends).
@@ -197,7 +198,7 @@ class Pipeline:
             retriever=ChromaRetriever(chunk_index),
             orchestrator=Orchestrator(
                 platform_store,
-                agents=agents if agents is not None else build_default_agents(mock_mode),
+                agents=agents if agents is not None else build_default_agents(client=client),
                 **orchestrator_options,
             ),
             platform_store=platform_store,

@@ -1,5 +1,6 @@
 from src.agents.question_bank_agent import QuestionBankAgent
 from src.agents.test_help_agent import TestHelpAgent
+from tests.conftest import CompliantAgentsClient
 
 
 def test_all_question_agents():
@@ -8,7 +9,7 @@ def test_all_question_agents():
     Python has for and while loops.
     """
 
-    qbank = QuestionBankAgent(mock_mode=True)
+    qbank = QuestionBankAgent(client=CompliantAgentsClient())
 
     result1 = qbank.generate(
         content,
@@ -20,7 +21,7 @@ def test_all_question_agents():
     assert len(result1.questions) == 1
 
 
-    help_agent = TestHelpAgent(mock_mode=True)
+    help_agent = TestHelpAgent(client=CompliantAgentsClient())
 
     result2 = help_agent.generate(
         content,

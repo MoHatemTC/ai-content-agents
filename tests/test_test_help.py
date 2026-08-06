@@ -1,6 +1,7 @@
 
 from src.agents.test_help_agent import TestHelpAgent
 from src.validation.schemas import TestHelpOutput
+from tests.conftest import CompliantAgentsClient
 
 
 def test_test_help_generation():
@@ -16,7 +17,7 @@ def test_test_help_generation():
 # Use this while developing or when the
 # API is unavailable.
 # ==========================================
-    agent = TestHelpAgent(mock_mode=True)
+    agent = TestHelpAgent(client=CompliantAgentsClient())
 
 # ==========================================
 # REAL API MODE

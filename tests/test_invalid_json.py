@@ -5,6 +5,7 @@ import pytest
 
 from src.agents.concept_agent import ConceptAgent
 from src.agents.mentor_agent import MentorAgent
+from tests.conftest import CompliantAgentsClient
 
 
 def test_invalid_json():
@@ -23,7 +24,7 @@ def test_invalid_json():
 
 def test_mentor_agent_invalid_llm_json_raises_clear_error():
     """MentorAgent translates malformed LLM JSON into a clear ValueError."""
-    agent = MentorAgent(mock_mode=True)
+    agent = MentorAgent(client=CompliantAgentsClient())
     agent.mock_mode = False
     response = MagicMock()
     response.choices[0].message.content = "this is not valid json"
@@ -40,7 +41,7 @@ def test_mentor_agent_invalid_llm_json_raises_clear_error():
 
 def test_concept_agent_invalid_llm_json_raises_clear_error():
     """ConceptAgent translates malformed LLM JSON into a clear ValueError."""
-    agent = ConceptAgent(mock_mode=True)
+    agent = ConceptAgent(client=CompliantAgentsClient())
     agent.mock_mode = False
     response = MagicMock()
     response.choices[0].message.content = "this is not valid json"

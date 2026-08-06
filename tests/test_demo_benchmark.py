@@ -2,6 +2,8 @@
 
 import json
 
+from tests.conftest import CompliantAgentsClient
+
 from src.evaluation.demo_benchmark import (
     format_benchmark_summary,
     load_demo_inputs,
@@ -12,7 +14,7 @@ from src.evaluation.demo_benchmark import (
 
 def test_demo_benchmark_runs_both_agents_and_formats_reports(tmp_path):
     """The packaged dataset produces printable Mentor and Concept reports."""
-    reports = run_demo_benchmark(load_demo_inputs())
+    reports = run_demo_benchmark(load_demo_inputs(), client=CompliantAgentsClient())
 
     assert set(reports) == {"mentor", "concept"}
     for agent_name, report in reports.items():
@@ -27,7 +29,7 @@ def test_demo_benchmark_runs_both_agents_and_formats_reports(tmp_path):
 
 def test_save_benchmark_reports_writes_json(tmp_path):
     """Optional report output is serialized as JSON for later inspection."""
-    reports = run_demo_benchmark(load_demo_inputs())
+    reports = run_demo_benchmark(load_demo_inputs(), client=CompliantAgentsClient())
     output_path = tmp_path / "benchmark-report.json"
 
     save_benchmark_reports(reports, output_path)

@@ -3,6 +3,7 @@ from src.agents.mentor_agent import MentorAgent
 from src.agents.concept_agent import ConceptAgent
 from src.agents.question_bank_agent import QuestionBankAgent
 from src.agents.test_help_agent import TestHelpAgent
+from tests.conftest import CompliantAgentsClient
 
 from src.validation.schemas import (
     MentorOutput,
@@ -18,7 +19,7 @@ def test_registry_returns_correct_agents():
     the correct agent implementations.
     """
 
-    registry = AgentRegistry(mock_mode=True)
+    registry = AgentRegistry(client=CompliantAgentsClient())
 
     mentor = registry.get_agent("mentor")
     concept = registry.get_agent("concept")
@@ -37,7 +38,7 @@ def test_registry_returns_correct_schemas():
     is mapped to its correct output schema.
     """
 
-    registry = AgentRegistry(mock_mode=True)
+    registry = AgentRegistry(client=CompliantAgentsClient())
 
     mentor_schema = registry.get_schema("mentor")
     concept_schema = registry.get_schema("concept")
@@ -56,7 +57,7 @@ def test_registry_lists_all_agents():
     are listed by the registry.
     """
 
-    registry = AgentRegistry(mock_mode=True)
+    registry = AgentRegistry(client=CompliantAgentsClient())
 
     agents = registry.list_agents()
 

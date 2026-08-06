@@ -65,14 +65,17 @@ copy .env.example .env   # Windows
 # cp .env.example .env   # macOS / Linux
 ```
 
-Fill in `.env` with your own keys. Never commit secrets. `MOCK_MODE=true` (the default) keeps every agent offline.
+Fill in `.env` with your own keys. Never commit secrets. The agents call the
+gateway for real; without `LITELLM_API_KEY` and `LITELLM_BASE_URL` they refuse
+to construct rather than quietly returning canned text. Tests inject a fake
+client and never need a key.
 
 ## Run
 
 ```bash
 streamlit run src/app.py               # combined study-assistant UI
 streamlit run src/validation/ui.py     # review / history / export / metrics
-python -m src.validation.automation    # batch run + quality report (--offline to skip the API)
+python -m src.validation.automation    # batch run + quality report
 python -m pytest tests/                # full test suite
 ```
 

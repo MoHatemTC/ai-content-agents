@@ -16,8 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -25,6 +24,7 @@ from uuid import uuid4
 import yaml
 from dotenv import load_dotenv
 
+from src.llm_gateway import build_client, default_model
 from src.study.flashcard_agent import FlashcardAgent
 from src.study.llm_client import (
     UpstreamResponseError,
@@ -33,7 +33,7 @@ from src.study.llm_client import (
     parse_json,
     schema_block,
 )
-from src.study.schemas import RevisionItem, RevisionSession
+from src.study.schemas import RevisionSession
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -53,31 +53,16 @@ class RevisionAgent:
     """Grounded revision-session generator.
 
     Args:
-        mock_mode: When ``True``, return deterministic grounded samples.
+        client: An OpenAI-compatible client. Defaults to one built from the
+            configured gateway; tests inject a double. There is no mode flag -
+            see :mod:`src.llm_gateway` for why.
+        model: Model id. Defaults to :func:`~src.llm_gateway.default_model`.
     """
 
-    def __init__(self, mock_mode: bool | None = None) -> None:
-        if mock_mode is None:
-            self.mock_mode = os.getenv("MOCK_MODE", "true").lower() == "true"
-        else:
-            self.mock_mode = mock_mode
-
+    def __init__(self, *, client: Any | None = None, model: str | None = None) -> None:
         self.prompt_cfg = self._load_prompt()
-
-        if not self.mock_mode:
-            api_key = os.getenv("LITELLM_API_KEY")
-            base_url = os.getenv("LITELLM_BASE_URL")
-            if not api_key or not base_url:
-                raise ValueError(
-                    "LITELLM_API_KEY and LITELLM_BASE_URL required in live mode."
-                )
-            from openai import OpenAI  # type: ignore
-
-            self.model = os.getenv("DEFAULT_MODEL", "FW-Kimi-K2.6")
-            self.client: Any = OpenAI(api_key=api_key, base_url=base_url, timeout=60.0)
-        else:
-            self.client = None
-            self.model = None
+        self.client: Any = client if client is not None else build_client()
+        self.model = model or default_model()
 
     # ------------------------------------------------------------------
     # Helpers
@@ -136,52 +121,13 @@ class RevisionAgent:
         )
 
     # ------------------------------------------------------------------
-    # LLM / mock
+    # LLM
     # ------------------------------------------------------------------
 
     def _call_llm(self, prompt: str, max_tokens: int | None = None) -> str:
         """Send the prompt to the gateway and return the reply body."""
         return call_llm(
             self.client, self.model, prompt, max_tokens=max_tokens
-        )
-
-    @staticmethod
-    def _mock_response(
-        extracted_topics: list[str],
-        selected_topics: list[str],
-        session_date: date,
-    ) -> RevisionSession:
-        items: list[RevisionItem] = []
-        for t in selected_topics:
-            difficulty = RevisionAgent._pick_difficulty(
-                t, "\n".join(extracted_topics + selected_topics)
-            )
-            offset = _DIFFICULTY_OFFSETS[difficulty]
-            items.append(
-                RevisionItem(
-                    topic=t,
-                    description=(
-                        f"Revise {t} using active recall. Cover definitions, "
-                        f"examples, and common pitfalls."
-                    ),
-                    next_revision_date=session_date + timedelta(days=offset),
-                    difficulty=difficulty,
-                    confidence_prompt=(
-                        f"On a 1-5 scale, how confident are you about {t}?"
-                    ),
-                    source_chunk_id=None,
-                )
-            )
-        return RevisionSession(
-            session_date=session_date,
-            items=items,
-            notes=(
-                "Generated revision session. "
-                "Apply human review before scheduling on a calendar."
-            ),
-            selected_weak_topics=sorted(selected_topics),
-            source_topics=sorted(selected_topics),
-            needs_human_review=True,
         )
 
     # ------------------------------------------------------------------
@@ -280,15 +226,12 @@ class RevisionAgent:
             )
 
         prompt = self._build_prompt(extracted_topics, selected_topics, sdate)
-        if self.mock_mode:
-            raw = self._mock_response(extracted_topics, selected_topics, sdate)
-        else:  # pragma: no cover - live path
-            try:
-                text = self._call_llm(prompt, output_budget(len(selected_topics)))
-            except UpstreamResponseError:
-                logger.exception("Revision LLM call failed")
-                raise
-            raw = parse_json(text, RevisionSession)
+        try:
+            text = self._call_llm(prompt, output_budget(len(selected_topics)))
+        except UpstreamResponseError:
+            logger.exception("Revision LLM call failed")
+            raise
+        raw = parse_json(text, RevisionSession)
 
         self._validate_revision(raw, extracted_topics, selected_topics)
         return self._wrap_for_review_gate(raw, run_id=run_id)
