@@ -50,6 +50,20 @@ class Settings:
     cors_origins: list[str] = field(
         default_factory=lambda: _cors_origins(os.getenv("CORS_ORIGINS"))
     )
+    access_token_ttl_seconds: int = field(
+        default_factory=lambda: int(os.getenv("AUTH_ACCESS_TTL_SECONDS", "3600"))
+    )
+    refresh_token_ttl_seconds: int = field(
+        default_factory=lambda: int(os.getenv("AUTH_REFRESH_TTL_SECONDS", "86400"))
+    )
+    # Matches the Supabase free-tier per-file default the future frontend
+    # storage is aligned to; the BACKEND_CONTRACT.md upload row requires a 413
+    # when a file exceeds it.
+    max_upload_bytes: int = field(
+        default_factory=lambda: int(
+            os.getenv("MAX_UPLOAD_BYTES", str(50 * 1024 * 1024))
+        )
+    )
 
 
 @lru_cache

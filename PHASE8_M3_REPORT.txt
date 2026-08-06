@@ -1,0 +1,209 @@
+================================================================================
+PHASE 8 — M3 MILESTONE REPORT
+Documents & Upload Pipeline
+Date: 2026-08-06
+Repo: ai-content-agents (backend/ FastAPI layer; src/ untouched)
+================================================================================
+
+1. STATUS
+   M3 (Documents & Upload) — COMPLETE. upload/parse/chunk/embed/list/chunks/
+   notes/delete live, tested (23 new tests), verified live under uvicorn.
+   M4..M11 NOT started, per instruction to stop at M3.
+
+2. SCOPE OF CHANGES
+   New files:
+     backend/documents/__init__.py
+     backend/documents/migrations.py   documents_tables (documents + document_chunks)
+     backend/documents/schemas.py      document.contracts.ts / types/domain.ts shapes
+     backend/documents/service.py      pipeline reusing src/ domain functions
+     backend/documents/router.py       /documents routes + POST /upload
+     tests/test_backend_documents.py   23 tests
+   Modified:
+     backend/migrations.py             aggregates the documents registry (3rd)
+     backend/main.py                   + documents_router
+     backend/workspaces/service.py     row_to_workspace(docs=N); _document_counts;
+                                       get_workspace_docs
+     backend/workspaces/router.py      GET /workspaces/{id} passes real docs count
+     backend/workspaces/migrations.py  docstring updated (docs count now real)
+     backend/auth/* (router/migrations/service/security/seed) + backend/deps.py
+                                       marked TEMPORARY SCAFFOLD (Supabase decision)
+     PHASE8_BACKEND_PROGRESS.txt       M3 marked complete
+
+3. CODE CHANGES — what each file does
+   - migrations.py: `documents` row (id, workspace_id FK, uploaded_by FK,
+     title, kind, size_bytes, size_human, pages, status, tags_json, notes,
+     storage_path, file_bytes BLOB, text, page_offsets_json, text_length,
+     chunk_count, created_at, updated_at) + `document_chunks` row (id
+     {document}-cNNNN, document_id FK CASCADE, workspace_id FK CASCADE,
+     ordinal, page, token_count, text, tags_json, section, created_at).
+     Indexes on workspace_id (both) and document_id (chunks).
+   - schemas.py: WsDoc / WsChunk / UploadDocumentResponse / ParseDocumentResponse
+     / ChunkDocumentResponse / EmbedDocumentResponse / GetDocumentsResponse /
+     GetChunksResponse / SaveDocumentNotesRequest — all match Sensei-AI
+     src/types/api/document.contracts.ts and src/types/domain.ts.
+   - service.py: pipeline stages (below) + human_size, kind_for_name, token_count.
+   - router.py: endpoint handlers with workspace-ownership gating.
+
+4. ARCHITECTURE DECISIONS
+   a) FastAPI layer owns the workspace-scoped read model. The `src/` ingestion
+      store (SQLiteStore) is single-user, has no workspace/notes/status/
+      storage_path columns, and its Library.delete vs Store.delete are separate
+      code paths. Rather than force multi-workspace semantics onto it (or risk
+      the delete divergence the analysis warns about), backend/documents owns
+      the records; the pure domain *algorithms* are reused (section 5).
+   b) Stored file bytes in the documents table (BLOB), not a filesystem dir.
+      Self-contained (single DB file), no uploads/ path config, and consistent
+      with the Supabase Storage model the frontend will keep in production —
+      the API's storage_path is the virtual "{workspace}/{doc}/{filename}" path
+      the contract specifies.
+   c) Status lifecycle: DB rows carry the DATABASE_SCHEMA.md enum
+      (uploaded|parsing|embedding|indexed|failed); the API WsDoc.status exposes
+      the frontend's Ready|Processing pair — uploaded/indexed -> Ready,
+      parsing/embedding/failed -> Processing. Upload starts "Ready", parse and
+      chunk move it to parsing, embed to embedding then indexed.
+   d) One Chroma collection per workspace (`workspace_<id>`), so embed/delete
+      never leak across workspaces. persist_directory = Settings.chroma_dir
+      (empty string in tests -> ephemeral in-memory index; set in prod -> disk).
+   e) Quality gate at parse, mirroring the src/ Loader: content failing
+      QualityChecker yields 422 validation_error with the issues in details and
+      the row marked failed — rejected, not stored for chunking.
+   f) Pipeline order enforced: chunk before parse -> 409 conflict; embed before
+      chunk -> 409 conflict (matches the frontend's sequential drive).
+   g) M1 custom auth is marked TEMPORARY SCAFFOLD everywhere (docstrings +
+      deps.py note): Supabase is the single auth provider; the password/session
+      scaffold is replaced by Supabase JWT verification in that milestone. M3
+      reuses get_current_user unchanged and adds no auth decisions on the
+      scaffold's role model (ownership checks only).
+
+5. REUSED DOMAIN COMPONENTS (src/ untouched)
+   - src.ingestion.parser.TextParser       parse_txt / parse_pdf / parse_docx /
+                                          parse_markdown
+   - src.ingestion.cleaner.TextCleaner     .clean() for normalisation
+   - src.ingestion.quality.QualityChecker  .validate() as the parse gate
+   - src.ingestion.chunker.TextChunker     same chunk_size/overlap as retrieval
+                                          (RetrievalConfig defaults 2000/200) ->
+                                          identical boundaries and
+                                          {document_id}-c{ordinal:04d} ids
+   - src.validation.integration.to_retrieval_chunks   ingestion->retrieval bridge
+   - src.retrieval.index.ChunkIndex        add_document (replace semantics) /
+                                          remove_document, via RetrievalConfig
+   - src.retrieval.config.RetrievalConfig  chunk_size/overlap/collection/persist
+   One adapter extension: per-page PDF extraction (same PyMuPDF lib the parser
+   uses) so WsChunk.page carries a real page number; the domain parser only
+   returns concatenated text. Page->offset map stored in page_offsets_json.
+
+6. NEW COMPONENTS (backend-only)
+   - backend/documents/migrations.py   0003_documents
+   - backend/documents/schemas.py
+   - backend/documents/service.py
+   - backend/documents/router.py
+
+7. SCHEMA CHANGES (additive, idempotent migrations)
+   - documents, document_chunks as in section 3. FK CASCADE: deleting a
+     workspace or user removes its documents/chunks; deleting a document
+     removes its chunks. workspaces/users must exist first -> documents
+     migration registered AFTER auth + workspaces in backend/migrations.py.
+
+8. ENDPOINTS (all bearer-authenticated)
+   POST   /upload                          multipart workspace_id + file -> 201
+                                           {document, storage_path}
+   GET    /documents?workspace_id=         200 {documents: [...]} newest first
+   POST   /documents/{id}/parse            200 {documentId, pages, text_length}
+   POST   /documents/{id}/chunk            200 {documentId, chunks:[WsChunk]}
+   POST   /documents/{id}/embed            200 {documentId, embedded, model}
+   GET    /documents/{id}/chunks           200 {chunks:[WsChunk]}
+   PATCH  /documents/{id}/notes            body {notes} -> 204
+   DELETE /documents/{id}                  204 (record + chunks + index rows)
+   Errors: 401 no token, 403 non-owner, 404 missing, 409 stage order,
+   422 unsupported kind / missing workspace_id / quality failure.
+
+9. M2 READ MODEL UPDATE
+   - Workspace docs count is now real: list_workspaces groups documents per
+     workspace; GET /workspaces/{id} uses get_workspace_docs. Verified live
+     (0 -> 1 after upload -> 0 after delete). assets/pendingReview remain 0
+     (M7 review table).
+
+10. TESTS (tests/test_backend_documents.py, 23)
+    - Auth gating on upload/list/parse/notes/delete (401).
+    - Upload: 201 shape, title from filename, kind TXT/MD, human size, Ready
+      status, storage_path; unsupported kind 422; unknown workspace 404; other
+      user's workspace 403; real docs count on the read model.
+    - List: newest-first, requires workspace_id (422), cross-owner 403.
+    - Notes round-trip; delete removes the document.
+    - Full TXT pipeline: parse (pages null, text_length>100) -> chunk (id
+      {doc}-c0000, tokens>0, page null) -> embed (embedded == chunk count,
+      model "hashing") -> GET /chunks echoes -> Ready status.
+    - Stage-order 409s (chunk before parse, embed before chunk).
+    - Quality rejection 422 for repetitive content.
+    - 404 unknown document; 403 cross-owner parse.
+    - PDF pipeline: real pages == 2, chunk page in {1,2}, embed count matches,
+      delete 204 (real PyMuPDF-rendered 2-page PDF).
+
+11. VERIFICATION COMMANDS
+    .venv/bin/ruff check backend/ tests/test_backend_documents.py   # full rules
+    .venv/bin/ruff check src/ tests/ scripts/ --select F           # CI gates
+    .venv/bin/ruff format --check backend/ tests/test_backend_documents.py
+    .venv/bin/python -m compileall -q backend src
+    .venv/bin/python -m pytest tests/ -q
+
+12. BUILD / LINT / TEST RESULTS
+    - ruff check (full ruleset) on all M3-touched files: clean. Pre-existing
+      repo-wide ruff noise elsewhere (56 findings in untouched files) left as-is
+      per repo convention (CI gates are --select F).
+    - ruff format: all M3 files formatted; backend + tests clean on re-check.
+    - compileall backend src: OK.
+    - Backend suites: 64 passed (16 scaffold + 12 auth + 13 workspaces +
+      23 documents), 0 failures.
+    - Full suite: 600 passed, 1 failed (PRE-EXISTING FLAKY
+      test_study_grounding::test_the_prompt_is_far_smaller_than_the_document,
+      fails only in the full run, passes in isolation 1/1 — same flake noted in
+      the M1/M2 report), 6 skipped (pre-existing live/optional-LLM tests).
+
+13. LIVE VERIFICATION (uvicorn, temp DB + temp chroma dir, RETRIEVAL_EMBEDDER
+    =hashing)
+    - /health 200. No-auth upload -> 401 unauthorized envelope.
+    - Upload txt (1 KB) -> 201 {title:"live_sample", kind:"TXT", size:"1 KB",
+      status:"Ready", pages:null} + storage_path ws/<uuid>/live_sample.txt.
+    - parse -> {"pages":null,"text_length":1399}; chunk -> 1 chunk,
+      id <uuid>-c0000, tokens 204; embed -> {"embedded":1,"model":"hashing"}.
+    - GET /documents/{id}/chunks -> same 1 chunk; PATCH notes -> 204 and
+      echoed in the list response; workspace docs 0 -> 1; DELETE -> 204,
+      list back to 0.
+    - Quality gate fired in a live run on a repetitive sample (422
+      "highly repetitive content") — the src QualityChecker is genuinely
+      enforced, not stubbed.
+
+14. CONTRACT CONFORMANCE
+    - document.contracts.ts (UploadDocumentRequest/Response, Parse/Chunk/Embed
+      responses, GetDocuments/GetChunks, SaveDocumentNotesRequest),
+      types/domain.ts (WsDoc, WsChunk), FASTAPI_INTEGRATION.md example payloads,
+      BACKEND_CONTRACT.md route table — matched. Error envelope reused.
+    - Frontend (Sensei-AI) NOT modified; remains on Supabase/mock until M11.
+
+15. DEVIATIONS & TRADE-OFFS
+    - WsChunk.page: None for non-PDF (TXT/DOCX/MD have no page concept) and a
+      real 1-based page for PDFs; the TS type declares number but the frontend
+      does not consume chunks in non-mock mode today.
+    - WsChunk.section/tags always empty for now (the chunker produces no
+      section/topic metadata); columns exist so they can be filled later
+      without a migration.
+    - The pipeline runs synchronously per request; a large PDF embeds in the
+      same request (acceptable for M3, see risks).
+    - Embed uses the RETRIEVAL_EMBEDDER label (hashing/onnx) as the response
+      model name — truthful to the embedder actually used.
+    - File bytes live in SQLite (simple, self-contained) rather than object
+      storage; fine until M11's Supabase flip.
+
+16. REMAINING WORK / RISKS / BLOCKERS
+    - M4 Retrieval, M5 Generation, M6 Chat, M7 Review (real pendingReview/
+      assets for the read model), M8 Export, M9 Analytics, M10 Catalogue,
+      M11 Frontend flip + conformance.
+    - Risk: synchronous embed could be slow on very large documents; candidate
+      follow-up is a background pipeline or per-document status polling.
+    - Risk: per-workspace persistent Chroma collections accumulate on disk;
+      delete removes the document's rows but not the (now empty) collection.
+    - Blocker: none.
+
+================================================================================
+M3 is complete. Awaiting approval to begin M4.
+================================================================================

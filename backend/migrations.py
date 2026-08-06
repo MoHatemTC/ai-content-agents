@@ -14,8 +14,10 @@ Design:
   domain tables.
 * Each migration runs inside a transaction; a failure rolls it back, leaving
   the database untouched.
-* ``MIGRATIONS`` is the ordered registry that later milestones append to. It is
-  deliberately empty at M0.
+* ``MIGRATIONS`` is the ordered registry that later milestones append to. M0
+  shipped it empty; M1/M2 register the auth and workspace tables from the
+  domain packages (:mod:`backend.auth.migrations`,
+  :mod:`backend.workspaces.migrations`).
 """
 
 from __future__ import annotations
@@ -25,9 +27,17 @@ import sqlite3
 from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
 
+from backend.auth.migrations import MIGRATIONS as AUTH_MIGRATIONS
+from backend.documents.migrations import MIGRATIONS as DOCUMENTS_MIGRATIONS
+from backend.workspaces.migrations import MIGRATIONS as WORKSPACES_MIGRATIONS
+
 Migration = Callable[[sqlite3.Connection], None]
 
-MIGRATIONS: list[tuple[str, Migration]] = []
+MIGRATIONS: list[tuple[str, Migration]] = [
+    *AUTH_MIGRATIONS,
+    *WORKSPACES_MIGRATIONS,
+    *DOCUMENTS_MIGRATIONS,
+]
 
 
 def default_db_path() -> str:

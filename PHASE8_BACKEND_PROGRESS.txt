@@ -2,13 +2,13 @@ Phase 8 Progress
 
 ✓ M0 FastAPI scaffold
 
-□ M1 Authentication
+✓ M1 Authentication
 
-□ M2 Workspaces
+✓ M2 Workspaces
 
-□ M3 Documents
+✓ M3 Documents
 
-□ M4 Retrieval
+✓ M4 Retrieval
 
 □ M5 Generation
 
@@ -23,3 +23,80 @@ Phase 8 Progress
 □ M10 Catalogue
 
 □ M11 Final Integration
+
+──────────────────────────────────────────────────────────────────────────
+M3 APPROVAL-GATE CONFIRMATIONS (2026-08-06, before M4 starts)
+──────────────────────────────────────────────────────────────────────────
+
+(1) Supabase auth reminder — CONFIRMED. Supabase is the single auth provider.
+    M1 custom auth (login/logout/me/refresh, password hashing, sessions, demo
+    users) remains TEMPORARY SCAFFOLD only, marked in backend/auth docstrings
+    and backend/deps.py, to be replaced by Supabase JWT verification in the
+    Supabase milestone. No M3/M4+ feature is built on top of it; ownership
+    checks (workspace.owner_id == user.id) are the only role use.
+
+(2) /upload vs frontend contract — VERIFIED & FIXED.
+    Verified against docs/FASTAPI_INTEGRATION.md and Sensei-AI
+    src/api/paths.ts (upload: "/upload") + src/services/UploadService.ts
+    (expects {document, storage_path}):
+      * multipart field names: workspace_id (Form) + file (File) — matches.
+      * response payload: 201 {document: WsDoc, storage_path} — matches.
+      * status codes: 201/401/403/404/409/422 — matches BACKEND_CONTRACT.md.
+      * error envelope: {error:{code,message,details}} — reused.
+      * upload size handling: BACKEND_CONTRACT.md requires 413
+        payload_too_large. GAP FOUND + FIXED in this pass:
+        Settings.max_upload_bytes added (default 50MB, env
+        MAX_UPLOAD_BYTES, .env.example documented); POST /upload now
+        reads at most max_bytes+1 and returns 413 before persisting;
+        new test test_upload_over_size_limit_returns_413. Backend suite
+        64 -> 65 tests.
+    Note: the client's http.ts already sends FormData bodies (line 44), so
+    the future frontend flip is anticipated, not modified.
+
+(3) Metadata persistence — CONFIRMED, columns live in the documents table
+    (backend/documents/migrations.py), not adapter-only:
+      * notes      -> documents.notes                (PATCH /notes round-trip)
+      * tags       -> documents.tags_json (JSON)     (default [])
+      * status     -> documents.status (DB enum uploaded|parsing|embedding|
+                     indexed|failed) -> API Ready|Processing mapping
+      * pages      -> documents.pages + page_offsets_json (PDF only)
+      * size       -> documents.size_bytes + size_human
+      * storage_path -> documents.storage_path (+ file_bytes BLOB)
+    All persisted through embed; read back in GET /documents and
+    GET /documents/{id}.
+
+(4) Empty Chroma collection on delete — EVALUATED. DELETE /documents/{id}
+    removes the document's index rows via ChunkIndex.remove_document but
+    leaves the (possibly empty) per-workspace collection object on disk.
+    DECISION: defer auto-collection-deletion. Chroma has no delete-by-name
+    on a PersistentClient without re-instantiation, and an empty collection
+    is inert (costs ~0, search returns []). Revisit at M11 / Supabase flip;
+    the chroma dir is documented as disposable (re-ingest to rebuild).
+
+(5) M4 implementation plan — PRODUCED in PHASE8_M4_PLAN.txt (this directory):
+    GET /search (document kind only) + GroundedContext/ContentReference
+    serialization for M5. Reuses ChunkIndex, ChromaRetriever,
+    RetrievalConfig, GroundedContext, ContentReference. One src/ extension
+    proposed (RetrievalScope.workspace_id, ~15 lines) — pending approval.
+
+(6) This appendix — WRITTEN, per instruction to keep the decisions on record.
+
+M3 status: COMPLETE. 24 document tests (23 + 413), 65 backend tests pass.
+Awaiting approval for M4.
+
+──────────────────────────────────────────────────────────────────────────
+M4 APPROVAL-GATE NOTES (2026-08-06)
+──────────────────────────────────────────────────────────────────────────
+(1) Option A APPROVED by the user: RetrievalScope extended with optional
+    workspace_id (src/retrieval/models.py). A workspace-only scope maps to
+    no Chroma metadata filter (to_where() -> dict | None). Centralises
+    workspace-wide retrieval in src/retrieval for M5 grounded generation and
+    M6 workspace chat. Only src/ change in M4; all existing call sites pass
+    document_id and are unaffected.
+(2) GET /search implemented (document kind only) per PHASE8_M4_PLAN.txt;
+    GroundedContext plumbing (build_grounded_context) ready for M5.
+(3) M4 report: PHASE8_M4_REPORT.txt. Backend tests 65 -> 80; full suite
+    617 passed / 6 skipped / 0 failed; live uvicorn 11/11 checks passed.
+
+M4 status: COMPLETE. Awaiting approval for M5.
+──────────────────────────────────────────────────────────────────────────

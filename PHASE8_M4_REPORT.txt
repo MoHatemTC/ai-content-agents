@@ -1,0 +1,199 @@
+================================================================================
+PHASE 8 — M4 MILESTONE REPORT
+Retrieval & Search
+Date: 2026-08-06
+Repo: ai-content-agents (backend/ FastAPI layer; src/ reuse-first)
+================================================================================
+
+1. STATUS
+   M4 (Retrieval) — COMPLETE. GET /search (document-kind results from the
+   per-workspace Chroma index) + GroundedContext/ContentReference plumbing for
+   M5. 15 new tests; 80 backend tests pass; full suite 617 passed / 6 skipped /
+   0 failed. Live uvicorn verification: 11/11 checks passed.
+   M5..M11 NOT started, per the approved stop rule.
+
+2. SCOPE OF CHANGES
+   New files:
+     backend/search/__init__.py
+     backend/search/schemas.py      SearchResponse / SearchResult (TS shapes)
+     backend/search/service.py      search_workspace + build_grounded_context
+     backend/search/router.py       GET /search route with ownership gating
+     tests/test_backend_search.py   15 tests
+   Modified:
+     src/retrieval/models.py        RetrievalScope.workspace_id (Option A —
+                                    the approved domain extension)
+     backend/main.py                + search_router registration
+     PHASE8_BACKEND_PROGRESS.txt    M4 marked complete
+     PHASE8_M4_PLAN.txt             the approved plan (kept on record)
+
+3. CODE CHANGES — what each file does & why
+   - src/retrieval/models.py: RetrievalScope gained an optional workspace_id.
+     At least one of document_id/session_id/workspace_id must be set; a
+     workspace-only scope maps to no Chroma metadata filter (to_where() now
+     returns dict | None). WHY: /search targets a whole workspace, and since
+     one workspace IS one collection, workspace-wide retrieval = query with
+     no filter — which the old scope structurally forbade. Extending the
+     domain model (Option A, approved) keeps retrieval logic in src/retrieval
+     instead of duplicating Chroma query semantics in backend/. Fully
+     backward-compatible: all existing call sites pass document_id.
+   - backend/search/schemas.py: contract-faithful shapes — SearchQuery-driven
+     response {results, total}, SearchResult {id, kind, title, subtitle?, to}.
+     kind accepts the full SearchResultKind union but only "document" is
+     produced in M4 (question/flashcard/concept/history depend on M5/M6/M10).
+   - backend/search/service.py: opens the workspace index via ChunkIndex
+     (same workspace_<id> collection scheme and RetrievalConfig persistence
+     as the M3 embed path), retrieves with ChromaRetriever (min_score floor,
+     deterministic ranking), groups chunks per document (best score wins),
+     hydrates title/kind/pages from the persisted documents table, and maps
+     to SearchResult with the mock-shaped subtitle "{kind} · {pages} pages"
+     (kind alone when pages is null). Also exposes build_grounded_context ->
+     GroundedContext for M5 (as_prompt_content / to_content_references /
+     chunk_ids).
+   - backend/search/router.py: GET /search?q=&workspace_id=&limit=&kinds=
+     with the contract's error envelope: 401 no token, 403 non-owner, 404
+     unknown workspace, 422 missing q / workspace_id / bad limit (FastAPI
+     validation is already enveloped by backend/errors.py). limit clamped to
+     1..100, default 40 (the frontend mock's default).
+   - backend/main.py: registers search_router (one line each for import and
+     include).
+
+4. ARCHITECTURE DECISIONS
+   a) Workspace-wide scope = domain extension, not backend bypass (Option A,
+      explicitly approved). RetrievalScope.workspace_id is the one place that
+      knows a workspace collection needs no filter. The same scope will serve
+      M6 workspace chat and M5 grounded generation unchanged.
+   b) Search reuses the M3 collection scheme (workspace_<id>, Chroma dir from
+      Settings.chroma_dir) and the M3 write path keeps index rows in sync, so
+      M4 adds NO new write path — only read-only retrieval.
+   c) One result per document: retrieved chunks are grouped by document_id
+      with the best chunk score; titles come from the DB (persisted metadata,
+      decision 3), never from index text.
+   d) kinds filter is truthful: only "document" exists in M4; a kinds filter
+      excluding documents short-circuits to empty rather than pretending other
+      kinds exist.
+   e) Embedder semantics are exposed honestly (decision 5/analysis 4.4):
+      ranking is whatever ChromaRetriever returns for the current embedder
+      (hashing = exact keyword overlap, deterministic; onnx = semantic).
+      Blank queries short-circuit to empty (retriever behaviour reused).
+   f) Grounding plumbing is a thin adapter over GroundedContext — M5 consumes
+      the same object (as_prompt_content / to_content_references /
+      chunk_ids), so grounding scores, citations (ContentReference) and
+      source_chunk_ids need no new retrieval code in M5.
+
+5. REUSED DOMAIN COMPONENTS (src/retrieval/*)
+   - ChunkIndex            index.py         open/reopen collection, query,
+                                            document_ids, get_chunk
+   - ChromaRetriever       retriever.py     top-k scoped retrieval
+   - RetrievalConfig       config.py        top_k, collection_name,
+                                            persist_directory
+   - RetrievalScope        models.py        workspace scope (this milestone's
+                                            one-line-domain extension)
+   - GroundedContext       models.py        M5 plumbing
+   - ContentReference      validation/schemas.py  citations
+   (HashingEmbeddingFunction / embedder selection unchanged and reused.)
+
+6. NEW COMPONENTS (backend-only + one src line set)
+   - backend/search/{__init__,schemas,service,router}.py
+   - tests/test_backend_search.py
+   - src/retrieval/models.py: RetrievalScope.workspace_id (only src/ change)
+
+7. SCHEMA CHANGES
+   None to the database. RetrievalScope gained a field (in-memory model
+   only). No migration added.
+
+8. ENDPOINTS
+   GET /search?q=&workspace_id=&limit=&kinds=   200 {results, total}
+     - limit default 40, clamped 1..100; kinds repeated query param.
+     - Errors: 401 / 403 / 404 / 422 in the contract envelope.
+     - Returns only kind="document" results in M4.
+   (No other retrieval endpoint exists in the frontend contract; the M3
+   /documents/{id}/chunks read path is unchanged.)
+
+9. TEST RESULTS (tests/test_backend_search.py, 15)
+   - Auth/params: 401 no token; 422 missing q, missing workspace_id, limit=0;
+     404 unknown workspace; 403 cross-owner.
+   - Retrieval: empty workspace -> empty; blank query -> empty; one document
+     found with correct shape (id/kind/title/subtitle/to); relevance ranking
+     (mitochondria doc first for a mitochondria-vocab query under the hashing
+     embedder); one result per document (multi-chunk doc deduped); limit
+     truncation (2 of 3, total==2); kinds filter (document -> hit, question ->
+     empty, mixed -> hit); cross-workspace isolation.
+   - Grounding: build_grounded_context returns citations whose segment_ids
+     match chunk_ids in rank order and carry text; empty scope is not
+     sufficient; SearchResponse schema round-trips.
+   - Backend suites: 80 passed (16 scaffold + 12 auth + 13 workspaces +
+     24 documents + 15 search). Full suite: 617 passed, 6 skipped, 0 failed
+     (the previously-flaky grounding test passed in this run too).
+
+10. VERIFICATION COMMANDS
+    .venv/bin/ruff check backend/search/ backend/main.py \
+      tests/test_backend_search.py src/retrieval/models.py
+    .venv/bin/ruff check src/ tests/ scripts/ --select F        # CI gates
+    .venv/bin/ruff format --check backend/search/ backend/main.py \
+      tests/test_backend_search.py src/retrieval/models.py
+    .venv/bin/python -m compileall -q backend src
+    .venv/bin/python -m pytest tests/test_backend_search.py -q
+    .venv/bin/python -m pytest tests/ -q                       # full suite
+
+11. BUILD / LINT / TEST RESULTS
+    - ruff check + format: clean on all M4-touched files. Pre-existing
+      repo-wide noise elsewhere (e.g. I001 in untouched src/retrieval/index.py)
+      left as-is per repo convention.
+    - compileall backend src: OK.
+    - pytest: 80 backend tests; full suite 617 passed / 6 skipped.
+
+12. LIVE VERIFICATION (uvicorn, temp DB + temp chroma dir,
+    RETRIEVAL_EMBEDDER=hashing) — 11/11 checks passed
+    - /health up. No-auth /search -> 401 envelope.
+    - Workspace created; two TXT docs (mitochondria + photosynthesis) uploaded,
+      parsed, chunked, embedded.
+    - /search?q=ATP -> 200, total 2, both results kind=document, to=/library,
+      subtitle "TXT", titles hydrated from the DB.
+    - /search?q=NADH FADH2 proton gradient ATP -> mitochondria doc ranks first.
+    - kinds=question -> {results: [], total: 0}; blank q -> empty.
+    - Unknown workspace -> 404 not_found; cross-owner -> 403 forbidden;
+      missing q -> 422 validation_error — all in the contract envelope.
+
+13. CONTRACT CONFORMANCE
+    - SearchQuery/SearchResponse/SearchResult match Sensei-AI
+      src/types/api/catalogue.contracts.ts:46-55 and src/types/domain.ts:201-210
+      (id/kind/title/subtitle/to; results/total).
+    - search.api.ts sends exactly q, workspace_id, limit, kinds[] (lines 54-58)
+      — all supported. Response maps to what that client builds in mock mode
+      for document results (id=d.id, kind, title, subtitle "{kind} · {pages}
+      pages", to="/library").
+    - Error envelope and 401/403/404/422 codes match BACKEND_CONTRACT.md.
+    - Frontend NOT modified; remains on Supabase/mock until M11.
+
+14. DEVIATIONS & TRADE-OFFS
+    - M4 serves document-kind results only; question/flashcard/concept/history
+      kinds return empty (their data arrives in M5/M6/M10).
+    - Search matches content, not titles, because Chroma indexes chunk text;
+      a title-only match for an unparsed/never-embedded document cannot appear.
+      Accepted for M4 (title metadata is searchable once embedded); a LIKE
+      fallback over documents.title is a possible M9 enhancement.
+    - One Chroma open per request (matches the M3 embed/delete pattern);
+      acceptable at this scale, revisit if search latency matters.
+    - hashing embedder in offline/test mode does exact-token matching; results
+      honestly reflect the embedder (decision 5). Prod default is onnx.
+
+15. REMAINING WORK / RISKS / BLOCKERS
+    - M5 Generation (grounded payloads consuming build_grounded_context:
+      grounding_score, citations, source_chunk_ids), M6 Chat, M7 Review,
+      M8 Export, M9 Analytics (+ search over other kinds/titles), M10
+      Catalogue, M11 Frontend flip + conformance.
+    - Risk: opening a collection that was written by a different embedder
+      raises IndexEmbedderMismatchError -> surfaced as a 500 internal_error
+      envelope; the M3 embedder-fingerprint guard makes the failure explicit
+      rather than silently meaningless.
+    - Risk: ephemeral (in-memory) Chroma in tests is shared process-wide by
+      collection name — fine for the suite (tests run sequentially), but a
+      single test's collection_name collisions are the caller's concern.
+    - Risk (carried from M3): persistent per-workspace collections accumulate
+      on disk; empty-collection cleanup deliberately deferred to M11 (no
+      measurable benefit).
+    - Blocker: none.
+
+================================================================================
+M4 is complete. Awaiting approval to begin M5.
+================================================================================

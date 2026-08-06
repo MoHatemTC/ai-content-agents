@@ -1,0 +1,141 @@
+================================================================================
+PHASE 8 — M4 IMPLEMENTATION PLAN (Retrieval) — AWAITING APPROVAL
+Date: 2026-08-06
+Repo: ai-content-agents (backend/ FastAPI layer; src/ reuse-first)
+================================================================================
+
+0. APPROVAL GATE
+   This plan is a proposal. No M4 code is written until you approve it —
+   in particular the one src/ change in section 5 (design decision).
+
+1. M4 SCOPE (from PHASE8_PART2_BACKEND_ANALYSIS.txt 410-411, split for this
+   milestone into what is frontend-facing now vs. what is plumbing for M5)
+   a) GET /search  — the only frontend retrieval surface (consumer-defined,
+      search.api.ts). Returns document-kind results from the per-workspace
+      Chroma index. Other kinds (question/flashcard/concept/history) depend
+      on M5/M6/M7/M10 data and return empty until their milestones.
+   b) Grounding + citation serialization — build GroundedContext from a
+      workspace scope + query, exposing as_prompt_content /
+      to_content_references / chunk_ids so M5 generation payloads carry
+      grounding_score, citations (ContentReference) and source_chunk_ids
+      without rework.
+
+2. ENDPOINT SATISFIED
+   GET /search?q=&workspace_id=&limit=&kinds[]=   -> 200 {results, total}
+     - Contract: SearchQuery {q, workspaceId?, kinds?, limit?} /
+       SearchResponse {results: SearchResult[], total}
+       (Sensei-AI/src/types/api/catalogue.contracts.ts:46-55).
+     - SearchResult {id, kind:"document", title, subtitle?, to}
+       (src/types/domain.ts:203-210). Mock shape for document results:
+       title = document title, subtitle = "{kind} · {pages} pages",
+       to = "/library", id = document id.
+     - search.api.ts only appends workspace_id, limit and kinds; q is
+       required by the client. Backend treats missing workspace_id as 422
+       (consistent with GET /documents), unknown -> 404, cross-owner -> 403,
+       no token -> 401. limit defaults to 40 (mock default).
+   Not in M4: /documents/{id}/chunks already ships in M3; no other search
+   endpoint exists in paths.ts.
+
+3. REUSED DOMAIN MODULES (src/retrieval/*, reused not copied)
+   - src/retrieval/index.py: ChunkIndex (open/reopen a workspace collection,
+     .query, .document_ids, .get_chunk), HashingEmbeddingFunction + the
+     RETRIEVAL_EMBEDDER selection + CachingEmbeddingFunction wrapper, and
+     the embedder-fingerprint guard (IndexEmbedderMismatchError).
+   - src/retrieval/retriever.py: ChromaRetriever.retrieve(query, scope, top_k)
+     — in-scope cosine ranking, min_score floor, deterministic tie-breaks.
+   - src/retrieval/config.py: RetrievalConfig (top_k, min_score, chunk_size/
+     overlap irrelevant here, collection_name, persist_directory).
+   - src/retrieval/models.py: Chunk, RetrievalScope, RetrievedChunk,
+     GroundedContext.
+   - src/validation/schemas.py: ContentReference (citations via
+     GroundedContext.to_content_references).
+
+4. NEW BACKEND CODE (backend/ only, plus one optional src/ touch, section 5)
+   backend/search/
+     __init__.py
+     schemas.py   SearchResponse / SearchResult matching the TS contracts
+     service.py   search_workspace(db, workspace_id, q, limit, kinds, config)
+                    - build RetrievalConfig(collection_name=f"workspace_{id}",
+                      persist_directory=chroma_dir, top_k=limit or 40)
+                    - open ChunkIndex, ChromaRetriever.retrieve(q, scope, top_k)
+                    - group RetrievedChunks by document_id; keep best score;
+                      hydrate title/pages from the documents table
+                    - map to SearchResult, dedupe, sort by best score, truncate
+                    - kinds filter: only "document" supported in M4; a filter
+                      excluding "document" returns empty
+                  build_grounded_context(...)  -> GroundedContext for M5/M6
+                    (as_prompt_content / to_content_references / chunk_ids)
+     router.py    GET /search with workspace-ownership gating and the error
+                  envelope (401/403/404/422), delegating to service
+   tests/test_backend_search.py  (~18 tests, see section 8)
+   Modified: backend/main.py (register search_router)
+   Chroma note: delete/embed already keep index rows in sync with the DB
+   (M3). M4 adds read-only reuse — no new write path.
+
+5. DESIGN DECISION REQUIRING YOUR APPROVAL — WORKSPACE-WIDE SCOPE
+   /search targets a whole workspace, but RetrievalScope structurally
+   requires document_id and/or session_id ("unscoped retrieval is not
+   allowed"). Since each workspace IS one Chroma collection, workspace-wide
+   retrieval must query the collection with NO metadata filter.
+   Options:
+   A) EXTEND src/retrieval/models.py RetrievalScope with an optional
+      workspace_id field; when set alone, to_where() returns no Chroma
+      filter (None). ~15 lines in the ONE src file, principled, and it
+      serves M6 workspace chat too. [RECOMMENDED]
+   B) Backend adapter bypasses the scope and queries Chroma with where=None
+      directly — duplicates ChromaRetriever's min_score/ranking/clamp logic.
+      Rejected.
+   C) Enumerate document_ids() and issue per-document queries — N round-trips,
+      and RetrievalScope has no $in support. Rejected.
+   M3 left src/ untouched; this is the first deliberate domain extension.
+   Please confirm A (or propose otherwise) before I code M4.
+
+6. STATUS CODES / ERROR ENVELOPE
+   Reuse backend/errors.py ApiError envelope {error:{code,message,details}}:
+   401 unauthorized (no/invalid token), 403 forbidden (non-owner workspace),
+   404 not_found (unknown workspace), 422 validation_error (missing q /
+   missing workspace_id), 200 on success. 429/413 handled elsewhere (rate
+   limit middleware, upload guard) — unchanged.
+
+7. SEARCH SEMANTICS (documented, not aspirational)
+   - Ranking is exact/keyword via the embedder in use: hashing (default for
+     tests/offline) is deterministic bag-of-words; onnx is semantic. M4
+     surfaces whatever ChromaRetriever returns, min_score-filtered, so
+     results are honest about the current embedder (analysis 4.4).
+   - Blank/whitespace q -> {results: [], total: 0} (ChromaRetriever short-
+     circuits blank queries).
+   - subtitle uses the same "{kind} · {pages} pages" shape as the mock;
+     pages is null for non-PDF so the subtitle shows the kind only.
+
+8. TESTS (tests/test_backend_search.py)
+   Auth: 401 no token. Params: 422 missing workspace_id; 404 unknown
+   workspace; 403 cross-owner.
+   Retrieval: index two docs (hashing embedder), query with shared vocab —
+   correct ranking, limit truncation, total == len(results), blank q empty.
+   Mapping: title/subtitle/to from DB rows; dedupe by document (one result
+   per doc, best score).
+   Kinds: kinds=["document"] returns docs; kinds=["question"] returns empty.
+   Grounding: build_grounded_context returns ContentReferences and chunk_ids
+   in rank order; is_sufficient False on empty scope.
+   Reuses the M3 upload+embed helpers to seed the index.
+
+9. VERIFICATION COMMANDS
+   .venv/bin/ruff check backend/search/ tests/test_backend_search.py
+   .venv/bin/ruff check src/ --select F
+   .venv/bin/ruff format --check backend/search/ tests/test_backend_search.py
+   .venv/bin/python -m compileall -q backend src
+   .venv/bin/python -m pytest tests/test_backend_search.py tests/test_backend_documents.py -q
+   Full: .venv/bin/python -m pytest tests/ -q
+   Live: uvicorn with RETRIEVAL_EMBEDDER=hashing, temp DB + temp chroma dir;
+   upload+embed two txts, GET /search?q=... -> ranked document results.
+
+10. OUT OF SCOPE (their milestones)
+    - question/flashcard/concept/history search kinds (M5/M6/M7/M10).
+    - verifier.py / benchmark.py / StudyGrounder (grounding rule re-use is
+      M5 generation's job; M4 only serializes context+citations).
+    - /search over titles (Chroma is content search; title-only matching is
+      covered by content for real uploads — noted as a known limitation).
+
+================================================================================
+Awaiting approval before M4 implementation begins.
+================================================================================
