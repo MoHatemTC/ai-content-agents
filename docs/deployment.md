@@ -11,8 +11,8 @@ outside a developer's checkout. Written for whoever deploys or demos it next.
 - No system packages. Every dependency is pure Python or ships wheels; the PDF
   exporter uses `fpdf2` specifically to avoid a system PDF toolchain.
 - Roughly 500 MB of disk for the virtual environment, mostly `chromadb`.
-- Network access **only** for the LiteLLM gateway. With `MOCK_MODE=true` the app
-  makes no outbound calls at all.
+- Network access **only** for the LiteLLM gateway, and for a one-time ~80 MB
+  embedding-model download unless you set `RETRIEVAL_EMBEDDER=hashing`.
 
 ```bash
 python -m venv .venv
@@ -36,10 +36,10 @@ cp .env.example .env           # macOS / Linux
 
 | Variable | Default | What it does |
 |---|---|---|
-| `LITELLM_BASE_URL` | — | Gateway base URL. Required when `MOCK_MODE=false`. Any OpenAI-compatible endpoint works — the Sprints LiteLLM gateway or OpenRouter (`https://openrouter.ai/api/v1`) have both been run against. |
-| `LITELLM_API_KEY` | — | Gateway key. Required when `MOCK_MODE=false`. |
+| `LITELLM_BASE_URL` | — | Gateway base URL. **Required.** Any OpenAI-compatible endpoint works — the Sprints LiteLLM gateway or OpenRouter (`https://openrouter.ai/api/v1`) have both been run against. |
+| `LITELLM_API_KEY` | — | Gateway key. **Required.** |
 | `DEFAULT_MODEL` | `kimi-k2.5` | Model name to request from the gateway. |
-| `MOCK_MODE` | `true` | `true` makes every agent return a canned response and never touch the network. |
+| `RETRIEVAL_EMBEDDER` | `onnx` | Which embedder indexes and queries documents. `onnx` is semantic and downloads ~80 MB once; `hashing` is offline and deterministic. Not interchangeable on an existing index — switching means re-ingesting, and opening an index built by the other one is refused. |
 | `PLATFORM_DB_PATH` | `ingestion.db` | SQLite file holding documents, chunks, runs, outputs, reviews and events. |
 
 **`.env` is the first line of `.gitignore` and must stay that way.** `*.db` is
@@ -158,18 +158,21 @@ records as a flagged output rather than a crash. If schema pass rate is
 unexpectedly low, look at `payload["raw_output"]` on a failed output before
 blaming the prompt.
 
-**`ValueError: Missing LITELLM_API_KEY environment variable`**
-`MOCK_MODE=false` with no key. Either set the key or set `MOCK_MODE=true`.
+**`Cannot reach the LLM gateway: LITELLM_API_KEY and LITELLM_BASE_URL are not
+both set`**
+There is no offline mode to fall back to; set both. The app degrades rather
+than crashing — upload, the library and the review queue keep working, and the
+generation pages say what is missing.
 
 **Live tests skip.** Expected without `LITELLM_API_KEY`. They skip rather than
 falling back to mocks on purpose — a green integration test that never called a
 model would be misleading.
 
-**Everything is flagged ungrounded in offline mode.** Correct behaviour. The
-agents' hardcoded mock responses cite `chunk_001`, while real chunks are
-`<document-id>-c0000`, so the `grounded_references` guardrail flags every one. That
-is the hallucination check working. Use `MOCK_MODE=false` to measure real
-groundedness.
+**Retrieval finds nothing after changing `RETRIEVAL_EMBEDDER`.** Vectors from
+one embedder are not comparable to another's. Opening an index built by the
+other embedder raises `IndexEmbedderMismatchError` naming both and telling you
+to re-ingest; nothing is rebuilt automatically, because embedding a large
+document costs minutes.
 
 **Two Chroma indexes see each other's chunks.** `EphemeralClient` is shared per
 process; give each index a distinct `collection_name`.
