@@ -1240,3 +1240,34 @@ def test_summary_rows_render_rates_readably(store: PlatformStore) -> None:
     assert rows[-1]["agent"] == "overall"
     assert rows[0]["schema pass"] == "100.0%"
     assert rows[0]["review edit"] == "n/a"  # nothing reviewed yet
+
+
+# --------------------------------------------------------------------------- #
+# Sprint-4 QA: the two question agents disagree about the same gateway failure
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="BUG-09: question_bank_agent.py:149 correctly guards empty choices "
+    "and raises ValueError - which is NOT in Orchestrator.transient_errors, so "
+    "it is never retried. test_help_agent.py:152 leaves the dereference "
+    "unguarded, and its TypeError IS translated to UpstreamResponseError and "
+    "retried. The correct implementation is the one that loses the retry.",
+)
+def test_a_guarded_empty_choices_error_is_still_retryable() -> None:
+    """The retry classification must not depend on which bug an agent has.
+
+    This is the trap in fixing BUG-08. Copying question_bank's guard into
+    test_help - the obvious fix - swaps its TypeError for a ValueError and
+    silently turns off retries for a genuinely transient provider condition.
+    The guard and the transient-error set have to change together.
+    """
+    adapter = RegistryAgentAdapter(
+        name="question_bank",
+        agent=_FakeAgentModule(ValueError("The LLM returned no choices.")),
+        schema=QuestionBankOutput,
+    )
+
+    with pytest.raises(UpstreamResponseError):
+        adapter.run_raw("content")
