@@ -29,8 +29,8 @@ class RetrievalConfig(BaseModel):
 
     top_k: int = Field(default=5, ge=1)
     min_score: float = Field(default=0.0)
-    chunk_size: int = Field(default=800, ge=1)
-    chunk_overlap: int = Field(default=100, ge=0)
+    chunk_size: int = Field(default=2000, ge=1)
+    chunk_overlap: int = Field(default=200, ge=0)
     collection_name: str = Field(default="content_chunks", min_length=1)
     persist_directory: str | None = None
 

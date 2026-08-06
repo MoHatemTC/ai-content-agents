@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 # Passages per generation. Enough for a model to write varied cards from, small
 # enough that the prompt stays far below any provider's context window.
-DEFAULT_TOP_K = 12
+DEFAULT_TOP_K = 8
 
 # Hard ceiling on the content block, whatever retrieval returns. The bug this
 # module exists to fix was an unbounded prompt, so the fix should not depend on

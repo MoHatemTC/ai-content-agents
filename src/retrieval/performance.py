@@ -63,11 +63,47 @@ class CachingEmbeddingFunction(EmbeddingFunction[Documents]):
     def get_config(self) -> dict[str, Any]:
         """Serializable construction config (Chroma persistence interface).
 
-        Note: this does not serialize the wrapped ``inner`` embedder or the
-        cache contents, only the cache's own sizing — reconstructing a fully
-        equivalent instance from this config alone is not supported.
+        The wrapped embedder is recorded by name and config, not just the
+        cache's own sizing. Chroma stores this against a persisted collection
+        and rebuilds the embedder when the collection is reopened; without the
+        inner details the collection loads but every query fails with "You must
+        provide an embedding function". The cache contents are not serialized —
+        they are a within-process optimisation and rebuild themselves.
         """
-        return {"max_entries": self._max_entries}
+        return {
+            "max_entries": self._max_entries,
+            "inner_name": self._inner.name(),
+            "inner_config": self._inner.get_config(),
+        }
+
+    @staticmethod
+    def build_from_config(config: dict[str, Any]) -> "CachingEmbeddingFunction":
+        """Rebuild the wrapper, and the embedder it wraps, from :meth:`get_config`.
+
+        Args:
+            config: Output of :meth:`get_config`.
+
+        Returns:
+            An equivalent wrapper with an empty cache.
+        """
+        # Imported here rather than at module scope: index.py imports this
+        # module for the default embedder, so a top-level import back into it
+        # would be circular.
+        from src.retrieval.index import HashingEmbeddingFunction
+
+        inner_config = config.get("inner_config") or {}
+        if config.get("inner_name") == HashingEmbeddingFunction.name():
+            inner: EmbeddingFunction[Documents] = (
+                HashingEmbeddingFunction.build_from_config(inner_config)
+            )
+        else:
+            from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
+
+            inner = DefaultEmbeddingFunction()
+
+        return CachingEmbeddingFunction(
+            inner, max_entries=int(config.get("max_entries", 5000))
+        )
 
     def __call__(self, input: Documents) -> Embeddings:  # noqa: A002 - Chroma's interface name
         """Embed a batch of texts, serving repeats from cache.

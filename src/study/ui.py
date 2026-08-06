@@ -47,18 +47,46 @@ PENDING_BADGE = ":warning: **PENDING HUMAN REVIEW — not final.**"
 
 @st.cache_resource
 def get_chunk_index():
-    """The retrieval index backing every page here."""
-    from src.retrieval import ChunkIndex
+    """The retrieval index, persisted when CHROMA_DIR is set.
 
-    return ChunkIndex()
+    Embedding a large document costs minutes and cannot be tuned faster, so the
+    only way not to pay it repeatedly is not to discard it on restart. Unset,
+    the index stays in memory.
+    """
+    from src.retrieval import ChunkIndex, RetrievalConfig
+
+    directory = os.getenv("CHROMA_DIR", "").strip()
+    config = RetrievalConfig(persist_directory=directory) if directory else None
+    return ChunkIndex(config=config)
+
+
+def ensure_indexed() -> bool:
+    """Embed the active document's chunks if that has not happened yet.
+
+    Embedding dominates ingest cost and its rate is fixed, so this is lazy: the
+    standalone page may be looking at a document ingested in a different
+    process entirely, and re-embedding on every rerun would be unusable.
+
+    Returns:
+        Whether any indexing was performed.
+    """
+    doc = st.session_state.get("current_doc")
+    chunks = st.session_state.get("current_chunks") or []
+    if doc is None or not chunks:
+        return False
+
+    indexed = st.session_state.setdefault("indexed_documents", set())
+    if doc.id in indexed:
+        return False
+
+    with st.spinner(f"Preparing {len(chunks):,} passages for retrieval..."):
+        index_chunks(get_chunk_index(), doc.id, chunks)
+    indexed.add(doc.id)
+    return True
 
 
 def ground(focus: str, topics: list[str]) -> tuple[str, list[str]]:
     """Retrieve the passages a generation should be built from.
-
-    Indexing is lazy and happens here rather than in the upload page,
-    because this file runs standalone and its uploads may have happened in
-    a different process entirely.
 
     Args:
         focus: What the learner asked for; may be blank.
@@ -70,18 +98,11 @@ def ground(focus: str, topics: list[str]) -> tuple[str, list[str]]:
     Raises:
         NoGroundingError: If nothing could be retrieved.
     """
+    ensure_indexed()
     doc = st.session_state.get("current_doc")
-    chunks = st.session_state.get("current_chunks") or []
-    index = get_chunk_index()
-
-    indexed = st.session_state.setdefault("indexed_documents", set())
-    if doc.id not in indexed:
-        with st.spinner(f"Indexing {len(chunks)} passages for retrieval..."):
-            index_chunks(index, doc.id, chunks)
-        indexed.add(doc.id)
 
     content, cited_ids, _ = grounded_content(
-        index=index, document_id=doc.id, focus=focus, topics=topics
+        index=get_chunk_index(), document_id=doc.id, focus=focus, topics=topics
     )
     return content, cited_ids
 

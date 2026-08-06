@@ -53,7 +53,7 @@ _PARAGRAPH_BREAK = re.compile(r"\n\s*\n")
 class TextChunker:
     """Split cleaned text into stable retrieval chunks."""
 
-    def __init__(self, chunk_size: int = 1000, overlap: int = 100) -> None:
+    def __init__(self, chunk_size: int = 2000, overlap: int = 200) -> None:
         """Configure chunking behavior.
 
         Args:
