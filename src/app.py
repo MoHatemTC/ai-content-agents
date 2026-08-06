@@ -29,7 +29,9 @@ from src.study.formatters import (
 from src.study.revision_agent import RevisionAgent
 from src.study.study_plan_agent import StudyPlanAgent
 from src.services.mentor_concept import MentorConceptService
-from src.ui_common import chunk_ids, render_current_content_status
+from src.ui_common import render_current_content_status
+from src.retrieval import ChunkIndex
+from src.study.grounding import NoGroundingError, grounded_content, index_chunks
 
 # ---------------------------------------------------------------------------
 # Initialize shared services
@@ -72,11 +74,51 @@ def get_study_plan_agent():
 def get_revision_agent():
     return RevisionAgent()
 
+
+@st.cache_resource
+def get_chunk_index():
+    return ChunkIndex()
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 PENDING_BADGE = ":warning: **PENDING HUMAN REVIEW — not final.**"
+
+
+def ground(focus: str, topics: list[str]):
+    """Retrieve the passages this generation should be built from.
+
+    Indexing happens here rather than in each upload path because there are
+    five of them - single file, paste, batch, library and demo - and one lazy
+    call cannot be forgotten by a sixth. ``add_document`` replaces a document's
+    chunks wholesale, so re-indexing is safe; the session set only avoids
+    re-embedding thousands of chunks on every click.
+
+    Args:
+        focus: What the learner asked the material to cover; may be blank.
+        topics: Extracted topics, used as the query when ``focus`` is blank.
+
+    Returns:
+        A ``(content, chunk_ids)`` pair for the agent call.
+
+    Raises:
+        NoGroundingError: If nothing could be retrieved.
+    """
+    doc = st.session_state.get("current_doc")
+    chunks = st.session_state.get("current_chunks") or []
+    index = get_chunk_index()
+
+    indexed = st.session_state.setdefault("indexed_documents", set())
+    if doc.id not in indexed:
+        with st.spinner(f"Indexing {len(chunks)} passages for retrieval..."):
+            index_chunks(index, doc.id, chunks)
+        indexed.add(doc.id)
+
+    content, cited_ids, _ = grounded_content(
+        index=index, document_id=doc.id, focus=focus, topics=topics
+    )
+    return content, cited_ids
 
 
 
@@ -370,6 +412,14 @@ elif page == "🃏 Generate Flashcards":
                     help="term-definition: front = term. Q-A: front = a question.",
                 )
                 card_count = st.slider("Card count", min_value=1, max_value=25, value=8)
+                focus = st.text_input(
+                    "What should these cover?",
+                    placeholder="e.g. thermal conduction",
+                    help=(
+                        "Used to retrieve the relevant passages. Leave blank to "
+                        "draw on the document's main topics."
+                    ),
+                )
             with col2:
                 allow_list = FlashcardAgent.extract_topics(content, max_topics=30)
                 st.caption(f"Extracted topic allow-list ({len(allow_list)} topics):")
@@ -378,13 +428,16 @@ elif page == "🃏 Generate Flashcards":
 
         if submitted:
             try:
+                grounded, cited = ground(focus, allow_list)
                 with st.spinner("Generating cards..."):
                     card_set = fc_agent.generate(
-                        content,
+                        grounded,
                         card_format=card_format,
                         card_count=card_count,
-                        source_chunk_ids=chunk_ids(chunks),
+                        source_chunk_ids=cited,
                     )
+            except NoGroundingError as exc:
+                st.error(str(exc))
             except Exception as exc:
                 st.error(f"Failed to generate flashcards: {exc}")
             else:
@@ -439,15 +492,20 @@ elif page == "📅 Study Plan":
 
         if submitted:
             try:
+                # The learner goal is already the best description of what the
+                # plan should cover, so it doubles as the retrieval query.
+                grounded, _cited = ground(goal, allow_list)
                 with st.spinner("Building study plan..."):
                     plan = sp_agent.generate(
-                        content,
+                        grounded,
                         learner_goal=goal,
                         difficulty=difficulty,
                         start_date=start_date,
                         end_date=end_date,
                         hours_per_week=float(hours_per_week),
                     )
+            except NoGroundingError as exc:
+                st.error(str(exc))
             except Exception as exc:
                 st.error(f"Failed to build study plan: {exc}")
             else:
@@ -504,12 +562,17 @@ elif page == "🔄 Revision Plan":
                 st.warning("Pick at least one topic to revise.")
             else:
                 try:
+                    # The chosen weak topics say exactly which passages this
+                    # session needs, so they are the retrieval query.
+                    grounded, _cited = ground(" ".join(selected), allow_list)
                     with st.spinner("Planning revision items..."):
                         session = rv_agent.generate(
-                            content,
+                            grounded,
                             selected_topics=list(selected),
                             session_date=session_date,
                         )
+                except NoGroundingError as exc:
+                    st.error(str(exc))
                 except Exception as exc:
                     st.error(f"Failed to generate revision items: {exc}")
                 else:

@@ -45,6 +45,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
+# Chroma rejects an upsert larger than its max batch size. The limit it
+# reports is 5,461; staying below it keeps a document of any length indexable.
+_MAX_UPSERT_BATCH = 5000
+
 _ID_SANITIZE_RE = re.compile(r"[^A-Za-z0-9_-]")
 
 
@@ -250,11 +254,17 @@ class ChunkIndex:
             if chunk.session_id is not None:  # Chroma metadata values cannot be None
                 metadata["session_id"] = chunk.session_id
             metadatas.append(metadata)
-        self._collection.upsert(
-            ids=[chunk.chunk_id for chunk in chunk_list],
-            documents=[chunk.text for chunk in chunk_list],
-            metadatas=metadatas,
-        )
+        # Chroma refuses a batch larger than its configured maximum, and a real
+        # document is easily bigger: a 1,598-page textbook chunks into 8,513,
+        # against a limit of 5,461. The upsert is per-batch but the ids are
+        # stable, so splitting changes nothing about the result.
+        for start in range(0, len(chunk_list), _MAX_UPSERT_BATCH):
+            batch = chunk_list[start : start + _MAX_UPSERT_BATCH]
+            self._collection.upsert(
+                ids=[chunk.chunk_id for chunk in batch],
+                documents=[chunk.text for chunk in batch],
+                metadatas=metadatas[start : start + _MAX_UPSERT_BATCH],
+            )
         logger.debug("Upserted %d chunk(s); index now holds %d", len(chunk_list), len(self))
         return len(chunk_list)
 
