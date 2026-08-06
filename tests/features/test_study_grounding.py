@@ -289,3 +289,37 @@ def test_the_default_embedder_caches_repeated_text() -> None:
     embedder(["thermal conduction"])
 
     assert embedder.stats()["hits"] >= 1
+
+
+# --------------------------------------------------------------------------- #
+# The suite must not reach into a developer's environment
+# --------------------------------------------------------------------------- #
+
+
+def test_the_suite_does_not_touch_a_persisted_index() -> None:
+    """Guards a defect CI is structurally unable to reproduce.
+
+    ``conftest.py`` clears ``CHROMA_DIR`` so tests always build an in-memory
+    index. Without that they opened whatever the developer had persisted - a
+    105 MB index of a physics textbook, embedded in live mode at 384 dimensions
+    - and queried it with the 256-dimension offline embedder:
+
+        Collection expecting embedding with dimension of 384, got 256
+
+    CI never saw it, because CI has no .env and so always ran in memory. This
+    test passes trivially there, which is the point: it fails on the machine
+    where the problem exists, the moment conftest stops neutralising it.
+    """
+    import os
+
+    assert not os.getenv("CHROMA_DIR"), (
+        "CHROMA_DIR is set during the test run, so the suite is reading a "
+        "persisted index from this machine rather than building its own"
+    )
+
+
+def test_the_default_index_is_in_memory_during_tests() -> None:
+    """The consequence of the above, asserted on the object rather than the env."""
+    from src.retrieval.config import RetrievalConfig
+
+    assert RetrievalConfig().persist_directory is None
