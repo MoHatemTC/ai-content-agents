@@ -21,6 +21,7 @@ from src.ingestion.library import ContentLibrary
 from src.ingestion.demo_data import DemoDataLoader
 from src.registry import AgentRegistry
 from src.generation import MockGenerator
+from src.llm_gateway import gateway_availability
 from src.study.flashcard_agent import FlashcardAgent
 from src.study.formatters import (
     format_flashcard_set,
@@ -199,16 +200,19 @@ sp_agent = get_study_plan_agent()
 rv_agent = get_revision_agent()
 mentor_concept_service = get_mentor_concept_service()
 
-# Say which mode the agents are in. The app spent weeks generating placeholder
-# cards - "See the source text for a fuller treatment" - because the UI forced
-# mock mode regardless of MOCK_MODE, and nothing on screen said so.
-if fc_agent.mock_mode:
-    st.sidebar.warning(
-        "**Mock mode** — output is built from your document but not generated "
-        "by a model. Set `MOCK_MODE=false` in `.env` for real generation."
-    )
-else:
+# Say whether generation can actually happen. The app spent weeks serving
+# placeholder cards - "See the source text for a fuller treatment" - because
+# the UI forced mock mode regardless of config and nothing on screen said so.
+# Mock mode is gone; what is left worth showing is whether the gateway is
+# reachable, and which model answers.
+_gateway_ready, _gateway_reason = gateway_availability()
+if _gateway_ready:
     st.sidebar.caption(f"🟢 Live · `{fc_agent.model}`")
+else:
+    st.sidebar.error(
+        f"**Generation unavailable** — {_gateway_reason}. Nothing on this page "
+        "can produce output until that is fixed."
+    )
 
 
 # ---------------------------------------------------------------------------

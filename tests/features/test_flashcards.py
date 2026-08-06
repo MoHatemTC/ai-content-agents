@@ -11,6 +11,7 @@ from src.study.flashcard_agent import (
     GroundingError,
 )
 from src.study.formatters import format_flashcard_set
+from tests.conftest import FakeLLMClient, flashcard_reply
 
 
 SAMPLE_CONTENT = (
@@ -45,9 +46,20 @@ class TestTopicExtraction:
         assert len(topics) <= 5
 
 
+def _agent(reply: str) -> FlashcardAgent:
+    """A flashcard agent wired to a fake gateway returning ``reply``."""
+    return FlashcardAgent(client=FakeLLMClient(reply), model="test-model")
+
+
+def _grounded(card_format: str = "term-definition", card_count: int = 5) -> str:
+    """A reply whose cards all cite topics the agent will actually extract."""
+    topics = FlashcardAgent.extract_topics(SAMPLE_CONTENT)
+    return flashcard_reply(topics, card_format=card_format, card_count=card_count)
+
+
 class TestFlashcardAgent:
     def test_generate_term_definition(self):
-        agent = FlashcardAgent(mock_mode=True)
+        agent = _agent(_grounded(card_count=5))
         card_set = agent.generate(
             SAMPLE_CONTENT, card_format="term-definition", card_count=5
         )
@@ -58,7 +70,7 @@ class TestFlashcardAgent:
             assert c.source_topic is not None
 
     def test_generate_qa_format(self):
-        agent = FlashcardAgent(mock_mode=True)
+        agent = _agent(_grounded(card_format="qa", card_count=3))
         card_set = agent.generate(
             SAMPLE_CONTENT, card_format="qa", card_count=3
         )
@@ -66,44 +78,42 @@ class TestFlashcardAgent:
         assert len(card_set.cards) == 3
 
     def test_invalid_format_raises(self):
-        agent = FlashcardAgent(mock_mode=True)
+        agent = _agent(_grounded())
         with pytest.raises(ValueError):
             agent.generate(SAMPLE_CONTENT, card_format="bad", card_count=3)
 
     def test_empty_content_raises(self):
-        agent = FlashcardAgent(mock_mode=True)
+        agent = _agent(_grounded())
         with pytest.raises(ValueError):
             agent.generate("", card_count=3)
 
     def test_source_topics_are_subset_of_extracted(self):
-        agent = FlashcardAgent(mock_mode=True)
+        agent = _agent(_grounded(card_count=5))
         extracted = FlashcardAgent.extract_topics(SAMPLE_CONTENT)
         card_set = agent.generate(SAMPLE_CONTENT, card_count=5)
         used_topics = {c.source_topic for c in card_set.cards if c.source_topic}
         assert used_topics.issubset(set(extracted) | {None})
 
-    def test_grounding_validation_rejects_out_of_list(self, monkeypatch):
-        agent = FlashcardAgent(mock_mode=True)
-        original = agent._mock_response
+    def test_grounding_validation_rejects_out_of_list(self):
+        """A fabricated topic in the model's reply must be refused.
 
-        def _bad(*_a, **_kw):
-            good = original(*_a, **_kw)
-            # Inject a fabricated card with a source_topic that is NOT in the
-            # extraction allow-list to trigger the validation failure.
-            bad_card = good.cards[0].model_copy(
-                update={"source_topic": "Completely Fake Hallucinated Topic"}
-            )
-            good.cards.append(bad_card)
-            return good
+        This used to monkeypatch ``_mock_response`` and return a corrupted
+        object, which skipped the parse step entirely - the JSON path the real
+        defect travels was never exercised. The bad topic now arrives as JSON
+        from the gateway, exactly as a hallucination would.
+        """
+        topics = FlashcardAgent.extract_topics(SAMPLE_CONTENT)
+        reply = flashcard_reply(
+            [*topics[:2], "Completely Fake Hallucinated Topic"], card_count=3
+        )
 
-        monkeypatch.setattr(agent, "_mock_response", _bad)
         with pytest.raises(GroundingError):
-            agent.generate(SAMPLE_CONTENT, card_count=3)
+            _agent(reply).generate(SAMPLE_CONTENT, card_count=3)
 
 
 class TestFlashcardFormatters:
     def test_format_flashcard_set_is_json_safe(self):
-        agent = FlashcardAgent(mock_mode=True)
+        agent = _agent(_grounded(card_count=3))
         card_set = agent.generate(SAMPLE_CONTENT, card_count=3)
         as_dict = format_flashcard_set(card_set)
         # Should be dict-of-primitives only (no date objects needed here, but
@@ -118,8 +128,19 @@ class TestFlashcardFormatters:
 
 class TestFlashcardBatch:
     def test_batch_runs_over_default_dataset(self):
+        """The batch runner has to survive every row of the demo dataset.
+
+        One fake client serves all rows: its reply queue is exhausted after the
+        first, and an exhausted client returns ``{}``, so the topic allow-list
+        would not match. Each row therefore gets its own agent-shaped reply.
+        """
         dataset = default_demo_dataset()
-        results = run_flashcard_batch(dataset, card_count=5)
+        replies = [
+            flashcard_reply(FlashcardAgent.extract_topics(item.content), card_count=5)
+            for item in dataset
+        ]
+        agent = FlashcardAgent(client=FakeLLMClient(*replies), model="test-model")
+        results = run_flashcard_batch(dataset, card_count=5, agent=agent)
         assert len(results) == len(dataset)
         for r in results:
             assert r.error is None
@@ -219,42 +240,3 @@ class TestTopicAllowListQuality:
             allowed = set(FlashcardAgent.extract_topics(item.content))
             missing = [w for w in (item.weak_topics or []) if w not in allowed]
             assert not missing, f"{item.title}: {missing}"
-
-
-# --------------------------------------------------------------------------- #
-# Mock output is made of the document, not about it
-# --------------------------------------------------------------------------- #
-
-
-class TestMockOutputIsGrounded:
-    CONTENT = (
-        "Conduction moves energy through a material by direct molecular contact. "
-        "Convection carries heat in the bulk motion of a fluid. "
-        "Radiation needs no medium: energy crosses a vacuum as electromagnetic waves."
-    )
-
-    def test_no_placeholder_phrases(self):
-        """What the app actually displayed for weeks.
-
-        Every card of every document read "X is a key concept described in the
-        supplied content. See the source text for a fuller treatment." A card
-        that says where the answer is instead of what it is teaches nothing,
-        and the UI forced mock mode, so this was the product.
-        """
-        card_set = FlashcardAgent(mock_mode=True).generate(self.CONTENT, card_count=3)
-
-        body = " ".join(card.back.lower() for card in card_set.cards)
-        for phrase in ("see the source", "supplied content", "fuller treatment"):
-            assert phrase not in body, f"placeholder text: {phrase!r}"
-
-    def test_card_backs_are_quoted_from_the_content(self):
-        card_set = FlashcardAgent(mock_mode=True).generate(self.CONTENT, card_count=3)
-
-        for card in card_set.cards:
-            assert card.back in self.CONTENT, card.back
-
-    def test_cards_are_not_all_identical(self):
-        """The failure mode this replaces produced one sentence, repeated."""
-        card_set = FlashcardAgent(mock_mode=True).generate(self.CONTENT, card_count=3)
-
-        assert len({card.back for card in card_set.cards}) > 1

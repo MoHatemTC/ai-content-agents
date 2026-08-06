@@ -8,8 +8,8 @@ outputs. It follows the repository-wide four-step pattern:
    this step).
 2. :meth:`_load_prompt` / :meth:`_build_prompt` fill the study-lane YAML
    template that *forces* the LLM to only use that allow-list.
-3. :meth:`_call_llm` goes to LiteLLM in live mode; mock mode returns a
-   deterministic grounded sample that passes the validators.
+3. :meth:`_call_llm` goes to LiteLLM through the shared client in
+   :mod:`src.llm_gateway`. Tests inject a double; there is no mode flag.
 4. :meth:`_validate_grounding` and :meth:`_wrap_for_review_gate` enforce the
    contract: the returned :class:`FlashcardSet` is always marked
    ``needs_human_review=True``, every card's ``source_topic`` is in the
@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 from collections import Counter
 from datetime import datetime
@@ -36,14 +35,14 @@ from uuid import uuid4
 import yaml
 from dotenv import load_dotenv
 
-from src.schemas import Flashcard, FlashcardSet
+from src.llm_gateway import build_client, default_model
+from src.schemas import FlashcardSet
 from src.study.llm_client import (
     UpstreamResponseError,
     call_llm,
     output_budget,
     parse_json,
     schema_block,
-    sentence_about,
 )
 
 load_dotenv()
@@ -110,35 +109,16 @@ class FlashcardAgent:
     """Grounded flashcard generator.
 
     Args:
-        mock_mode: When ``True``, skip LiteLLM and return a deterministic
-            grounded sample. Defaults to the ``MOCK_MODE`` env var
-            (case-insensitive "true" = True).
+        client: An OpenAI-compatible client. Defaults to one built from the
+            configured gateway; tests inject a double. There is no mode flag -
+            see :mod:`src.llm_gateway` for why.
+        model: Model id. Defaults to :func:`~src.llm_gateway.default_model`.
     """
 
-    def __init__(self, mock_mode: bool | None = None) -> None:
-        if mock_mode is None:
-            self.mock_mode = os.getenv("MOCK_MODE", "true").lower() == "true"
-        else:
-            self.mock_mode = mock_mode
-
+    def __init__(self, *, client: Any | None = None, model: str | None = None) -> None:
         self.prompt_cfg = self._load_prompt()
-
-        if not self.mock_mode:
-            api_key = os.getenv("LITELLM_API_KEY")
-            base_url = os.getenv("LITELLM_BASE_URL")
-            if not api_key or not base_url:
-                raise ValueError(
-                    "LITELLM_API_KEY and LITELLM_BASE_URL are required in live mode."
-                )
-            # Imported lazily so tests / mock-mode environments don't need
-            # the openai package on PATH.
-            from openai import OpenAI  # type: ignore
-
-            self.model = os.getenv("DEFAULT_MODEL", "FW-Kimi-K2.6")
-            self.client: Any = OpenAI(api_key=api_key, base_url=base_url, timeout=60.0)
-        else:
-            self.client = None
-            self.model = None
+        self.client: Any = client if client is not None else build_client()
+        self.model = model or default_model()
 
     # ------------------------------------------------------------------
     # Prompt + topic extraction helpers
@@ -300,7 +280,7 @@ class FlashcardAgent:
         return prompt_block
 
     # ------------------------------------------------------------------
-    # LLM + mock responses
+    # LLM
     # ------------------------------------------------------------------
 
     def _call_llm(self, prompt: str, max_tokens: int | None = None) -> str:
@@ -317,58 +297,6 @@ class FlashcardAgent:
         """
         return call_llm(
             self.client, self.model, prompt, max_tokens=max_tokens
-        )
-
-    @staticmethod
-    def _mock_response(
-        extracted_topics: list[str],
-        card_format: str,
-        card_count: int,
-        content: str = "",
-    ) -> FlashcardSet:
-        """Deterministic grounded sample for tests and local demoing.
-
-        Args:
-            extracted_topics: Topic allow-list.
-            card_format: ``term-definition`` or ``qa``.
-            card_count: Target count.
-            content: The source text, so the cards can quote it instead of
-                describing where to find it.
-
-        Returns:
-            Valid, grounded :class:`FlashcardSet` that passes every validator
-            in :meth:`_validate_grounding`.
-        """
-        topics = extracted_topics or ["General topic"]
-        n = min(card_count, max(1, len(topics)))
-        cards: list[Flashcard] = []
-        for i in range(n):
-            topic = topics[i % len(topics)]
-            # Quote the document rather than describing it. The previous text -
-            # "X is a key concept described in the supplied content. See the
-            # source text for a fuller treatment." - was the same sentence for
-            # every card of every document, and it is what the app displayed,
-            # since the UI hardcoded mock mode. A card that says where the
-            # answer is instead of what it is teaches nothing.
-            back = sentence_about(content, topic)
-            front = topic if card_format == "term-definition" else f"What is {topic}?"
-            cards.append(
-                Flashcard(
-                    front=front,
-                    back=back,
-                    format=card_format,
-                    source_topic=topic,
-                    source_chunk_id=None,
-                    tags=["mock", topic.lower()],
-                )
-            )
-        return FlashcardSet(
-            title="Grounded mock flashcard set",
-            description=f"Mock {card_format} cards ({n} of {card_count} requested).",
-            cards=cards,
-            source_topics=sorted({c.source_topic for c in cards if c.source_topic}),
-            source_chunk_ids=[],
-            needs_human_review=True,
         )
 
     # ------------------------------------------------------------------
@@ -459,8 +387,8 @@ class FlashcardAgent:
 
         Raises:
             ValueError: If the format / count are invalid.
-            GroundingError: If the LLM (or mock) produced cards that
-                reference topics outside the extraction allow-list.
+            GroundingError: If the LLM produced cards that reference
+                topics outside the extraction allow-list.
         """
         if not content or not content.strip():
             raise ValueError("content is empty; cannot generate flashcards")
@@ -469,20 +397,15 @@ class FlashcardAgent:
         extracted_topics = self.extract_topics(content)
         prompt = self._build_prompt(content, extracted_topics, card_format, card_count)
 
-        if self.mock_mode:
-            raw = self._mock_response(
-                extracted_topics, card_format, card_count, content
-            )
-        else:
-            try:
-                text = self._call_llm(prompt, output_budget(card_count))
-            except UpstreamResponseError:
-                # Already says what the gateway did and whether it is worth
-                # retrying; wrapping it in RuntimeError("call failed") would
-                # replace a diagnosis with a shrug.
-                logger.exception("Flashcard LLM call failed")
-                raise
-            raw = parse_json(text, FlashcardSet)
+        try:
+            text = self._call_llm(prompt, output_budget(card_count))
+        except UpstreamResponseError:
+            # Already says what the gateway did and whether it is worth
+            # retrying; wrapping it in RuntimeError("call failed") would
+            # replace a diagnosis with a shrug.
+            logger.exception("Flashcard LLM call failed")
+            raise
+        raw = parse_json(text, FlashcardSet)
 
         if source_chunk_ids:
             raw.source_chunk_ids = list(source_chunk_ids)

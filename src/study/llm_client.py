@@ -146,37 +146,6 @@ def strip_fences(text: str) -> str:
     return match.group("body") if match else text.strip()
 
 
-def sentence_about(content: str, topic: str) -> str:
-    """Return the sentence of ``content`` that best introduces ``topic``.
-
-    Mock mode exists so the app runs offline, but its output is what gets
-    demonstrated, so it should still be made of the document. Quoting the
-    sentence that mentions a topic keeps the mock deterministic and grounded
-    while saying something true about the material, rather than restating that
-    the material exists.
-
-    Args:
-        content: The source text.
-        topic: The topic to find.
-
-    Returns:
-        The first sentence mentioning ``topic``; otherwise the opening sentence
-        of the content, which is at least drawn from the same document.
-    """
-    sentences = [
-        part.strip() for part in re.split(r"(?<=[.!?])\s+", content) if part.strip()
-    ]
-    if not sentences:
-        return f"{topic} (no source text was supplied)."
-
-    needle = topic.lower()
-    for sentence in sentences:
-        if needle in sentence.lower():
-            return sentence
-
-    return sentences[0]
-
-
 def call_llm(
     client: Any,
     model: str,
@@ -206,7 +175,10 @@ def call_llm(
             attempt, or the reply was empty.
     """
     if client is None:
-        raise UpstreamResponseError("No LLM client; the agent is in mock mode.")
+        raise UpstreamResponseError(
+            "No LLM client was supplied. Build one with "
+            "src.llm_gateway.build_client(), or inject a double in tests."
+        )
 
     last_error: str = "no attempts were made"
 

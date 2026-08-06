@@ -24,9 +24,9 @@ from src.study.llm_client import (
     output_budget,
     parse_json,
     schema_block,
-    sentence_about,
     strip_fences,
 )
+from tests.conftest import FakeLLMClient, Reply
 
 CONTENT = (
     "Conduction moves energy through a material by direct molecular contact. "
@@ -42,31 +42,6 @@ VALID_SET = {
 }
 
 
-class _Reply:
-    """Minimal stand-in for an OpenAI SDK response."""
-
-    def __init__(self, content: str | None = None, choices=None, error=None):
-        if choices is None and content is not None:
-            message = type("M", (), {"content": content})
-            choices = [type("C", (), {"message": message})]
-        self.choices = choices
-        self.error = error
-
-
-class FakeClient:
-    """Returns queued replies and records every request."""
-
-    def __init__(self, *replies: _Reply):
-        self._replies = list(replies)
-        self.calls: list[dict] = []
-        self.chat = self
-        self.completions = self
-
-    def create(self, **kwargs):
-        self.calls.append(kwargs)
-        return self._replies.pop(0) if self._replies else _Reply(content="{}")
-
-
 # --------------------------------------------------------------------------- #
 # max_tokens is always sent
 # --------------------------------------------------------------------------- #
@@ -78,7 +53,7 @@ def test_max_tokens_is_always_sent() -> None:
     An uncapped call fails outright with "you requested up to 65536 tokens, but
     can only afford 3333", however short the answer would have been.
     """
-    client = FakeClient(_Reply(content="ok"))
+    client = FakeLLMClient(Reply("ok"))
 
     call_llm(client, "some-model", "prompt")
 
@@ -112,9 +87,9 @@ def test_missing_choices_raises_something_legible() -> None:
     neither the cause nor a remedy, and not recognisably retryable.
     """
     error = {"message": "Upstream error from Nvidia: ResourceExhausted", "code": 502}
-    client = FakeClient(
-        _Reply(choices=None, error=error),
-        _Reply(choices=None, error=error),
+    client = FakeLLMClient(
+        Reply(error=error),
+        Reply(error=error),
     )
 
     with pytest.raises(UpstreamResponseError) as excinfo:
@@ -126,7 +101,7 @@ def test_missing_choices_raises_something_legible() -> None:
 
 
 def test_an_empty_message_is_not_mistaken_for_success() -> None:
-    client = FakeClient(_Reply(content="   "), _Reply(content="  "))
+    client = FakeLLMClient(Reply("   "), Reply("  "))
 
     with pytest.raises(UpstreamResponseError, match="empty message"):
         call_llm(client, "m", "prompt", attempts=2)
@@ -134,9 +109,9 @@ def test_an_empty_message_is_not_mistaken_for_success() -> None:
 
 def test_a_transient_failure_is_retried() -> None:
     """Free-tier models return an error payload for a prompt that then works."""
-    client = FakeClient(
-        _Reply(choices=None, error="saturated"),
-        _Reply(content="second try"),
+    client = FakeLLMClient(
+        Reply(error="saturated"),
+        Reply("second try"),
     )
 
     assert call_llm(client, "m", "prompt", attempts=2) == "second try"
@@ -144,7 +119,7 @@ def test_a_transient_failure_is_retried() -> None:
 
 
 def test_retry_is_bounded() -> None:
-    client = FakeClient(*[_Reply(choices=None) for _ in range(5)])
+    client = FakeLLMClient(*[Reply() for _ in range(5)])
 
     with pytest.raises(UpstreamResponseError):
         call_llm(client, "m", "prompt", attempts=3)
@@ -167,7 +142,7 @@ def test_code_fences_are_stripped(wrapped: str) -> None:
 
 
 def test_a_fenced_reply_parses() -> None:
-    client = FakeClient(_Reply(content=f"```json\n{json.dumps(VALID_SET)}\n```"))
+    client = FakeLLMClient(Reply(f"```json\n{json.dumps(VALID_SET)}\n```"))
 
     text = call_llm(client, "m", "prompt")
 
@@ -211,28 +186,6 @@ def test_schema_block_names_the_required_keys() -> None:
     assert "properties" in block, "the JSON schema itself is missing"
 
 
-# --------------------------------------------------------------------------- #
-# Mock output is made of the document
-# --------------------------------------------------------------------------- #
-
-
-def test_sentence_about_quotes_the_source() -> None:
-    assert sentence_about(CONTENT, "Convection") == (
-        "Convection carries heat in the bulk motion of a fluid."
-    )
-
-
-def test_sentence_about_falls_back_within_the_document() -> None:
-    """An unmatched topic still yields real text, not a canned phrase."""
-    result = sentence_about(CONTENT, "Thermodynamics")
-
-    assert result in CONTENT
-
-
-def test_sentence_about_handles_empty_content() -> None:
-    assert "no source text" in sentence_about("", "Conduction")
-
-
 def test_a_truncated_reply_says_so_rather_than_blaming_the_json() -> None:
     """A reasoning model spends its budget thinking before it answers.
 
@@ -245,7 +198,7 @@ def test_a_truncated_reply_says_so_rather_than_blaming_the_json() -> None:
     """
     message = type("M", (), {"content": '{"title": "Heat", "cards": [{"fro'})
     choice = type("C", (), {"message": message, "finish_reason": "length"})
-    client = FakeClient(_Reply(choices=[choice]))
+    client = FakeLLMClient(Reply(choices=[choice]))
 
     with pytest.raises(UpstreamResponseError) as excinfo:
         call_llm(client, "m", "prompt", max_tokens=2000, attempts=1)
@@ -260,7 +213,7 @@ def test_a_complete_reply_is_not_mistaken_for_truncation() -> None:
     message = type("M", (), {"content": '{"a": 1}'})
     choice = type("C", (), {"message": message, "finish_reason": "stop"})
 
-    assert call_llm(FakeClient(_Reply(choices=[choice])), "m", "p") == '{"a": 1}'
+    assert call_llm(FakeLLMClient(Reply(choices=[choice])), "m", "p") == '{"a": 1}'
 
 
 # --------------------------------------------------------------------------- #
@@ -290,18 +243,10 @@ def test_the_budget_is_capped() -> None:
 
 
 def _live_agent(reply: str):
-    """A flashcard agent on its live path, wired to a fake gateway.
-
-    Constructed in mock mode so no credentials are needed, then switched onto
-    the live path with a fake client. No network call is made.
-    """
+    """A flashcard agent wired to a fake gateway. No network call is made."""
     from src.study.flashcard_agent import FlashcardAgent
 
-    agent = FlashcardAgent(mock_mode=True)
-    agent.mock_mode = False
-    agent.client = FakeClient(_Reply(content=reply))
-    agent.model = "test-model"
-    return agent
+    return FlashcardAgent(client=FakeLLMClient(reply), model="test-model")
 
 
 def test_generate_sizes_the_budget_from_the_cards_requested() -> None:

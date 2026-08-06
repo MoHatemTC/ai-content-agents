@@ -25,6 +25,7 @@ from src.study.formatters import (
     format_study_plan,
 )
 from src.study.schemas import StudyPlan, TopicSchedule
+from tests.conftest import compliant_study_agents
 
 
 class TestFullBatchPipeline:
@@ -38,7 +39,10 @@ class TestFullBatchPipeline:
     def test_full_batch_runs_cleanly(self):
         dataset = default_demo_dataset()
         report = run_full_batch(
-            dataset, card_format="term-definition", card_count=5
+            dataset,
+            card_format="term-definition",
+            card_count=5,
+            agents=compliant_study_agents(),
         )
         assert isinstance(report, BatchReport)
         summary = report.summary()
@@ -52,7 +56,7 @@ class TestFullBatchPipeline:
 class TestBenchmarkQuality:
     def test_benchmark_scores_are_high_on_clean_defaults(self):
         dataset = default_demo_dataset()
-        report = run_full_batch(dataset, card_count=5)
+        report = run_full_batch(dataset, card_count=5, agents=compliant_study_agents())
         bench = benchmark_quality(
             report, dataset, expected_card_format="term-definition", expected_card_count=5
         )
@@ -140,7 +144,7 @@ class TestBenchmarkQuality:
         import json
 
         dataset = default_demo_dataset()
-        report = run_full_batch(dataset, card_count=3)
+        report = run_full_batch(dataset, card_count=3, agents=compliant_study_agents())
         bench = benchmark_quality(report, dataset, expected_card_count=3)
         text = json.dumps(bench.to_dict())
         assert text
@@ -164,7 +168,7 @@ class TestAllFormattersProduceSerialisableDicts:
         import json
 
         dataset = default_demo_dataset()
-        report = run_full_batch(dataset, card_count=3)
+        report = run_full_batch(dataset, card_count=3, agents=compliant_study_agents())
         if producer == "fc":
             obj = report.flashcards[0].card_set
         elif producer == "sp":
@@ -181,7 +185,7 @@ class TestAllFormattersProduceSerialisableDicts:
 class TestHumanReviewGateIsEnforced:
     def test_every_batch_output_remains_pending_review(self):
         dataset = default_demo_dataset()
-        report = run_full_batch(dataset)
+        report = run_full_batch(dataset, agents=compliant_study_agents())
         for r in report.flashcards:
             assert r.card_set.needs_human_review is True
         for r in report.plans:

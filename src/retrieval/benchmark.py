@@ -7,7 +7,7 @@ into one report: how good is retrieval, and how fast, on a given corpus.
 Runs fully offline against the deterministic hashing embedder by default, so
 it can run in CI like the rest of the test suite. Pass a real embedder via
 ``embedding_function`` (e.g. Chroma's default ONNX model, with
-``MOCK_MODE=false``) to get an honest quality read — the offline hashing
+``RETRIEVAL_EMBEDDER=onnx``) to get an honest quality read — the offline hashing
 embedder is not semantic and will understate real-world recall (see the
 retrieval-lane handoff doc's Task 5 for that gap).
 """

@@ -180,10 +180,10 @@ def run_flashcard_batch(
         dataset: Rows to process.
         card_format: ``term-definition`` or ``qa``.
         card_count: Cards per row.
-        agent: Optional pre-built agent (useful for injecting mock/fast
-            variants in tests). A mock-mode agent is constructed by default.
+        agent: Optional pre-built agent. Tests inject one with a fake
+            client; otherwise a live agent is built from the gateway.
     """
-    agent = agent or FlashcardAgent(mock_mode=True)
+    agent = agent or FlashcardAgent()
     results: list[BatchFlashcardResult] = []
     for item in dataset:
         try:
@@ -209,7 +209,7 @@ def run_study_plan_batch(
     agent: StudyPlanAgent | None = None,
 ) -> list[BatchPlanResult]:
     """Run the study-plan agent over every row of the demo dataset."""
-    agent = agent or StudyPlanAgent(mock_mode=True)
+    agent = agent or StudyPlanAgent()
     today = date.today()
     results: list[BatchPlanResult] = []
     for item in dataset:
@@ -239,7 +239,7 @@ def run_revision_batch(
     Falls back to the first 2 extracted topics when ``item.weak_topics``
     is empty, to guarantee an output.
     """
-    agent = agent or RevisionAgent(mock_mode=True)
+    agent = agent or RevisionAgent()
     today = date.today()
     results: list[BatchRevisionResult] = []
     for item in dataset:
@@ -270,7 +270,7 @@ def run_full_batch(
     """Run all three agents across the demo dataset; return a BatchReport."""
     dataset = dataset or default_demo_dataset()
     if agents is None:
-        fc, sp, rv = FlashcardAgent(mock_mode=True), StudyPlanAgent(mock_mode=True), RevisionAgent(mock_mode=True)
+        fc, sp, rv = FlashcardAgent(), StudyPlanAgent(), RevisionAgent()
     else:
         fc, sp, rv = agents
     report = BatchReport()

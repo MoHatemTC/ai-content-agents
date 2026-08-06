@@ -20,6 +20,7 @@ from src.study.study_plan_agent import (
     PlanGroundingError,
     StudyPlanAgent,
 )
+from tests.conftest import FakeLLMClient, revision_reply, study_plan_reply
 
 SAMPLE_CONTENT = (
     "Python Programming Basics. Python is a high-level interpreted language. "
@@ -31,10 +32,33 @@ SAMPLE_CONTENT = (
 )
 
 
+def _plan_agent(*replies: str) -> StudyPlanAgent:
+    """A study-plan agent wired to a fake gateway."""
+    return StudyPlanAgent(client=FakeLLMClient(*replies), model="test-model")
+
+
+def _revision_agent(*replies: str) -> RevisionAgent:
+    """A revision agent wired to a fake gateway."""
+    return RevisionAgent(client=FakeLLMClient(*replies), model="test-model")
+
+
+def _plan_for(content: str, **kwargs) -> str:
+    """A plan reply scheduling only topics the agent will extract."""
+    return study_plan_reply(FlashcardAgent.extract_topics(content), **kwargs)
+
+
 class TestStudyPlanAgent:
-    def test_generate_mock_study_plan(self):
-        agent = StudyPlanAgent(mock_mode=True)
+    def test_generate_study_plan(self):
         today = date.today()
+        agent = _plan_agent(
+            _plan_for(
+                SAMPLE_CONTENT,
+                start_date=today,
+                end_date=today + timedelta(days=28),
+                learner_goal="Prepare for Python exam",
+                hours_per_week=8.0,
+            )
+        )
         plan = agent.generate(
             SAMPLE_CONTENT,
             learner_goal="Prepare for Python exam",
@@ -54,8 +78,8 @@ class TestStudyPlanAgent:
             assert s.duration_hours > 0
 
     def test_study_plan_rejects_invalid_dates(self):
-        agent = StudyPlanAgent(mock_mode=True)
         today = date.today()
+        agent = _plan_agent()
         with pytest.raises(ValueError):
             agent.generate(
                 SAMPLE_CONTENT,
@@ -66,8 +90,8 @@ class TestStudyPlanAgent:
             )
 
     def test_study_plan_rejects_bad_difficulty(self):
-        agent = StudyPlanAgent(mock_mode=True)
         today = date.today()
+        agent = _plan_agent()
         with pytest.raises(ValueError):
             agent.generate(
                 SAMPLE_CONTENT,
@@ -77,28 +101,38 @@ class TestStudyPlanAgent:
                 end_date=today + timedelta(days=10),
             )
 
-    def test_plan_grounding_rejects_fabricated_topic(self, monkeypatch):
-        agent = StudyPlanAgent(mock_mode=True)
-        original = agent._mock_response
+    def test_plan_grounding_rejects_fabricated_topic(self):
+        """A scheduled topic the content never mentioned must be refused.
 
-        def _bad(*a, **kw):
-            good = original(*a, **kw)
-            bad = good.topic_schedule[0].model_copy(update={"topic": "Hallucinated AI Topic"})
-            good.topic_schedule.append(bad)
-            return good
+        This used to monkeypatch ``_mock_response`` and append to the returned
+        object, which skipped the parse step - the JSON path a real
+        hallucination travels was never exercised. It now arrives as JSON.
+        """
+        today = date.today()
+        topics = FlashcardAgent.extract_topics(SAMPLE_CONTENT)
+        agent = _plan_agent(
+            study_plan_reply(
+                [*topics[:2], "Hallucinated AI Topic"],
+                start_date=today,
+                end_date=today + timedelta(days=10),
+            )
+        )
 
-        monkeypatch.setattr(agent, "_mock_response", _bad)
         with pytest.raises(PlanGroundingError):
             agent.generate(
                 SAMPLE_CONTENT,
                 learner_goal="x",
-                start_date=date.today(),
-                end_date=date.today() + timedelta(days=10),
+                start_date=today,
+                end_date=today + timedelta(days=10),
             )
 
     def test_formatter_round_trip(self):
-        agent = StudyPlanAgent(mock_mode=True)
         today = date.today()
+        agent = _plan_agent(
+            _plan_for(
+                SAMPLE_CONTENT, start_date=today, end_date=today + timedelta(days=28)
+            )
+        )
         plan = agent.generate(
             SAMPLE_CONTENT,
             learner_goal="x",
@@ -117,11 +151,11 @@ class TestStudyPlanAgent:
 
 
 class TestRevisionAgent:
-    def test_generate_mock_revision(self):
-        agent = RevisionAgent(mock_mode=True)
+    def test_generate_revision(self):
         extracted = FlashcardAgent.extract_topics(SAMPLE_CONTENT)
         # Pick 2 topics that are definitely in the allow-list.
         weak = extracted[:2] if extracted else ["Python"]
+        agent = _revision_agent(revision_reply(weak, session_date=date.today()))
         session = agent.generate(
             SAMPLE_CONTENT,
             selected_topics=weak,
@@ -136,7 +170,7 @@ class TestRevisionAgent:
             assert item.next_revision_date >= session.session_date
 
     def test_revision_rejects_selected_topics_not_in_content(self):
-        agent = RevisionAgent(mock_mode=True)
+        agent = _revision_agent()
         with pytest.raises(RevisionGroundingError):
             agent.generate(
                 SAMPLE_CONTENT,
@@ -145,7 +179,7 @@ class TestRevisionAgent:
             )
 
     def test_revision_requires_selected_topics(self):
-        agent = RevisionAgent(mock_mode=True)
+        agent = _revision_agent()
         with pytest.raises(ValueError):
             agent.generate(
                 SAMPLE_CONTENT,
@@ -154,9 +188,9 @@ class TestRevisionAgent:
             )
 
     def test_revision_formatter(self):
-        agent = RevisionAgent(mock_mode=True)
         extracted = FlashcardAgent.extract_topics(SAMPLE_CONTENT)
         weak = extracted[:2] if extracted else ["Python"]
+        agent = _revision_agent(revision_reply(weak, session_date=date.today()))
         session = agent.generate(
             SAMPLE_CONTENT, selected_topics=weak, session_date=date.today()
         )
@@ -171,7 +205,19 @@ class TestRevisionAgent:
 class TestBatches:
     def test_study_plan_batch(self):
         dataset = default_demo_dataset()
-        results = run_study_plan_batch(dataset)
+        today = date.today()
+        replies = [
+            study_plan_reply(
+                FlashcardAgent.extract_topics(item.content),
+                start_date=item.start_date or today,
+                end_date=item.end_date or today + timedelta(days=28),
+                learner_goal=item.learner_goal,
+                difficulty=item.difficulty,
+                hours_per_week=item.hours_per_week,
+            )
+            for item in dataset
+        ]
+        results = run_study_plan_batch(dataset, agent=_plan_agent(*replies))
         for r in results:
             assert r.error is None
             assert r.plan is not None
@@ -179,7 +225,15 @@ class TestBatches:
 
     def test_revision_batch(self):
         dataset = default_demo_dataset()
-        results = run_revision_batch(dataset)
+        today = date.today()
+        replies = []
+        for item in dataset:
+            weak = item.weak_topics
+            if not weak:
+                extracted = FlashcardAgent.extract_topics(item.content)
+                weak = extracted[:2] if extracted else ["General topic"]
+            replies.append(revision_reply(weak, session_date=today))
+        results = run_revision_batch(dataset, agent=_revision_agent(*replies))
         for r in results:
             assert r.error is None
             assert r.session is not None

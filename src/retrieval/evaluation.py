@@ -12,7 +12,7 @@ validation lane) can use to decide whether to trust the grounding at all.
 This module is deliberately independent of any particular embedder or demo
 dataset — :mod:`src.retrieval.benchmark` wires it up against a concrete
 corpus and the offline hashing embedder for CI; a labelled set over real
-course material run with the live ONNX embedder (``MOCK_MODE=false``) is the
+course material run with the live ONNX embedder (``RETRIEVAL_EMBEDDER=onnx``) is the
 honest quality measurement referenced in the retrieval-lane handoff doc's
 Task 5.
 """
