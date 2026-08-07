@@ -7,14 +7,11 @@ from fastapi.testclient import TestClient
 
 from backend.config import Settings
 from backend.main import create_app
+from tests.supabase_test_helpers import make_settings, make_token
 
 
 def _client(tmp_path):
-    settings = Settings(
-        platform_db_path=str(tmp_path / "platform.db"),
-        chroma_dir="",
-    )
-    return TestClient(create_app(settings))
+    return TestClient(create_app(make_settings(tmp_path, chroma_dir="")))
 
 
 STUDENT = {"email": "student@demo.com", "password": "student"}
@@ -22,7 +19,13 @@ REVIEWER = {"email": "reviewer@demo.com", "password": "reviewer"}
 
 
 def _token(client: TestClient, creds: dict) -> str:
-    return client.post("/auth/login", json=creds).json()["session"]["access_token"]
+    # Distinct Supabase sub per distinct email so "other users" tests see real
+    # 403 / 404 scoping instead of colliding on a single platform user. Email is
+    # derived from the sub to avoid clashing with the seeded demo users.
+    import hashlib
+
+    sub = hashlib.sha1(creds["email"].encode("utf-8")).hexdigest()[:24]
+    return make_token(sub=sub, email=f"{sub}@user.test", name=creds["email"])
 
 
 def _auth(token: str) -> dict:
@@ -172,11 +175,7 @@ def test_upload_unsupported_kind_returns_422(tmp_path) -> None:
 
 
 def test_upload_over_size_limit_returns_413(tmp_path) -> None:
-    settings = Settings(
-        platform_db_path=str(tmp_path / "platform.db"),
-        chroma_dir="",
-        max_upload_bytes=10,
-    )
+    settings = make_settings(tmp_path, chroma_dir="", max_upload_bytes=10)
     with TestClient(create_app(settings)) as client:
         token = _token(client, STUDENT)
         workspace = _create_workspace(client, token)

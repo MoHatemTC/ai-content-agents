@@ -1,16 +1,15 @@
 """FastAPI dependency-injection helpers.
 
-M0 shipped the settings dependencies; M1 adds the SQLite connection
+M0 shipped the settings dependencies; M1+ adds the SQLite connection
 (:func:`get_db`), the authenticated user (:func:`get_current_user`) and the
 role gate (:func:`require_role`). All routers share these rather than opening
 connections themselves.
 
-**Note (M3):** :func:`get_current_user` / :func:`require_role` resolve the
-caller through the M1 password-auth scaffold, which is temporary. Supabase is
-the single auth provider; during the Supabase integration milestone these
-dependencies are rewritten to verify a Supabase access token and derive the
-user id from it. Do not build M3+ authorisation decisions on the scaffold's
-role model.
+Auth crossing is **Supabase-first**: :func:`get_current_user` verifies a
+Supabase access token (see :mod:`backend.auth.supabase`) and maps the verified
+``sub`` to the platform user. The M1 password-scaffold login endpoints remain
+for a scaffolded login screen, but protected endpoints no longer accept the
+scaffold's opaque tokens — they require a Supabase JWT.
 """
 
 from __future__ import annotations
@@ -23,6 +22,7 @@ from fastapi import Depends, Header, HTTPException, Request
 
 from backend.auth import service as auth_service
 from backend.auth.schemas import AuthUser
+from backend.auth.supabase import SupabaseAuthError, SupabaseAuthVerifier
 from backend.config import Settings
 from backend.config import get_settings as _get_env_settings
 from backend.db import connect
@@ -53,21 +53,42 @@ def get_db(request: Request):
 
 
 def get_current_user(
+    request: Request,
     db: Annotated[sqlite3.Connection, Depends(get_db)],
     authorization: str = Header(default=""),
 ) -> AuthUser:
     """Resolve the ``Authorization: Bearer <token>`` caller.
 
+    The token is a **Supabase access token** obtained by the frontend from
+    Supabase Auth. It is verified per :class:`backend.auth.supabase
+    .SupabaseAuthVerifier` (local HS256 when ``SUPABASE_JWT_SECRET`` is set,
+    otherwise GoTrue introspection against ``SUPABASE_URL``), then the verified
+    ``sub`` is mapped to the platform user, creating it on first login.
+
     Raises:
-        HTTPException: 401 when the header is missing or the token is unknown,
-            revoked or expired.
+        HTTPException: 401 when the header is missing or the token is invalid,
+            expired or fails signature/issuer/audience checks.
     """
     token = authorization.removeprefix("Bearer ").strip()
     if not token:
         raise HTTPException(status_code=401, detail="Missing authorization token")
-    user = auth_service.user_for_token(db, token)
-    if user is None:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    settings = get_settings(request)
+    verifier = SupabaseAuthVerifier(
+        url=settings.supabase_url,
+        jwt_secret=settings.supabase_jwt_secret,
+        anon_key=settings.supabase_anon_key,
+    )
+    try:
+        profile = verifier.verify(token)
+    except SupabaseAuthError as exc:
+        raise HTTPException(status_code=401, detail=f"Invalid or expired token: {exc}") from exc
+    user = auth_service.ensure_supabase_user(
+        db,
+        sub=profile.sub,
+        email=profile.email,
+        name=profile.name,
+        role=profile.role,
+    )
     return AuthUser(**user)
 
 

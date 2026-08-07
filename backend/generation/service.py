@@ -32,7 +32,7 @@ from backend.generation.schemas import (
 from backend.search.service import build_grounded_context
 from src.agents.question_bank_agent import QuestionBankAgent
 from src.agents.test_help_agent import TestHelpAgent
-from src.llm_gateway import build_client
+from src.llm_gateway import build_client, default_model
 from src.retrieval.models import InsufficientGroundingError
 from src.study.flashcard_agent import FlashcardAgent
 from src.study.revision_agent import RevisionAgent
@@ -54,6 +54,19 @@ def _get_llm_client(for_study: bool = False) -> Any:
         except Exception:  # noqa: BLE001, S110
             pass
     return CompliantStudyClient() if for_study else CompliantAgentsClient()
+
+
+def _resolve_model(requested: str | None) -> str:
+    """Resolve the model id to send to the gateway.
+
+    The UI ships provider placeholders ("mock" or bare vendor names such as
+    "gemini" / "kimi") instead of full gateway model ids. There is no mock LLM
+    on the backend, so any placeholder (no "/") falls back to the configured
+    ``DEFAULT_MODEL`` (e.g. ``gemini/gemini-flash-lite-latest``).
+    """
+    if not requested or "/" not in requested:
+        return default_model()
+    return requested
 
 
 def generate_questions_service(
@@ -88,7 +101,7 @@ def generate_questions_service(
     content_text = grounded.as_prompt_content()
 
     if is_test_help:
-        agent = TestHelpAgent(client=client, model=request.model)
+        agent = TestHelpAgent(client=client, model=_resolve_model(request.model))
         output: QuestionBankOutput = agent.generate(
             content=content_text,
             difficulty=request.difficulty.lower(),
@@ -96,7 +109,7 @@ def generate_questions_service(
             num_questions=request.count,
         )
     else:
-        agent = QuestionBankAgent(client=client, model=request.model)
+        agent = QuestionBankAgent(client=client, model=_resolve_model(request.model))
         output = agent.generate(
             content=content_text,
             question_type=q_type,
@@ -108,12 +121,14 @@ def generate_questions_service(
     citations: list[Citation] = []
     for chunk in grounded.chunks:
         doc_id = (
-            chunk.chunk_id.split("-c")[0] if "-c" in chunk.chunk_id else chunk.chunk_id
+            chunk.chunk.chunk_id.split("-c")[0]
+            if "-c" in chunk.chunk.chunk_id
+            else chunk.chunk.chunk_id
         )
         citations.append(
             Citation(
                 doc=doc_id,
-                snippet=chunk.text[:200],
+                snippet=chunk.chunk.text[:200],
                 score=round(chunk.score, 3),
             )
         )
@@ -148,9 +163,9 @@ def generate_questions_service(
         agent_name="test_help_agent" if is_test_help else "question_bank_agent",
         input_context=f"workspace:{request.workspaceId}",
         source_chunk_ids=grounded.chunk_ids,
-        model=request.model,
+        model=_resolve_model(request.model),
     )
-    run.mark_finished(RunStatus_value="succeeded")
+    run.mark_finished()
     store.save_agent_run(run)
 
     gen_id = f"gen-{uuid4().hex[:8]}"
@@ -207,7 +222,7 @@ def generate_flashcards_service(
         )
 
     client = _get_llm_client(for_study=True)
-    agent = FlashcardAgent(client=client, model=request.model)
+    agent = FlashcardAgent(client=client, model=_resolve_model(request.model))
 
     topics = [c.text.split()[0] for c in grounded.chunks if c.text.strip()]
     if not topics:
@@ -228,7 +243,7 @@ def generate_flashcards_service(
         agent_name="flashcard_agent",
         input_context=f"workspace:{request.workspaceId}",
         source_chunk_ids=grounded.chunk_ids,
-        model=request.model,
+        model=_resolve_model(request.model),
     )
     run.mark_finished()
     store.save_agent_run(run)
@@ -274,7 +289,7 @@ def generate_study_plan_service(
         )
 
     client = _get_llm_client(for_study=True)
-    agent = StudyPlanAgent(client=client, model=request.model)
+    agent = StudyPlanAgent(client=client, model=_resolve_model(request.model))
 
     topics = list({c.text.split()[0] for c in grounded.chunks if c.text.strip()})
     if not topics:
@@ -316,7 +331,7 @@ def generate_study_plan_service(
         agent_name="study_plan_agent",
         input_context=f"workspace:{request.workspaceId}",
         source_chunk_ids=grounded.chunk_ids,
-        model=request.model,
+        model=_resolve_model(request.model),
     )
     run.mark_finished()
     store.save_agent_run(run)
@@ -364,7 +379,7 @@ def generate_revision_sheet_service(
         )
 
     client = _get_llm_client(for_study=True)
-    agent = RevisionAgent(client=client, model=request.model)
+    agent = RevisionAgent(client=client, model=_resolve_model(request.model))
 
     topics = (
         request.topics
@@ -402,7 +417,7 @@ def generate_revision_sheet_service(
         agent_name="revision_agent",
         input_context=f"workspace:{request.workspaceId}",
         source_chunk_ids=grounded.chunk_ids,
-        model=request.model,
+        model=_resolve_model(request.model),
     )
     run.mark_finished()
     store.save_agent_run(run)

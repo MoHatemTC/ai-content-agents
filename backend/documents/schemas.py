@@ -73,3 +73,13 @@ class GetChunksResponse(BaseModel):
 
 class SaveDocumentNotesRequest(BaseModel):
     notes: str
+
+
+class PatchDocumentRequest(BaseModel):
+    """Editable document fields (title, notes, tags, pages, size)."""
+
+    title: str | None = None
+    notes: str | None = None
+    tags: list[str] | None = None
+    pages: int | None = None
+    sizeBytes: int | None = None

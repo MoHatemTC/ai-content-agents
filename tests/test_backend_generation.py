@@ -9,26 +9,19 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.config import Settings
 from backend.main import create_app
+from tests.supabase_test_helpers import make_settings, make_token
 
 
 @pytest.fixture
 def gen_app_client(tmp_path) -> tuple[TestClient, str, str]:
     db_file = str(tmp_path / "test_gen.db")
     chroma_dir = str(tmp_path / "test_gen_chroma")
-    settings = Settings(
-        platform_db_path=db_file,
-        chroma_dir=chroma_dir,
-    )
+    settings = make_settings(tmp_path, platform_db_path=db_file, chroma_dir=chroma_dir)
     app = create_app(settings)
     with TestClient(app) as client:
-        # 1. Login
-        login_resp = client.post(
-            "/auth/login",
-            json={"email": "student@demo.com", "password": "student"},
-        )
-        token = login_resp.json()["session"]["access_token"]
+        # 1. Authenticate with a Supabase access token
+        token = make_token()
         auth_headers = {"Authorization": f"Bearer {token}"}
 
         # 2. Create workspace

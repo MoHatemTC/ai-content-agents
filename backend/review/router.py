@@ -15,12 +15,14 @@ from backend.config import Settings
 from backend.deps import get_current_user, get_settings, require_workspace_member
 from backend.review.schemas import (
     GetAuditHistoryResponse,
+    GetReviewItemsResponse,
     GetReviewQueueResponse,
     ReviewRequest,
     ReviewResponse,
 )
 from backend.review.service import (
     get_audit_history_service,
+    get_review_items_service,
     get_review_queue_service,
     perform_review_action_service,
 )
@@ -41,6 +43,26 @@ async def get_review_queue(
         user=current_user,
     )
     return get_review_queue_service(workspace_id, db_path=settings.platform_db_path)
+
+
+@router.get("/items", response_model=GetReviewItemsResponse)
+async def get_review_items(
+    workspace_id: Annotated[str, Query(alias="workspace_id")],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> GetReviewItemsResponse:
+    """Get persisted generated outputs (with content) for a workspace.
+
+    This is the reload-safe source of truth for the review UI: it returns the
+    full items (not just ids), including items whose review decision was made
+    in a previous session.
+    """
+    require_workspace_member(
+        db_path=settings.platform_db_path,
+        workspace_id=workspace_id,
+        user=current_user,
+    )
+    return get_review_items_service(workspace_id, db_path=settings.platform_db_path)
 
 
 @router.post("/approve", response_model=ReviewResponse)

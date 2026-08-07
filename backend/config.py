@@ -64,6 +64,21 @@ class Settings:
             os.getenv("MAX_UPLOAD_BYTES", str(50 * 1024 * 1024))
         )
     )
+    # ------------------------------------------------------------------ #
+    # Supabase (single auth provider)
+    #
+    # The frontend authenticates with Supabase Auth and sends the resulting
+    # access token to this API. Verification is local HS256 when
+    # SUPABASE_JWT_SECRET is set, otherwise GoTrue introspection against
+    # SUPABASE_URL (issuer is derived as <SUPABASE_URL>/auth/v1).
+    # ------------------------------------------------------------------ #
+    supabase_url: str = field(default_factory=lambda: os.getenv("SUPABASE_URL", ""))
+    supabase_jwt_secret: str = field(
+        default_factory=lambda: os.getenv("SUPABASE_JWT_SECRET", "")
+    )
+    supabase_anon_key: str = field(
+        default_factory=lambda: os.getenv("SUPABASE_ANON_KEY", "")
+    )
 
 
 @lru_cache

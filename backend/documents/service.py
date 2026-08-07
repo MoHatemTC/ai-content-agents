@@ -461,6 +461,43 @@ def save_notes(conn: sqlite3.Connection, document_id: str, notes: str) -> None:
     conn.commit()
 
 
+def update_document(
+    conn: sqlite3.Connection,
+    document_id: str,
+    *,
+    title: str | None = None,
+    notes: str | None = None,
+    tags: list[str] | None = None,
+    pages: int | None = None,
+    size_bytes: int | None = None,
+) -> None:
+    """Persist editable fields (title, notes, topics, pages, size) on a document."""
+    sets: list[str] = []
+    values: list[object] = []
+    if title is not None:
+        sets.append("title = ?")
+        values.append(title)
+    if notes is not None:
+        sets.append("notes = ?")
+        values.append(notes)
+    if tags is not None:
+        sets.append("tags_json = ?")
+        values.append(json.dumps(tags))
+    if pages is not None:
+        sets.append("pages = ?")
+        values.append(pages)
+    if size_bytes is not None:
+        sets.append("size_bytes = ?")
+        values.append(size_bytes)
+    if not sets:
+        return
+    sets.append("updated_at = ?")
+    values.append(now().isoformat())
+    values.append(document_id)
+    conn.execute(f"UPDATE documents SET {', '.join(sets)} WHERE id = ?", values)
+    conn.commit()
+
+
 def delete_document(
     conn: sqlite3.Connection,
     document_id: str,

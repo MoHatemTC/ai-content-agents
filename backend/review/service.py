@@ -9,14 +9,18 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
+from backend.errors import ApiError
 from backend.review.schemas import (
     GetAuditHistoryResponse,
+    GetReviewItemsResponse,
     GetReviewQueueResponse,
+    ReviewItem,
     ReviewRequest,
     ReviewResponse,
     WsAuditEntry,
 )
 from src.validation.review_schema import (
+    IllegalTransitionError,
     OutputStatus,
     ReviewAction,
     apply_review,
@@ -47,6 +51,41 @@ def get_review_queue_service(
     return GetReviewQueueResponse(itemIds=item_ids)
 
 
+def get_review_items_service(
+    workspace_id: str,
+    *,
+    db_path: str,
+) -> GetReviewItemsResponse:
+    """Return persisted generated outputs (with content) for a workspace.
+
+    This is the authoritative, reload-safe view the review UI reads from: every
+    item is the backend's ``generated_outputs`` row, so a decision made and then
+    reloaded is still visible here (and everywhere ``apply_review`` persisted it).
+    """
+    store = PlatformStore(db_path)
+    items: list[ReviewItem] = []
+    for output in store.list_outputs():
+        run = store.get_agent_run(output.agent_run_id)
+        scoped = bool(run) and f"workspace:{workspace_id}" in (run.input_context or "")
+        if not scoped:
+            continue
+        payload = output.payload or {}
+        items.append(
+            ReviewItem(
+                id=output.id,
+                kind=output.output_type,
+                status=output.status.value,
+                payload=payload,
+                created_at=(
+                    output.created_at.isoformat() if output.created_at else None
+                )
+                or "",
+            )
+        )
+    items.sort(key=lambda i: i.created_at, reverse=True)
+    return GetReviewItemsResponse(items=items)
+
+
 def perform_review_action_service(
     request: ReviewRequest,
     action_type: str,
@@ -70,14 +109,21 @@ def perform_review_action_service(
     }
 
     action_enum = action_map.get(action_type.lower(), ReviewAction.COMMENT)
-    updated_output, review_rec = apply_review(
-        output,
-        reviewer=reviewer_name,
-        action=action_enum,
-        notes=request.comment or "",
-    )
+    try:
+        review_rec = apply_review(
+            output,
+            reviewer=reviewer_name,
+            action=action_enum,
+            notes=request.comment or "",
+        )
+    except IllegalTransitionError as exc:
+        raise ApiError(
+            status_code=409,
+            code="illegal_transition",
+            message=f"Cannot '{action_enum.value}' item in status '{output.status.value}'. {exc}",
+        ) from exc
 
-    store.save_output(updated_output)
+    store.save_output(output)
     store.save_review(review_rec)
 
     at_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
@@ -97,14 +143,14 @@ def perform_review_action_service(
         output_id=output.id,
         details={
             "action": action_enum.value,
-            "status": updated_output.status.value,
+            "status": output.status.value,
             "actor": reviewer_name,
         },
     )
 
     return ReviewResponse(
         itemId=output.id,
-        status=updated_output.status.value,
+        status=output.status.value,
         audit=audit_entry,
     )
 

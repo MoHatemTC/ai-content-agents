@@ -8,25 +8,18 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.config import Settings
 from backend.main import create_app
+from tests.supabase_test_helpers import make_settings, make_token
 
 
 @pytest.fixture
 def export_app_client(tmp_path) -> tuple[TestClient, str, str]:
     db_file = str(tmp_path / "test_export.db")
     chroma_dir = str(tmp_path / "test_export_chroma")
-    settings = Settings(
-        platform_db_path=db_file,
-        chroma_dir=chroma_dir,
-    )
+    settings = make_settings(tmp_path, platform_db_path=db_file, chroma_dir=chroma_dir)
     app = create_app(settings)
     with TestClient(app) as client:
-        login_resp = client.post(
-            "/auth/login",
-            json={"email": "admin@example.com", "password": "password123"},
-        )
-        token = login_resp.json()["session"]["access_token"]
+        token = make_token()
         auth_headers = {"Authorization": f"Bearer {token}"}
 
         ws_resp = client.post(

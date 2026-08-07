@@ -213,7 +213,9 @@ def send_chat_message_service(
     citations: list[ChatCitation] = []
     for chunk in grounded.chunks:
         doc_id = (
-            chunk.chunk_id.split("-c")[0] if "-c" in chunk.chunk_id else chunk.chunk_id
+            chunk.chunk.chunk_id.split("-c")[0]
+            if "-c" in chunk.chunk.chunk_id
+            else chunk.chunk.chunk_id
         )
         title = doc_titles.get(doc_id, "Document")
         citations.append(
@@ -221,7 +223,7 @@ def send_chat_message_service(
                 docId=doc_id,
                 docTitle=title,
                 page=getattr(chunk, "page", None),
-                snippet=chunk.text[:200],
+                snippet=chunk.chunk.text[:200],
             )
         )
 

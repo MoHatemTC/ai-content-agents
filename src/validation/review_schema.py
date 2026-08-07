@@ -63,11 +63,20 @@ class RunStatus(str, Enum):
 
 
 class ReviewAction(str, Enum):
-    """A human review action recorded against an output."""
+    """A human review action recorded against an output.
+
+    ``needs-edit`` and ``edit`` both move an output to the ``edited`` status;
+    ``needs-edit`` is the no-payload form (a reviewer asks for edits without
+    supplying the replacement), while ``edit`` requires ``edited_payload``.
+    ``flag`` is a status-neutral audit action (like ``comment``) that records a
+    second-opinion request without changing the output's status.
+    """
 
     APPROVE = "approve"
     EDIT = "edit"
     REJECT = "reject"
+    NEEDS_EDIT = "needs-edit"
+    FLAG = "flag"
     COMMENT = "comment"
 
 
@@ -142,6 +151,11 @@ class AgentRun(BaseModel):
     finished_at: datetime | None = None
     status: RunStatus = RunStatus.SUCCESS
     error: str | None = None
+
+    def mark_finished(self, status: RunStatus = RunStatus.SUCCESS) -> None:
+        """Mark the run as finished (idempotent helper used by services)."""
+        self.status = status
+        self.finished_at = _now()
 
 
 class GeneratedOutput(BaseModel):
@@ -240,20 +254,23 @@ def apply_review(
     """
     previous = output.status
 
-    if previous in _TERMINAL_STATUSES and action is not ReviewAction.COMMENT:
+    if previous in _TERMINAL_STATUSES and action not in (
+        ReviewAction.COMMENT,
+        ReviewAction.FLAG,
+    ):
         # Approved and rejected are terminal for status changes; only audit
-        # comments may still be appended.
+        # comments and flags may still be appended.
         raise IllegalTransitionError(previous, previous)
 
     if action is ReviewAction.APPROVE:
         new_status = OutputStatus.APPROVED
     elif action is ReviewAction.REJECT:
         new_status = OutputStatus.REJECTED
-    elif action is ReviewAction.EDIT:
-        if edited_payload is None:
+    elif action in (ReviewAction.EDIT, ReviewAction.NEEDS_EDIT):
+        if action is ReviewAction.EDIT and edited_payload is None:
             raise ValueError("An 'edit' review action requires an edited_payload.")
         new_status = OutputStatus.EDITED
-    else:  # COMMENT — status is unchanged.
+    else:  # COMMENT / FLAG — status is unchanged.
         new_status = previous
 
     if new_status != previous and not is_legal_transition(previous, new_status):
@@ -265,13 +282,15 @@ def apply_review(
         action=action,
         previous_status=previous,
         new_status=new_status,
-        edited_payload=edited_payload if action is ReviewAction.EDIT else None,
+        edited_payload=(
+            edited_payload if action in (ReviewAction.EDIT, ReviewAction.NEEDS_EDIT) else None
+        ),
         notes=notes,
     )
 
     output.status = new_status
     output.updated_at = _now()
-    if action is ReviewAction.EDIT and edited_payload is not None:
+    if action in (ReviewAction.EDIT, ReviewAction.NEEDS_EDIT) and edited_payload is not None:
         output.payload = edited_payload
 
     logger.info(

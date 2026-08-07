@@ -142,6 +142,73 @@ def refresh_session(
     return create_session(conn, row["user_id"], access_ttl, refresh_ttl)
 
 
+def find_user_by_id(conn: sqlite3.Connection, user_id: str) -> dict | None:
+    row = conn.execute(
+        """
+        SELECT u.id, u.email, p.full_name, p.initials, r.role
+        FROM users u
+        LEFT JOIN profiles p ON p.id = u.id
+        LEFT JOIN user_roles r ON r.user_id = u.id
+        WHERE u.id = ?
+        """,
+        (user_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        "id": row["id"],
+        "email": row["email"],
+        "name": row["full_name"] or "",
+        "initials": row["initials"] or "",
+        "role": row["role"] or "student",
+    }
+
+
+def ensure_supabase_user(
+    conn: sqlite3.Connection,
+    *,
+    sub: str,
+    email: str,
+    name: str,
+    role: str = "student",
+) -> dict:
+    """Return the platform user for a verified Supabase ``sub``, creating it on first login.
+
+    This is the bridge between Supabase Auth (the single identity provider) and
+    the platform's own tables: the workspace / document / review rows key off the
+    platform ``users.id``, which is set to the Supabase user id. Because a
+    Supabase user has no platform password, a placeholder hash is stored so the
+    ``password_hash NOT NULL`` constraint is satisfied without ever being used.
+    """
+    existing = find_user_by_id(conn, sub)
+    if existing is not None:
+        return existing
+
+    safe_email = (email or sub).strip().lower()
+    user_id = sub
+    conn.execute(
+        "INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)",
+        (user_id, safe_email, hash_password("supabase-unused"), now().isoformat()),
+    )
+    display = name or safe_email.split("@")[0] or "User"
+    conn.execute(
+        "INSERT INTO profiles (id, full_name, initials, created_at) VALUES (?, ?, ?, ?)",
+        (user_id, display, initials_for(display), now().isoformat()),
+    )
+    conn.execute(
+        "INSERT INTO user_roles (id, user_id, role) VALUES (?, ?, ?)",
+        (str(uuid.uuid4()), user_id, role),
+    )
+    conn.commit()
+    return {
+        "id": user_id,
+        "email": safe_email,
+        "name": display,
+        "initials": initials_for(display),
+        "role": role,
+    }
+
+
 def user_for_token(conn: sqlite3.Connection, access_token: str) -> dict | None:
     row = conn.execute(
         """

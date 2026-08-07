@@ -36,5 +36,24 @@ class GetReviewQueueResponse(BaseModel):
     itemIds: list[str]
 
 
+class ReviewItem(BaseModel):
+    """A persisted generated output, usable by the review UI (single source of truth).
+
+    ``kind`` mirrors the agent's ``output_type`` (e.g. ``question_bank``) and
+    ``items`` carries the human-reviewable content payload (e.g. the questions)
+    so the frontend can render the review queue without trusting local state.
+    """
+
+    id: str
+    kind: str
+    status: str
+    payload: dict[str, list | str]
+    created_at: str
+
+
+class GetReviewItemsResponse(BaseModel):
+    items: list[ReviewItem]
+
+
 class GetAuditHistoryResponse(BaseModel):
     audit: list[WsAuditEntry]

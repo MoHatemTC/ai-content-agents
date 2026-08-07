@@ -35,6 +35,7 @@ from .schemas import (
     GetChunksResponse,
     GetDocumentsResponse,
     ParseDocumentResponse,
+    PatchDocumentRequest,
     SaveDocumentNotesRequest,
     UploadDocumentResponse,
 )
@@ -208,6 +209,23 @@ def save_notes(
     """Persist free-text lecture notes against a document."""
     _get_owned_document(db, user, document_id)
     service.save_notes(db, document_id, payload.notes)
+
+
+@router.patch("/{document_id}", status_code=204)
+def patch_document(
+    document_id: str, payload: PatchDocumentRequest, db: Db, user: User
+) -> None:
+    """Persist editable document fields (title, notes, tags, pages, size)."""
+    _get_owned_document(db, user, document_id)
+    service.update_document(
+        db,
+        document_id,
+        title=payload.title,
+        notes=payload.notes,
+        tags=payload.tags,
+        pages=payload.pages,
+        size_bytes=payload.sizeBytes,
+    )
 
 
 @router.delete("/{document_id}", status_code=204)
