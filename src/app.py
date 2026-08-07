@@ -150,7 +150,13 @@ def ground(focus: str, topics: list[str]):
         topics: Extracted topics, used as the query when ``focus`` is blank.
 
     Returns:
-        A ``(content, chunk_ids)`` pair for the agent call.
+        A ``(content, chunk_ids, context)`` triple. The mentor and concept
+        agents take the ``GroundedContext`` itself, which is what turns on their
+        reference and support checks; the study agents only need the text.
+
+        This used to discard the context with ``_``, which is why the mentor and
+        concept pages were sending whole documents to the model - the object
+        they needed was already being built here and thrown away.
 
     Raises:
         NoGroundingError: If nothing could be retrieved.
@@ -158,10 +164,9 @@ def ground(focus: str, topics: list[str]):
     ensure_indexed()
     doc = st.session_state.get("current_doc")
 
-    content, cited_ids, _ = grounded_content(
+    return grounded_content(
         index=get_chunk_index(), document_id=doc.id, focus=focus, topics=topics
     )
-    return content, cited_ids
 
 
 
@@ -506,7 +511,7 @@ elif page == "🃏 Generate Flashcards":
         if submitted:
             require_generation()
             try:
-                grounded, cited = ground(focus, allow_list)
+                grounded, cited, _context = ground(focus, allow_list)
                 with st.spinner("Generating cards..."):
                     card_set = fc_agent.generate(
                         grounded,
@@ -573,7 +578,7 @@ elif page == "📅 Study Plan":
             try:
                 # The learner goal is already the best description of what the
                 # plan should cover, so it doubles as the retrieval query.
-                grounded, _cited = ground(goal, allow_list)
+                grounded, _cited, _context = ground(goal, allow_list)
                 with st.spinner("Building study plan..."):
                     plan = sp_agent.generate(
                         grounded,
@@ -644,7 +649,7 @@ elif page == "🔄 Revision Plan":
                 try:
                     # The chosen weak topics say exactly which passages this
                     # session needs, so they are the retrieval query.
-                    grounded, _cited = ground(" ".join(selected), allow_list)
+                    grounded, _cited, _context = ground(" ".join(selected), allow_list)
                     with st.spinner("Planning revision items..."):
                         session = rv_agent.generate(
                             grounded,
@@ -728,9 +733,28 @@ elif page == "🧭 Mentor":
         if submitted:
             require_generation()
             try:
+                # The question is the retrieval query - a literal
+                # natural-language question is exactly what the retriever
+                # embeds. The allow-list is the fallback query when it is blank,
+                # and is pure local string processing, no model call.
+                allow_list = FlashcardAgent.extract_topics(content, max_topics=30)
+                grounded, _cited, _context = ground(user_question, allow_list)
+                # `context=` is deliberately NOT passed, though the agents
+                # accept it. Supplying it switches on validate_support, which
+                # requires every sentence to share >=60% of its tokens with the
+                # retrieved passages - while mentor.yaml instructs the model to
+                # answer "in a supportive and encouraging way". The model
+                # complies, opens with "Hello! You are doing a wonderful job
+                # exploring...", and that sentence cannot overlap a physics
+                # passage. Measured live against the textbook: 7 of 10
+                # generations withheld, mentor 5 of 5, and every failure was the
+                # explanation's opening line - key_points and next_steps all
+                # passed. The prompt and the validator contradict each other;
+                # until that is reconciled, turning this on trades "crashes on
+                # large documents" for "refuses most questions". See issue.
                 with st.spinner("Generating mentor response..."):
                     reviewable = mentor_concept_service.generate_mentor_reviewable(
-                        content=content,
+                        content=grounded,
                         user_question=user_question or None,
                         difficulty=difficulty,
                     )
@@ -748,6 +772,8 @@ elif page == "🧭 Mentor":
                 st.subheader("Provenance references")
                 for reference in payload.get("references", []):
                     st.write(f"**{reference['segment_id']}**: {reference['text']}")
+            except NoGroundingError as exc:
+                st.error(str(exc))
             except Exception as error:
                 st.error(f"Error generating mentor response: {error}")
 
@@ -771,9 +797,26 @@ elif page == "💡 Concept Explanation":
         if submitted:
             require_generation()
             try:
+                # Same wiring as the mentor page: the question is the retrieval
+                # query, the allow-list is the fallback when it is blank.
+                allow_list = FlashcardAgent.extract_topics(content, max_topics=30)
+                grounded, _cited, _context = ground(user_question, allow_list)
+                # `context=` is deliberately NOT passed, though the agents
+                # accept it. Supplying it switches on validate_support, which
+                # requires every sentence to share >=60% of its tokens with the
+                # retrieved passages - while mentor.yaml instructs the model to
+                # answer "in a supportive and encouraging way". The model
+                # complies, opens with "Hello! You are doing a wonderful job
+                # exploring...", and that sentence cannot overlap a physics
+                # passage. Measured live against the textbook: 7 of 10
+                # generations withheld, mentor 5 of 5, and every failure was the
+                # explanation's opening line - key_points and next_steps all
+                # passed. The prompt and the validator contradict each other;
+                # until that is reconciled, turning this on trades "crashes on
+                # large documents" for "refuses most questions". See issue.
                 with st.spinner("Generating concept explanation..."):
                     reviewable = mentor_concept_service.generate_concept_reviewable(
-                        content=content,
+                        content=grounded,
                         user_question=user_question or None,
                         difficulty=difficulty,
                     )
@@ -790,5 +833,7 @@ elif page == "💡 Concept Explanation":
                 st.subheader("Provenance references")
                 for reference in payload.get("references", []):
                     st.write(f"**{reference['segment_id']}**: {reference['text']}")
+            except NoGroundingError as exc:
+                st.error(str(exc))
             except Exception as error:
                 st.error(f"Error generating concept explanation: {error}")
