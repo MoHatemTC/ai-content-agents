@@ -22,7 +22,7 @@ from backend.chat.schemas import (
     MentorChatResponse,
     WsChatMessage,
 )
-from backend.generation.service import _get_llm_client
+from backend.generation.service import _get_llm_client, _resolve_model
 from backend.search.service import build_grounded_context
 from src.agents.concept_agent import ConceptAgent
 from src.agents.mentor_agent import MentorAgent
@@ -192,7 +192,7 @@ def send_chat_message_service(
     client = _get_llm_client(for_study=False)
 
     if kind == "concept":
-        agent = ConceptAgent(client=client, model=request.model)
+        agent = ConceptAgent(client=client, model=_resolve_model(request.model))
         concept_output = agent.generate(
             content=grounded,
             user_question=request.message,
@@ -201,7 +201,7 @@ def send_chat_message_service(
         )
         reply_text = f"{concept_output.definition}\n\n{concept_output.explanation}"
     else:
-        agent = MentorAgent(client=client, model=request.model)
+        agent = MentorAgent(client=client, model=_resolve_model(request.model))
         mentor_output = agent.generate(
             content=grounded,
             user_question=request.message,

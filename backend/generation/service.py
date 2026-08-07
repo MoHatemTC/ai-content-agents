@@ -46,6 +46,11 @@ from tests.conftest import CompliantAgentsClient, CompliantStudyClient
 logger = logging.getLogger(__name__)
 
 
+def _chunk_texts(grounded) -> list[str]:
+    """Extract non-empty chunk texts from a grounded context."""
+    return [c.chunk.text for c in grounded.chunks if c.chunk.text.strip()]
+
+
 def _get_llm_client(for_study: bool = False) -> Any:
     """Resolve an LLM client: real LiteLLM client if configured, or compliant fake double."""
     if os.getenv("LITELLM_API_KEY") or os.getenv("OPENAI_API_KEY"):
@@ -104,8 +109,8 @@ def generate_questions_service(
         agent = TestHelpAgent(client=client, model=_resolve_model(request.model))
         output: QuestionBankOutput = agent.generate(
             content=content_text,
+            question_type=q_type,
             difficulty=request.difficulty.lower(),
-            duration_minutes=int(request.options.get("durationMinutes", 30)),
             num_questions=request.count,
         )
     else:
@@ -224,7 +229,7 @@ def generate_flashcards_service(
     client = _get_llm_client(for_study=True)
     agent = FlashcardAgent(client=client, model=_resolve_model(request.model))
 
-    topics = [c.text.split()[0] for c in grounded.chunks if c.text.strip()]
+    topics = [t.split()[0] for t in _chunk_texts(grounded)]
     if not topics:
         topics = ["Educational Concept"]
 
@@ -291,7 +296,7 @@ def generate_study_plan_service(
     client = _get_llm_client(for_study=True)
     agent = StudyPlanAgent(client=client, model=_resolve_model(request.model))
 
-    topics = list({c.text.split()[0] for c in grounded.chunks if c.text.strip()})
+    topics = list({t.split()[0] for t in _chunk_texts(grounded)})
     if not topics:
         topics = ["Core Concept"]
 
@@ -384,7 +389,7 @@ def generate_revision_sheet_service(
     topics = (
         request.topics
         if request.topics
-        else [c.text.split()[0] for c in grounded.chunks if c.text.strip()][:3]
+        else [t.split()[0] for t in _chunk_texts(grounded)][:3]
     )
     if not topics:
         topics = ["Core Concept"]

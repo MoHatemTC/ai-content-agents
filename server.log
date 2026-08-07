@@ -1,0 +1,2001 @@
+INFO:     Started server process [31427]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+SUPABASE_URL = https://idaruqyrselcgtswzmkz.supabase.co
+JWT_SECRET   = None
+DB           = ingestion.db
+INFO:     127.0.0.1:50457 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50963 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50969 - "GET /workspaces HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:51464 - "OPTIONS /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51464 - "GET /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51464 - "OPTIONS /notifications?role=student HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51464 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51464 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51464 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51464 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51464 - "POST /workspaces HTTP/1.1" 201 Created
+INFO:     127.0.0.1:51491 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51464 - "GET /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51491 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51464 - "OPTIONS /documents?workspace_id=8f1a21c0-09f5-427f-bf58-bbacf69e94be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51491 - "GET /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51464 - "GET /documents?workspace_id=8f1a21c0-09f5-427f-bf58-bbacf69e94be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51491 - "GET /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51464 - "GET /documents?workspace_id=8f1a21c0-09f5-427f-bf58-bbacf69e94be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51491 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51464 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51491 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51464 - "GET /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51491 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51464 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51529 - "GET /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51529 - "GET /documents?workspace_id=8f1a21c0-09f5-427f-bf58-bbacf69e94be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51529 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51534 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51529 - "GET /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51534 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51529 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51529 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51562 - "OPTIONS /upload HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51562 - "POST /upload HTTP/1.1" 201 Created
+INFO:     127.0.0.1:51562 - "OPTIONS /documents/0ca9b2d0-158f-4e16-8071-f9e5017f6bc9/parse HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51562 - "POST /documents/0ca9b2d0-158f-4e16-8071-f9e5017f6bc9/parse HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51562 - "OPTIONS /documents/0ca9b2d0-158f-4e16-8071-f9e5017f6bc9/chunk HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51562 - "POST /documents/0ca9b2d0-158f-4e16-8071-f9e5017f6bc9/chunk HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51562 - "OPTIONS /documents/0ca9b2d0-158f-4e16-8071-f9e5017f6bc9/embed HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51562 - "POST /documents/0ca9b2d0-158f-4e16-8071-f9e5017f6bc9/embed HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51562 - "GET /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51562 - "GET /documents?workspace_id=8f1a21c0-09f5-427f-bf58-bbacf69e94be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51591 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51591 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51591 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51591 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51621 - "OPTIONS /documents/0ca9b2d0-158f-4e16-8071-f9e5017f6bc9 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51621 - "PATCH /documents/0ca9b2d0-158f-4e16-8071-f9e5017f6bc9 HTTP/1.1" 204 No Content
+INFO:     127.0.0.1:51642 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51642 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51642 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51642 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51642 - "POST /upload HTTP/1.1" 201 Created
+INFO:     127.0.0.1:51642 - "OPTIONS /documents/027fe927-0ae8-422a-9f3f-71ddb586982a/parse HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51642 - "POST /documents/027fe927-0ae8-422a-9f3f-71ddb586982a/parse HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51642 - "OPTIONS /documents/027fe927-0ae8-422a-9f3f-71ddb586982a/chunk HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51642 - "POST /documents/027fe927-0ae8-422a-9f3f-71ddb586982a/chunk HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51642 - "OPTIONS /documents/027fe927-0ae8-422a-9f3f-71ddb586982a/embed HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51642 - "POST /documents/027fe927-0ae8-422a-9f3f-71ddb586982a/embed HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51642 - "GET /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51642 - "GET /documents?workspace_id=8f1a21c0-09f5-427f-bf58-bbacf69e94be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51642 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51642 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51642 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51642 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51777 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51777 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51777 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51777 - "OPTIONS /generate/questions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51777 - "POST /generate/questions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51794 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51876 - "OPTIONS /generate/test-help HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51876 - "POST /generate/test-help HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/router.py", line 68, in generate_test_help
+    return generate_questions_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/service.py", line 105, in generate_questions_service
+    output: QuestionBankOutput = agent.generate(
+                                 ^^^^^^^^^^^^^^^
+TypeError: TestHelpAgent.generate() got an unexpected keyword argument 'duration_minutes'
+INFO:     127.0.0.1:51891 - "POST /generate/questions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51891 - "POST /generate/questions HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/src/agents/question_bank_agent.py", line 203, in generate
+    return QuestionBankOutput.model_validate(response_json)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/pydantic/main.py", line 732, in model_validate
+    return cls.__pydantic_validator__.validate_python(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 5 validation errors for QuestionBankOutput
+questions.0.type
+  Input should be 'mcq', 'true_false' or 'short_answer' [type=enum, input_value='True/False', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/enum
+questions.1.type
+  Input should be 'mcq', 'true_false' or 'short_answer' [type=enum, input_value='True/False', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/enum
+questions.2.type
+  Input should be 'mcq', 'true_false' or 'short_answer' [type=enum, input_value='True/False', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/enum
+questions.3.type
+  Input should be 'mcq', 'true_false' or 'short_answer' [type=enum, input_value='True/False', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/enum
+questions.4.type
+  Input should be 'mcq', 'true_false' or 'short_answer' [type=enum, input_value='True/False', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/enum
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/router.py", line 48, in generate_questions
+    return generate_questions_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/service.py", line 113, in generate_questions_service
+    output = agent.generate(
+             ^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/src/agents/question_bank_agent.py", line 206, in generate
+    raise ValueError(
+ValueError: The LLM response does not match QuestionBankOutput schema.
+INFO:     127.0.0.1:51930 - "POST /generate/questions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51973 - "POST /generate/questions HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/src/agents/question_bank_agent.py", line 203, in generate
+    return QuestionBankOutput.model_validate(response_json)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/pydantic/main.py", line 732, in model_validate
+    return cls.__pydantic_validator__.validate_python(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 5 validation errors for QuestionBankOutput
+questions.0.type
+  Input should be 'mcq', 'true_false' or 'short_answer' [type=enum, input_value='True/False', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/enum
+questions.1.type
+  Input should be 'mcq', 'true_false' or 'short_answer' [type=enum, input_value='True/False', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/enum
+questions.2.type
+  Input should be 'mcq', 'true_false' or 'short_answer' [type=enum, input_value='True/False', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/enum
+questions.3.type
+  Input should be 'mcq', 'true_false' or 'short_answer' [type=enum, input_value='True/False', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/enum
+questions.4.type
+  Input should be 'mcq', 'true_false' or 'short_answer' [type=enum, input_value='True/False', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/enum
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/router.py", line 48, in generate_questions
+    return generate_questions_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/service.py", line 113, in generate_questions_service
+    output = agent.generate(
+             ^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/src/agents/question_bank_agent.py", line 206, in generate
+    raise ValueError(
+ValueError: The LLM response does not match QuestionBankOutput schema.
+INFO:     127.0.0.1:52013 - "POST /generate/questions HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/src/agents/question_bank_agent.py", line 203, in generate
+    return QuestionBankOutput.model_validate(response_json)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/pydantic/main.py", line 732, in model_validate
+    return cls.__pydantic_validator__.validate_python(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 3 validation errors for QuestionBankOutput
+questions.0.type
+  Input should be 'mcq', 'true_false' or 'short_answer' [type=enum, input_value='True/False', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/enum
+questions.1.type
+  Input should be 'mcq', 'true_false' or 'short_answer' [type=enum, input_value='True/False', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/enum
+questions.2.type
+  Input should be 'mcq', 'true_false' or 'short_answer' [type=enum, input_value='True/False', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/enum
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/router.py", line 48, in generate_questions
+    return generate_questions_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/service.py", line 113, in generate_questions_service
+    output = agent.generate(
+             ^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/src/agents/question_bank_agent.py", line 206, in generate
+    raise ValueError(
+ValueError: The LLM response does not match QuestionBankOutput schema.
+INFO:     127.0.0.1:52032 - "POST /generate/questions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52032 - "POST /generate/questions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52070 - "POST /generate/questions HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/src/agents/question_bank_agent.py", line 203, in generate
+    return QuestionBankOutput.model_validate(response_json)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/pydantic/main.py", line 732, in model_validate
+    return cls.__pydantic_validator__.validate_python(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 3 validation errors for QuestionBankOutput
+questions.0.type
+  Input should be 'mcq', 'true_false' or 'short_answer' [type=enum, input_value='True/False', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/enum
+questions.1.type
+  Input should be 'mcq', 'true_false' or 'short_answer' [type=enum, input_value='True/False', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/enum
+questions.2.type
+  Input should be 'mcq', 'true_false' or 'short_answer' [type=enum, input_value='True/False', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/enum
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/router.py", line 48, in generate_questions
+    return generate_questions_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/service.py", line 113, in generate_questions_service
+    output = agent.generate(
+             ^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/src/agents/question_bank_agent.py", line 206, in generate
+    raise ValueError(
+ValueError: The LLM response does not match QuestionBankOutput schema.
+INFO:     127.0.0.1:52100 - "POST /generate/test-help HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/router.py", line 68, in generate_test_help
+    return generate_questions_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/service.py", line 105, in generate_questions_service
+    output: QuestionBankOutput = agent.generate(
+                                 ^^^^^^^^^^^^^^^
+TypeError: TestHelpAgent.generate() got an unexpected keyword argument 'duration_minutes'
+INFO:     127.0.0.1:52109 - "POST /generate/test-help HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/router.py", line 68, in generate_test_help
+    return generate_questions_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/service.py", line 105, in generate_questions_service
+    output: QuestionBankOutput = agent.generate(
+                                 ^^^^^^^^^^^^^^^
+TypeError: TestHelpAgent.generate() got an unexpected keyword argument 'duration_minutes'
+INFO:     127.0.0.1:52124 - "OPTIONS /generate/flashcards HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52124 - "POST /generate/flashcards HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/router.py", line 88, in generate_flashcards
+    return generate_flashcards_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/service.py", line 227, in generate_flashcards_service
+    topics = [c.text.split()[0] for c in grounded.chunks if c.text.strip()]
+                                                            ^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/pydantic/main.py", line 1042, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'RetrievedChunk' object has no attribute 'text'
+INFO:     127.0.0.1:52133 - "POST /generate/flashcards HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/router.py", line 88, in generate_flashcards
+    return generate_flashcards_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/service.py", line 227, in generate_flashcards_service
+    topics = [c.text.split()[0] for c in grounded.chunks if c.text.strip()]
+                                                            ^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/pydantic/main.py", line 1042, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'RetrievedChunk' object has no attribute 'text'
+INFO:     127.0.0.1:52140 - "POST /generate/flashcards HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/router.py", line 88, in generate_flashcards
+    return generate_flashcards_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/service.py", line 227, in generate_flashcards_service
+    topics = [c.text.split()[0] for c in grounded.chunks if c.text.strip()]
+                                                            ^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/pydantic/main.py", line 1042, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'RetrievedChunk' object has no attribute 'text'
+INFO:     127.0.0.1:52147 - "POST /generate/flashcards HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/router.py", line 88, in generate_flashcards
+    return generate_flashcards_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/service.py", line 227, in generate_flashcards_service
+    topics = [c.text.split()[0] for c in grounded.chunks if c.text.strip()]
+                                                            ^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/pydantic/main.py", line 1042, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'RetrievedChunk' object has no attribute 'text'
+INFO:     127.0.0.1:52156 - "OPTIONS /generate/study-plan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52156 - "POST /generate/study-plan HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/router.py", line 107, in generate_study_plan
+    return generate_study_plan_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/service.py", line 294, in generate_study_plan_service
+    topics = list({c.text.split()[0] for c in grounded.chunks if c.text.strip()})
+                                                                 ^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/pydantic/main.py", line 1042, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'RetrievedChunk' object has no attribute 'text'
+INFO:     127.0.0.1:52167 - "OPTIONS /generate/revision HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52167 - "POST /generate/revision HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/router.py", line 126, in generate_revision_sheet
+    return generate_revision_sheet_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/service.py", line 387, in generate_revision_sheet_service
+    else [c.text.split()[0] for c in grounded.chunks if c.text.strip()][:3]
+                                                        ^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/pydantic/main.py", line 1042, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'RetrievedChunk' object has no attribute 'text'
+INFO:     127.0.0.1:52182 - "OPTIONS /mentor/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52182 - "POST /mentor/chat HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/chat/router.py", line 83, in mentor_chat
+    return send_chat_message_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/chat/service.py", line 153, in send_chat_message_service
+    raise KeyError(f"Chat {request.chatId} not found for this user.")
+KeyError: 'Chat chat-msj3qkkk not found for this user.'
+INFO:     127.0.0.1:52197 - "OPTIONS /concept/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52197 - "POST /concept/chat HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/chat/router.py", line 104, in concept_chat
+    return send_chat_message_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/chat/service.py", line 153, in send_chat_message_service
+    raise KeyError(f"Chat {request.chatId} not found for this user.")
+KeyError: 'Chat chat-msj3qotv not found for this user.'
+INFO:     127.0.0.1:52216 - "GET /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52216 - "GET /documents?workspace_id=8f1a21c0-09f5-427f-bf58-bbacf69e94be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52216 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52216 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52216 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52216 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52216 - "POST /workspaces HTTP/1.1" 201 Created
+INFO:     127.0.0.1:52216 - "GET /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52216 - "GET /documents?workspace_id=8f1a21c0-09f5-427f-bf58-bbacf69e94be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52216 - "OPTIONS /documents?workspace_id=99064c70-8497-4c63-a9ce-a1751b1e3ed5 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52216 - "GET /documents?workspace_id=99064c70-8497-4c63-a9ce-a1751b1e3ed5 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52294 - "GET /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52294 - "GET /documents?workspace_id=8f1a21c0-09f5-427f-bf58-bbacf69e94be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52294 - "GET /documents?workspace_id=99064c70-8497-4c63-a9ce-a1751b1e3ed5 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52294 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52304 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52294 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52304 - "GET /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52294 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52304 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52304 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52424 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52424 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52424 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52424 - "OPTIONS /documents/027fe927-0ae8-422a-9f3f-71ddb586982a/chunks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52424 - "GET /documents/027fe927-0ae8-422a-9f3f-71ddb586982a/chunks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52424 - "OPTIONS /documents/027fe927-0ae8-422a-9f3f-71ddb586982a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52441 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52424 - "PATCH /documents/027fe927-0ae8-422a-9f3f-71ddb586982a HTTP/1.1" 204 No Content
+INFO:     127.0.0.1:52441 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52424 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52441 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52441 - "POST /generate/questions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52465 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52441 - "POST /generate/questions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52577 - "POST /generate/questions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53065 - "OPTIONS /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53066 - "OPTIONS /notifications?role=student HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53066 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53065 - "GET /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53066 - "OPTIONS /documents?workspace_id=8f1a21c0-09f5-427f-bf58-bbacf69e94be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53066 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53065 - "GET /documents?workspace_id=8f1a21c0-09f5-427f-bf58-bbacf69e94be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53066 - "GET /documents?workspace_id=99064c70-8497-4c63-a9ce-a1751b1e3ed5 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53065 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53065 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53254 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53256 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53254 - "GET /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53256 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53254 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53254 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53254 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53254 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53254 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53254 - "GET /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53254 - "GET /documents?workspace_id=8f1a21c0-09f5-427f-bf58-bbacf69e94be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53254 - "GET /documents?workspace_id=99064c70-8497-4c63-a9ce-a1751b1e3ed5 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53254 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53254 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53254 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53254 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53493 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53493 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53493 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53493 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53493 - "OPTIONS /generate/questions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53493 - "POST /generate/questions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53630 - "POST /generate/questions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53675 - "POST /generate/questions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54253 - "GET /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54253 - "OPTIONS /notifications?role=reviewer HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54253 - "GET /notifications?role=reviewer HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54253 - "GET /notifications?role=reviewer HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54253 - "GET /notifications?role=reviewer HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54253 - "GET /notifications?role=reviewer HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54400 - "OPTIONS /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54400 - "GET /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54400 - "OPTIONS /documents?workspace_id=8f1a21c0-09f5-427f-bf58-bbacf69e94be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54400 - "GET /documents?workspace_id=8f1a21c0-09f5-427f-bf58-bbacf69e94be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54400 - "OPTIONS /documents?workspace_id=99064c70-8497-4c63-a9ce-a1751b1e3ed5 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54400 - "GET /documents?workspace_id=99064c70-8497-4c63-a9ce-a1751b1e3ed5 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54400 - "OPTIONS /notifications?role=student HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54400 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54405 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54406 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54400 - "GET /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54406 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54400 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54400 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54400 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54400 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54400 - "POST /generate/questions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54432 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54400 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54549 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54549 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54549 - "OPTIONS /generate/test-help HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54549 - "POST /generate/test-help HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/router.py", line 68, in generate_test_help
+    return generate_questions_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/service.py", line 105, in generate_questions_service
+    output: QuestionBankOutput = agent.generate(
+                                 ^^^^^^^^^^^^^^^
+TypeError: TestHelpAgent.generate() got an unexpected keyword argument 'duration_minutes'
+INFO:     127.0.0.1:54558 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54558 - "POST /generate/questions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54568 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54805 - "POST /generate/test-help HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/router.py", line 68, in generate_test_help
+    return generate_questions_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/service.py", line 105, in generate_questions_service
+    output: QuestionBankOutput = agent.generate(
+                                 ^^^^^^^^^^^^^^^
+TypeError: TestHelpAgent.generate() got an unexpected keyword argument 'duration_minutes'
+INFO:     127.0.0.1:54835 - "OPTIONS /generate/flashcards HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54835 - "POST /generate/flashcards HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/router.py", line 88, in generate_flashcards
+    return generate_flashcards_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/service.py", line 227, in generate_flashcards_service
+    topics = [c.text.split()[0] for c in grounded.chunks if c.text.strip()]
+                                                            ^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/pydantic/main.py", line 1042, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'RetrievedChunk' object has no attribute 'text'
+INFO:     127.0.0.1:54844 - "OPTIONS /generate/study-plan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54844 - "POST /generate/study-plan HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/router.py", line 107, in generate_study_plan
+    return generate_study_plan_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/service.py", line 294, in generate_study_plan_service
+    topics = list({c.text.split()[0] for c in grounded.chunks if c.text.strip()})
+                                                                 ^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/pydantic/main.py", line 1042, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'RetrievedChunk' object has no attribute 'text'
+INFO:     127.0.0.1:54851 - "OPTIONS /generate/revision HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54851 - "POST /generate/revision HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/router.py", line 126, in generate_revision_sheet
+    return generate_revision_sheet_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/service.py", line 387, in generate_revision_sheet_service
+    else [c.text.split()[0] for c in grounded.chunks if c.text.strip()][:3]
+                                                        ^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/pydantic/main.py", line 1042, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'RetrievedChunk' object has no attribute 'text'
+INFO:     127.0.0.1:54882 - "OPTIONS /mentor/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54882 - "POST /mentor/chat HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/chat/router.py", line 83, in mentor_chat
+    return send_chat_message_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/chat/service.py", line 153, in send_chat_message_service
+    raise KeyError(f"Chat {request.chatId} not found for this user.")
+KeyError: 'Chat chat-msj4ha13 not found for this user.'
+INFO:     127.0.0.1:54896 - "OPTIONS /concept/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54896 - "POST /concept/chat HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/chat/router.py", line 104, in concept_chat
+    return send_chat_message_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/chat/service.py", line 153, in send_chat_message_service
+    raise KeyError(f"Chat {request.chatId} not found for this user.")
+KeyError: 'Chat chat-msj4he8t not found for this user.'
+INFO:     127.0.0.1:55146 - "GET /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55146 - "GET /documents?workspace_id=8f1a21c0-09f5-427f-bf58-bbacf69e94be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55146 - "GET /documents?workspace_id=99064c70-8497-4c63-a9ce-a1751b1e3ed5 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55146 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55146 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55146 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55146 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55146 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55146 - "OPTIONS /documents/027fe927-0ae8-422a-9f3f-71ddb586982a/chunks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55146 - "GET /documents/027fe927-0ae8-422a-9f3f-71ddb586982a/chunks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55146 - "OPTIONS /documents/027fe927-0ae8-422a-9f3f-71ddb586982a HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55178 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55146 - "PATCH /documents/027fe927-0ae8-422a-9f3f-71ddb586982a HTTP/1.1" 204 No Content
+INFO:     127.0.0.1:55178 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55178 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55178 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55178 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55178 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55178 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55263 - "POST /generate/test-help HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/router.py", line 68, in generate_test_help
+    return generate_questions_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/service.py", line 105, in generate_questions_service
+    output: QuestionBankOutput = agent.generate(
+                                 ^^^^^^^^^^^^^^^
+TypeError: TestHelpAgent.generate() got an unexpected keyword argument 'duration_minutes'
+INFO:     127.0.0.1:55294 - "POST /generate/revision HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/router.py", line 126, in generate_revision_sheet
+    return generate_revision_sheet_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/service.py", line 387, in generate_revision_sheet_service
+    else [c.text.split()[0] for c in grounded.chunks if c.text.strip()][:3]
+                                                        ^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/pydantic/main.py", line 1042, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'RetrievedChunk' object has no attribute 'text'
+INFO:     127.0.0.1:55304 - "POST /generate/study-plan HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/router.py", line 107, in generate_study_plan
+    return generate_study_plan_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/service.py", line 294, in generate_study_plan_service
+    topics = list({c.text.split()[0] for c in grounded.chunks if c.text.strip()})
+                                                                 ^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/pydantic/main.py", line 1042, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'RetrievedChunk' object has no attribute 'text'
+INFO:     127.0.0.1:55886 - "OPTIONS /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55887 - "OPTIONS /notifications?role=student HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55887 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55887 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55886 - "GET /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55887 - "OPTIONS /documents?workspace_id=8f1a21c0-09f5-427f-bf58-bbacf69e94be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55886 - "GET /documents?workspace_id=8f1a21c0-09f5-427f-bf58-bbacf69e94be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55887 - "OPTIONS /documents?workspace_id=99064c70-8497-4c63-a9ce-a1751b1e3ed5 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55886 - "GET /documents?workspace_id=99064c70-8497-4c63-a9ce-a1751b1e3ed5 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55887 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55886 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57483 - "OPTIONS /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57484 - "OPTIONS /notifications?role=student HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57484 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57483 - "GET /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57484 - "OPTIONS /documents?workspace_id=8f1a21c0-09f5-427f-bf58-bbacf69e94be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57483 - "GET /documents?workspace_id=8f1a21c0-09f5-427f-bf58-bbacf69e94be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57484 - "OPTIONS /documents?workspace_id=99064c70-8497-4c63-a9ce-a1751b1e3ed5 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57483 - "GET /documents?workspace_id=99064c70-8497-4c63-a9ce-a1751b1e3ed5 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57484 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57483 - "GET /workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57484 - "GET /documents?workspace_id=8f1a21c0-09f5-427f-bf58-bbacf69e94be HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57483 - "GET /documents?workspace_id=99064c70-8497-4c63-a9ce-a1751b1e3ed5 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57484 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57483 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57484 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57483 - "OPTIONS /generate/test-help HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57484 - "POST /generate/test-help HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2734, in app
+    await route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1780, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 2789, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1800, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 1279, in handle
+    await app(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 158, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 144, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 706, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/.venv/lib/python3.12/site-packages/fastapi/routing.py", line 352, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/router.py", line 68, in generate_test_help
+    return generate_questions_service(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mac/Desktop/ai-content-agents/backend/generation/service.py", line 105, in generate_questions_service
+    q_type = request.types[0] if request.types else "MCQ"
+                                     ^^^^^^^^^^^^^^^^^^^^
+TypeError: TestHelpAgent.generate() got an unexpected keyword argument 'duration_minutes'
+INFO:     127.0.0.1:57483 - "GET /notifications?role=student HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57483 - "OPTIONS /generate/questions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57483 - "POST /generate/questions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57483 - "POST /generate/questions HTTP/1.1" 200 OK
