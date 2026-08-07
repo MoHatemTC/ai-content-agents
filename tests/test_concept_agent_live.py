@@ -14,7 +14,7 @@ pytestmark = pytest.mark.skipif(
 
 def test_concept_agent_generation_live():
     """Verify Concept Agent generation against the live LLM."""
-    agent = ConceptAgent(mock_mode=False)
+    agent = ConceptAgent()
 
     result = agent.generate(
         content="""

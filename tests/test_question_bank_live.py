@@ -17,7 +17,7 @@ def test_question_bank_generation_live():
     a valid QuestionBankOutput using the live LLM.
     """
 
-    agent = QuestionBankAgent(mock_mode=False)
+    agent = QuestionBankAgent()
 
     result = agent.generate(
         content="""

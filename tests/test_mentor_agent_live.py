@@ -14,7 +14,7 @@ pytestmark = pytest.mark.skipif(
 
 def test_mentor_agent_generation_live():
     """Verify Mentor Agent generation against the live LLM."""
-    agent = MentorAgent(mock_mode=False)
+    agent = MentorAgent()
 
     result = agent.generate(
         content="""

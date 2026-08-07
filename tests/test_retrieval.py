@@ -294,9 +294,9 @@ class TestHashingEmbeddingFunction:
 
 
 class TestChunkIndex:
-    def test_default_embedder_is_offline_under_mock_mode(self) -> None:
-        # conftest pins MOCK_MODE=true, so the default construction path must
-        # pick the hashing embedder and never download an embedding model.
+    def test_default_embedder_is_offline_during_tests(self) -> None:
+        # conftest pins RETRIEVAL_EMBEDDER=hashing, so the default construction
+        # path must never download an embedding model.
         default_index = ChunkIndex(RetrievalConfig(collection_name=f"test-{uuid4().hex}"))
         default_index.add_chunks([make_chunk()])
         assert len(default_index) == 1
