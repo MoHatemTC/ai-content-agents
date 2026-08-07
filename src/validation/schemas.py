@@ -9,7 +9,7 @@ outputs follow a consistent format.
 from enum import Enum
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 __test__ = False
 
@@ -51,6 +51,29 @@ class QuestionType(str, Enum):
     MCQ = "mcq"
     TRUE_FALSE = "true_false"
     SHORT_ANSWER = "short_answer"
+
+
+def validate_question_type(value: str | QuestionType) -> QuestionType:
+    """Validate and normalize a supported question type.
+
+    The sibling of :func:`validate_difficulty`, which existed for a long time
+    while nothing checked question types at all - so a caller could ask for
+    ``"ESSAY_BANANA"`` and have it interpolated into the prompt verbatim
+    (BUG-02).
+    """
+    try:
+        return QuestionType(value)
+    except ValueError as exc:
+        allowed = ", ".join(kind.value for kind in QuestionType)
+        raise ValueError(
+            f"Invalid question type {value!r}; expected one of: {allowed}."
+        ) from exc
+
+
+# Types where a question without choices is unanswerable. short_answer is
+# deliberately absent: the prompts instruct the model to send null options for
+# it (src/prompts/test_help.yaml).
+_TYPES_REQUIRING_OPTIONS = frozenset({QuestionType.MCQ, QuestionType.TRUE_FALSE})
 
 
 class QuestionItem(BaseModel):
@@ -96,6 +119,35 @@ class QuestionItem(BaseModel):
         description="Grounding references used to generate the question."
     )
 
+    @model_validator(mode="after")
+    def _check_answerable(self) -> "QuestionItem":
+        """Reject questions nobody could answer or score.
+
+        These live in the schema rather than in an agent because the
+        orchestrator validates through the schema and never calls the agents'
+        ``generate()`` - a check placed there would not run in production.
+
+        Raises:
+            ValueError: If a choice-based question has no options, or the
+                answer key is not one of the choices.
+        """
+        if self.type in _TYPES_REQUIRING_OPTIONS and not self.options:
+            # A multiple-choice question with nothing to choose from (BUG-05).
+            raise ValueError(
+                f"a {self.type.value} question needs options; got "
+                f"{self.options!r}"
+            )
+
+        if self.options and self.correct_answer not in self.options:
+            # Unanswerable, and any scorer comparing a selection against the
+            # key marks every attempt wrong (BUG-04).
+            raise ValueError(
+                f"correct_answer {self.correct_answer!r} is not one of the "
+                f"options {self.options!r}"
+            )
+
+        return self
+
 
 class QuestionBankOutput(BaseModel):
     """
@@ -107,14 +159,21 @@ class QuestionBankOutput(BaseModel):
 
     questions: list[QuestionItem] = Field(
         ...,
-        description="List of generated questions."
+        min_length=1,
+        description="List of generated questions. At least one - a request for "
+                    "questions that produces none is a failure, not a success "
+                    "(BUG-06)."
     )
 
-    requires_human_review: bool = Field(
+    requires_human_review: Literal[True] = Field(
         default=True,
+        frozen=True,
         description=(
             "Indicates that the generated questions must be "
-            "reviewed by a human before being presented."
+            "reviewed by a human before being presented. Literal and frozen, "
+            "matching MentorOutput and ConceptOutput: this is a control over "
+            "the system, so neither the model nor a later caller may switch it "
+            "off (BUG-07)."
         )
     )
 
@@ -132,14 +191,21 @@ class TestHelpOutput(BaseModel):
 
     questions: list[QuestionItem] = Field(
         ...,
-        description="List of generated questions."
+        min_length=1,
+        description="List of generated questions. At least one - a request for "
+                    "questions that produces none is a failure, not a success "
+                    "(BUG-06)."
     )
 
-    requires_human_review: bool = Field(
+    requires_human_review: Literal[True] = Field(
         default=True,
+        frozen=True,
         description=(
             "Indicates that the generated questions must be "
-            "reviewed by a human before being presented."
+            "reviewed by a human before being presented. Literal and frozen, "
+            "matching MentorOutput and ConceptOutput: this is a control over "
+            "the system, so neither the model nor a later caller may switch it "
+            "off (BUG-07)."
         )
     )
 

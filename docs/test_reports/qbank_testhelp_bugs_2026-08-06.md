@@ -4,6 +4,43 @@
 **Commit under test:** `8c601b7` (branch `qa/question-agents-sprint4`, off `main` `6a60568`)
 **Related report:** [`docs/test_report_question_bank_test_help.md`](../test_report_question_bank_test_help.md)
 
+---
+
+> ## Status: all 13 fixed
+>
+> Fixed on branch `fix/question-agents-contract`, stacked on the QA branch.
+> Every reproduction command below was **re-run against the fixed code** and now
+> produces its documented "Expected" result instead of the "Observed" one — the
+> Observed lines are kept as the record of what was wrong.
+>
+> The 32 `xfail(strict=True)` markers that encoded these bugs are all gone.
+> `strict=True` is what forced them out: a fix turns the test XPASS, which
+> pytest reports as a failure until the marker is deliberately removed. Each
+> test keeps a `# Closes BUG-nn` comment, so `grep -rn "BUG-" tests/` still maps
+> tests to this list.
+>
+> Suite: **546 passed + 32 xfailed = 578** before, **600 passed** after — the
+> delta being 22 new tests (14 negative controls, 8 driving the production path).
+>
+> Two entries are worth reading even though they are closed:
+>
+> * **BUG-08/09** had to be fixed *together*. Copying question_bank's guard into
+>   test_help — the obvious fix — would have swapped a retried `TypeError` for
+>   an un-retried `ValueError` and silently switched retries off. Verified by
+>   mutation: making that change fails four tests.
+> * **BUG-07** is fixed by *overriding* the flag, not by rejecting the reply.
+>   Rejecting would let a prompt injection in an uploaded document fail every
+>   generation — trading a review bypass for a denial of service.
+>
+> One thing deliberately **not** done: requiring at least one reference per
+> question in the schema. `ReferencesPresentRule` already checks it, and moving
+> it into the schema would reclassify the failure from a guardrail violation to
+> a schema error — which drops the output from the groundedness *denominator*,
+> so an ungrounded question would **improve** the groundedness rate. A metric
+> that lies is worse than a missing validator.
+
+---
+
 Every reproduction below is a self-contained command run from the repository
 root. The offline ones need no credentials and make no network call.
 

@@ -16,7 +16,7 @@ from typing import Any, Optional
 import yaml
 from dotenv import load_dotenv
 
-from src.llm_gateway import build_client, default_model
+from src.llm_gateway import build_client, default_model, response_text
 from pydantic import ValidationError
 
 from src.models.batch import BatchGenerationFailure, BatchGenerationResult
@@ -150,20 +150,15 @@ class MentorAgent:
             temperature=0.3,
         )
 
-        if response is None:
-            raise RuntimeError("LLM returned no response.")
-        choices = getattr(response, "choices", None)
-        if not choices:
-            raise RuntimeError("LLM returned no choices.")
-        message = getattr(choices[0], "message", None)
-        if message is None:
-            raise RuntimeError("LLM returned an empty message.")
-        content = getattr(message, "content", None)
-
-        if not content:
-            raise RuntimeError("LLM returned an empty response.")
-
-        return content.strip()
+        # These guards were correct but raised RuntimeError, which is not in
+        # Orchestrator.transient_errors - so a saturated provider was recorded
+        # as a permanent failure and never retried. That is BUG-09 in a
+        # different costume: the same defect the question agents had, unfiled
+        # because nothing tested this path through the orchestrator.
+        # response_text raises UpstreamResponseError, which is retried. Two of
+        # the four messages gain a detail suffix (the gateway's error payload,
+        # the finish reason); tests/test_week3_gaps.py matches on substrings.
+        return response_text(response)
 
     def generate(
         self,
