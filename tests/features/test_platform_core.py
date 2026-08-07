@@ -58,8 +58,12 @@ from src.validation.schemas import (
     QuestionBankOutput,
     QuestionItem,
     QuestionType,
+    TestHelpOutput,
 )
+from src.agents.question_bank_agent import QuestionBankAgent
+from src.agents.test_help_agent import TestHelpAgent
 from src.validation.store import PlatformStore
+from tests.conftest import FakeLLMClient, Reply
 from src.validation.validator_base import ValidatorBase
 
 
@@ -1247,14 +1251,11 @@ def test_summary_rows_render_rates_readably(store: PlatformStore) -> None:
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="BUG-09: question_bank_agent.py:149 correctly guards empty choices "
-    "and raises ValueError - which is NOT in Orchestrator.transient_errors, so "
-    "it is never retried. test_help_agent.py:152 leaves the dereference "
-    "unguarded, and its TypeError IS translated to UpstreamResponseError and "
-    "retried. The correct implementation is the one that loses the retry.",
-)
+# Closes BUG-09: question_bank's correct guard raised ValueError, which is
+# not in transient_errors, so it was never retried - while test_help's
+# unguarded dereference raised TypeError, which IS translated and retried.
+# Both agents now raise UpstreamResponseError, and the adapter translates
+# ValueError too for any agent that has not adopted response_text().
 def test_a_guarded_empty_choices_error_is_still_retryable() -> None:
     """The retry classification must not depend on which bug an agent has.
 
@@ -1271,3 +1272,156 @@ def test_a_guarded_empty_choices_error_is_still_retryable() -> None:
 
     with pytest.raises(UpstreamResponseError):
         adapter.run_raw("content")
+
+
+# --------------------------------------------------------------------------- #
+# The question agents on the path that actually runs in production
+#
+# RegistryAgentAdapter.run_raw calls _build_prompt and _call_llm directly and
+# never calls generate(), so a fix placed only in generate() would pass every
+# unit test and do nothing in production. These drive the real agents through
+# the adapter and the orchestrator.
+# --------------------------------------------------------------------------- #
+
+
+def _question_adapter(agent_class, schema, client):
+    from src.validation.orchestrator import DEFAULT_AGENT_PARAMS
+
+    name = "question_bank" if schema is QuestionBankOutput else "test_help"
+    return RegistryAgentAdapter(
+        name=name,
+        agent=agent_class(client=client, model="test-model"),
+        schema=schema,
+        default_params=DEFAULT_AGENT_PARAMS[name],
+    )
+
+
+@pytest.mark.parametrize(
+    "agent_class,schema",
+    [
+        pytest.param(QuestionBankAgent, QuestionBankOutput, id="question_bank"),
+        pytest.param(TestHelpAgent, TestHelpOutput, id="test_help"),
+    ],
+)
+def test_a_saturated_provider_reaches_the_adapter_as_upstream(
+    agent_class, schema
+) -> None:
+    """Both real agents, through the real adapter, on an error-shaped 200."""
+    adapter = _question_adapter(
+        agent_class, schema, FakeLLMClient(Reply(error={"message": "saturated"}))
+    )
+
+    with pytest.raises(UpstreamResponseError):
+        adapter.run_raw("Loops repeat instructions.")
+
+
+@pytest.mark.parametrize(
+    "agent_class,schema",
+    [
+        pytest.param(QuestionBankAgent, QuestionBankOutput, id="question_bank"),
+        pytest.param(TestHelpAgent, TestHelpOutput, id="test_help"),
+    ],
+)
+def test_a_saturated_provider_is_retried_for_both_agents(
+    store: PlatformStore, agent_class, schema
+) -> None:
+    """The test that proves BUG-08 and BUG-09 are fixed *together*.
+
+    Fixing BUG-08 the obvious way - copying question_bank's guard into
+    test_help - would swap a retried TypeError for an un-retried ValueError and
+    silently switch retries off for a genuinely transient condition. Counting
+    the gateway calls is what catches that; asserting the exception type alone
+    would not.
+    """
+    client = FakeLLMClient(*[Reply(error={"message": "saturated"})] * 3)
+    name = "question_bank" if schema is QuestionBankOutput else "test_help"
+    orchestrator = Orchestrator(
+        store,
+        agents={name: _question_adapter(agent_class, schema, client)},
+        max_retries=2,
+        retry_backoff=0.0,
+    )
+
+    result = orchestrator.run_agent(name, content="Loops repeat instructions.")
+
+    assert len(client.calls) == 3, "a transient upstream failure was not retried"
+    assert result.run.status is RunStatus.FAILURE
+    assert "choices" in (result.run.error or "")
+
+
+@pytest.mark.parametrize(
+    "agent_class,schema",
+    [
+        pytest.param(QuestionBankAgent, QuestionBankOutput, id="question_bank"),
+        pytest.param(TestHelpAgent, TestHelpOutput, id="test_help"),
+    ],
+)
+def test_an_unanswerable_question_fails_validation_in_production(
+    store: PlatformStore, agent_class, schema
+) -> None:
+    """An answer key outside the options must be caught on the orchestrator path.
+
+    This is why the check lives in the schema rather than in generate(): the
+    orchestrator validates through the schema, so this is the only placement
+    that runs where it matters.
+    """
+    item = {
+        "question": "Which loop repeats while a condition is true?",
+        "options": ["for", "while"],
+        "correct_answer": "a fifth option entirely",
+        "rationale": "because",
+        "difficulty": "beginner",
+        "type": "mcq",
+        "references": [{"segment_id": "chunk_001", "text": "Loops repeat."}],
+    }
+    raw = json.dumps({"questions": [item, item], "requires_human_review": True})
+    name = "question_bank" if schema is QuestionBankOutput else "test_help"
+    orchestrator = Orchestrator(
+        store,
+        agents={name: _question_adapter(agent_class, schema, FakeLLMClient(raw))},
+        max_retries=0,
+    )
+
+    result = orchestrator.run_agent(name, content="Loops repeat instructions.")
+
+    assert not result.validation.passed
+    assert any(
+        "correct_answer" in error for error in result.validation.schema_errors
+    ), result.validation.schema_errors
+
+
+@pytest.mark.parametrize(
+    "agent_class,schema",
+    [
+        pytest.param(QuestionBankAgent, QuestionBankOutput, id="question_bank"),
+        pytest.param(TestHelpAgent, TestHelpOutput, id="test_help"),
+    ],
+)
+def test_a_fenced_reply_survives_the_production_path(
+    store: PlatformStore, agent_class, schema
+) -> None:
+    """Fence stripping has to happen in _call_llm, not in generate()."""
+    item = {
+        "question": "Which loop repeats while a condition is true?",
+        "options": ["for", "while"],
+        "correct_answer": "while",
+        "rationale": "A while loop repeats while its condition is true.",
+        "difficulty": "beginner",
+        "type": "mcq",
+        "references": [{"segment_id": "chunk_001", "text": "Loops repeat."}],
+    }
+    payload = json.dumps({"questions": [item, item], "requires_human_review": True})
+    name = "question_bank" if schema is QuestionBankOutput else "test_help"
+    orchestrator = Orchestrator(
+        store,
+        agents={
+            name: _question_adapter(
+                agent_class, schema, FakeLLMClient(f"```json\n{payload}\n```")
+            )
+        },
+        max_retries=0,
+    )
+
+    result = orchestrator.run_agent(name, content="Loops repeat instructions.")
+
+    assert result.validation.passed, result.validation.schema_errors

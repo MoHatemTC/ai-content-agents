@@ -23,7 +23,16 @@ _CLAIM_FIELDS = (
     "explanation",
     "key_points",
     "next_steps",
+    # A question's rationale is the field that asserts something about the
+    # source, so it is the exact analogue of `explanation` (BUG-12).
+    "rationale",
 )
+
+# Schemas that carry their claims one level down. QuestionBankOutput and
+# TestHelpOutput hold everything inside `questions`, so a top-level scan found
+# nothing and validate_support passed anything at all - a check that cannot
+# fail, which is worse than no check because it reads as coverage.
+_CLAIM_CONTAINERS = ("questions",)
 _WORD_PATTERN = re.compile(r"[a-z0-9]+")
 _NEGATION_PATTERN = re.compile(r"\b(?:no|not|never|without)\b", re.IGNORECASE)
 _STOP_WORDS = {
@@ -85,19 +94,49 @@ def extract_claim_text(
 ) -> list[str]:
     """Extract sentence-like claims from meaningful explanation fields.
 
-    References are intentionally excluded because citation provenance is
-    validated separately by :func:`src.retrieval.grounding.verify_references`.
+    What is deliberately *not* a claim matters as much as what is, and each
+    exclusion was measured against a real question and a real source passage:
+
+    * **References** - citation provenance is validated separately by
+      :func:`src.retrieval.grounding.verify_references`.
+    * **Question stems** - they routinely read "Which of the following is
+      **not** ...". Measured on such a stem: :func:`_contains_negation` fires
+      and token overlap is 0.33 against a source containing no negation, so a
+      correct question would be reported as both contradictory *and*
+      unsupported. Two independent false-positive mechanisms.
+    * **Options** - distractors are *deliberately false*. Feeding them to an
+      overlap check guarantees an unsupported verdict on every well-formed
+      question bank.
+    * **``correct_answer``** - usually a single token, so the ratio is 0 or 1
+      with nothing in between. Noise, not signal.
+
+    ``rationale`` is included because it is the field that asserts something
+    about the source; measured overlap 0.71 on a faithful rationale, with no
+    negation.
     """
     data = output.model_dump() if isinstance(output, BaseModel) else output
     claims: list[str] = []
-    for field_name in _CLAIM_FIELDS:
-        value = data.get(field_name)
-        if isinstance(value, str):
-            claims.extend(_split_statements(value))
-        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-            for item in value:
-                if isinstance(item, str):
-                    claims.extend(_split_statements(item))
+
+    def collect(source: Mapping[str, Any]) -> None:
+        for field_name in _CLAIM_FIELDS:
+            value = source.get(field_name)
+            if isinstance(value, str):
+                claims.extend(_split_statements(value))
+            elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+                for item in value:
+                    if isinstance(item, str):
+                        claims.extend(_split_statements(item))
+
+    collect(data)
+
+    # One level only, and only through named containers. A generic "collect
+    # every string leaf" walk would pull in reference text and distractors, and
+    # would shift mentor/concept groundedness ratios that other tests pin.
+    for container in _CLAIM_CONTAINERS:
+        for item in data.get(container) or []:
+            if isinstance(item, Mapping):
+                collect(item)
+
     return claims
 
 

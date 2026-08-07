@@ -148,12 +148,17 @@ class RegistryAgentAdapter:
         prompt = self._agent._build_prompt(content=content, **call_params)
         try:
             return self._agent._call_llm(prompt)
-        except TypeError as exc:
-            # `_call_llm` indexes response.choices[0] unconditionally. When the
-            # gateway answers 200 with an error payload, choices is None and the
-            # dereference fails here rather than anywhere meaningful. Translate
-            # it so the run record says what happened and the retry policy can
-            # act on it. See UpstreamResponseError.
+        except (TypeError, ValueError) as exc:
+            # A shim for agents that have not adopted
+            # src.llm_gateway.response_text, which raises UpstreamResponseError
+            # directly. TypeError is an unguarded response.choices[0]; ValueError
+            # is a guard that raises the wrong type - and that one silently cost
+            # the retry, because ValueError is not in transient_errors while the
+            # translated TypeError is (BUG-09).
+            #
+            # Note the scope: this try wraps the gateway call only.
+            # _build_prompt is deliberately outside it, so a control-validation
+            # ValueError from there cannot be misread as an upstream failure.
             raise UpstreamResponseError(
                 "The gateway returned a response without choices, which usually "
                 "means an error payload delivered with a success status "

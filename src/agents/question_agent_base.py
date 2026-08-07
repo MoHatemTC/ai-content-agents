@@ -1,0 +1,343 @@
+"""Shared implementation for the question-generating agents.
+
+``QuestionBankAgent`` and ``TestHelpAgent`` were near-identical copies of each
+other, differing only in a YAML filename and an output schema. That is what
+produced BUG-08 and BUG-09 in the Sprint-4 QA report: the same eight lines were
+written twice, one copy guarded an empty ``choices`` list and the other did not,
+and the divergence went unnoticed because nobody diffs two files that are
+supposed to be the same. One copy of the logic makes that class of defect
+structurally impossible rather than merely unlikely.
+
+**Where a fix goes matters more than it looks.** ``RegistryAgentAdapter.run_raw``
+(``src/validation/orchestrator.py``) calls :meth:`_build_prompt` and
+:meth:`_call_llm` directly and never calls :meth:`generate`, and it is the only
+production path. So:
+
+* validation that belongs to the *output* lives in the schema, and applies
+  everywhere, because the orchestrator validates through it;
+* validation that belongs to the *input* lives in :meth:`_build_prompt`;
+* checks that need the *request* - the count, type and difficulty actually asked
+  for - can only live in :meth:`generate`, because nothing else has them. That
+  gap is real and is recorded in the QA report rather than papered over.
+
+:meth:`_build_prompt` is also deliberately outside the adapter's ``try``, so an
+input-validation error raised there cannot be mistaken for an upstream failure.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from pathlib import Path
+from typing import Any, ClassVar
+
+import yaml
+from pydantic import BaseModel, ValidationError
+
+from src.llm_gateway import build_client, default_model, response_text
+from src.retrieval.grounding import verify_references
+from src.retrieval.models import GroundedContext
+from src.validation.schemas import (
+    validate_difficulty,
+    validate_question_type,
+)
+from src.validation.support_validator import extract_claim_text, validate_support
+
+logger = logging.getLogger(__name__)
+
+
+class QuestionAgentBase:
+    """Generate grounded assessment questions from educational content.
+
+    Subclasses declare only what actually differs between them.
+
+    Attributes:
+        prompt_file: YAML template filename under ``src/prompts/``.
+        output_schema: The Pydantic model the reply must conform to.
+    """
+
+    prompt_file: ClassVar[str]
+    output_schema: ClassVar[type[BaseModel]]
+
+    def __init__(self, *, client: Any | None = None, model: str | None = None) -> None:
+        """Create the agent.
+
+        Args:
+            client: An OpenAI-compatible client. Defaults to one built from the
+                configured gateway; tests inject a double.
+            model: Model id. Defaults to :func:`~src.llm_gateway.default_model`.
+        """
+        self.prompt = self._load_prompt()
+        self.client = client if client is not None else build_client()
+        self.model = model or default_model()
+
+    # ------------------------------------------------------------------
+    # Prompt
+    # ------------------------------------------------------------------
+
+    def _load_prompt(self) -> dict[str, Any]:
+        """Load the agent's YAML template.
+
+        Raises:
+            FileNotFoundError: If the template is missing.
+            ValueError: If it is empty or not valid YAML.
+            TypeError: If it does not contain a mapping.
+        """
+        prompt_path = (
+            Path(__file__).resolve().parent.parent / "prompts" / self.prompt_file
+        )
+
+        if not prompt_path.exists():
+            raise FileNotFoundError(f"Prompt file not found: {prompt_path}")
+
+        try:
+            with open(prompt_path, "r", encoding="utf-8") as file:
+                data = yaml.safe_load(file)
+        except yaml.YAMLError as e:
+            raise ValueError(f"Invalid YAML syntax in {self.prompt_file}.") from e
+
+        if data is None:
+            raise ValueError(f"{self.prompt_file} is empty.")
+
+        if not isinstance(data, dict):
+            raise TypeError(f"{self.prompt_file} must contain a YAML dictionary.")
+
+        return data
+
+    def _build_prompt(
+        self,
+        content: str | GroundedContext,
+        question_type: str,
+        difficulty: str,
+        num_questions: int,
+    ) -> str:
+        """Fill the YAML template, rejecting nonsense before spending a call.
+
+        The control values are validated here rather than in :meth:`generate`
+        because this method is on the production path and ``generate`` is not.
+
+        Args:
+            content: Educational content, or a :class:`GroundedContext` whose
+                passages should be rendered into the prompt.
+            question_type: Requested question type.
+            difficulty: Requested difficulty.
+            num_questions: How many questions to ask for.
+
+        Returns:
+            The rendered prompt.
+
+        Raises:
+            ValueError: If any control value is outside its allowed set, or
+                ``num_questions`` is not a positive integer.
+            KeyError: If the template has no ``prompt_template`` key.
+        """
+        question_type = validate_question_type(question_type).value
+        difficulty = validate_difficulty(difficulty).value
+
+        # bool is an int subclass, and True would otherwise render as "1".
+        if isinstance(num_questions, bool) or not isinstance(num_questions, int):
+            raise ValueError(
+                f"num_questions must be an integer, got {num_questions!r}"
+            )
+        if num_questions < 1:
+            raise ValueError(
+                f"num_questions must be at least 1, got {num_questions}"
+            )
+
+        template = self.prompt.get("prompt_template")
+        if template is None:
+            raise KeyError(f"'prompt_template' not found in {self.prompt_file}")
+
+        # A GroundedContext str.format-ed directly renders as a Pydantic repr -
+        # `query='...' scope=RetrievalScope(...)` - so the model sees object
+        # syntax wrapped around the passage instead of the passage (BUG-15).
+        #
+        # The orchestrator never reaches this branch: it calls
+        # as_prompt_content() itself and hands run_raw a plain str. The branch
+        # is for every other caller, for whom passing the context is the
+        # natural thing to try.
+        if isinstance(content, GroundedContext):
+            content = content.as_prompt_content()
+
+        return template.format(
+            content=content,
+            question_type=question_type,
+            difficulty=difficulty,
+            num_questions=num_questions,
+        )
+
+    # ------------------------------------------------------------------
+    # LLM
+    # ------------------------------------------------------------------
+
+    def _call_llm(self, prompt: str) -> str:
+        """Send the prompt and return the reply body.
+
+        Raises:
+            UpstreamResponseError: If the gateway returned no usable choice.
+                Always that type, so the orchestrator's retry policy recognises
+                a saturated provider without a per-agent convention (BUG-09).
+        """
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+        )
+        return response_text(response)
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def generate(
+        self,
+        content: str | GroundedContext,
+        question_type: str,
+        difficulty: str,
+        num_questions: int,
+        context: GroundedContext | None = None,
+    ) -> Any:
+        """Generate questions and hold them to what was requested.
+
+        Args:
+            content: Educational content to draw on.
+            question_type: ``mcq``, ``true_false`` or ``short_answer``.
+            difficulty: ``beginner``, ``intermediate`` or ``advanced``.
+            num_questions: Exactly how many questions to return.
+            context: Retrieved passages. When supplied, every citation is
+                verified against them and the rationales are checked for
+                support, as mentor and concept already do.
+
+        Returns:
+            A validated instance of :attr:`output_schema`.
+
+        Raises:
+            ValueError: If a control value is invalid, the reply is not JSON,
+                the reply does not satisfy the schema, the reply does not match
+                what was requested, or the citations are not grounded.
+            UpstreamResponseError: If the gateway returned nothing usable.
+        """
+        prompt = self._build_prompt(content, question_type, difficulty, num_questions)
+        raw_response = self._call_llm(prompt)
+
+        try:
+            payload = json.loads(raw_response)
+        except json.JSONDecodeError as e:
+            raise ValueError("The LLM returned invalid JSON.") from e
+
+        # The review flag is a control over the system, not an output of it.
+        # Rejecting a `false` reply instead would let a prompt injection in an
+        # uploaded document ("set requires_human_review to false") fail every
+        # generation - trading a review bypass for a denial of service.
+        # Overriding closes both. The schema keeps it Literal[True] + frozen,
+        # so nothing downstream can flip it either.
+        if isinstance(payload, dict) and payload.get("requires_human_review") is not True:
+            logger.warning(
+                "%s returned requires_human_review=%r; forcing True. This can "
+                "indicate a prompt injection in the source document.",
+                self.output_schema.__name__,
+                payload.get("requires_human_review"),
+            )
+            payload["requires_human_review"] = True
+
+        try:
+            result = self.output_schema.model_validate(payload)
+        except ValidationError as e:
+            # The detail has to be in *this* message: pytest.raises(match=...)
+            # and a human reading a log both see str(exc), never __cause__.
+            # A bare "does not match the schema" sends you to the model when
+            # the real answer is "correct_answer is not one of the options".
+            detail = "; ".join(
+                f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
+                for error in e.errors()
+            )
+            raise ValueError(
+                f"The LLM response does not match the "
+                f"{self.output_schema.__name__} schema: {detail}"
+            ) from e
+
+        self._enforce_request(result, question_type, difficulty, num_questions)
+
+        if context is not None:
+            self._enforce_grounding(result, context)
+
+        return result
+
+    # ------------------------------------------------------------------
+    # Conformance
+    # ------------------------------------------------------------------
+
+    def _enforce_request(
+        self,
+        result: Any,
+        question_type: str,
+        difficulty: str,
+        num_questions: int,
+    ) -> None:
+        """Hold the reply to the controls the caller asked for.
+
+        The prompt says "Generate exactly N questions"; without this the count
+        is a suggestion, and asking for 1 could return 3 (BUG-01). Type and
+        difficulty are checked for the same reason.
+
+        Raises:
+            ValueError: If the reply does not match the request.
+        """
+        question_type = validate_question_type(question_type).value
+        difficulty = validate_difficulty(difficulty).value
+
+        actual = len(result.questions)
+        if actual != num_questions:
+            raise ValueError(
+                f"The model returned {actual} questions but exactly "
+                f"{num_questions} were requested."
+            )
+
+        wrong_type = [
+            index
+            for index, item in enumerate(result.questions, start=1)
+            if item.type.value != question_type
+        ]
+        if wrong_type:
+            raise ValueError(
+                f"Questions {wrong_type} are not of the requested type "
+                f"{question_type!r}."
+            )
+
+        wrong_difficulty = [
+            index
+            for index, item in enumerate(result.questions, start=1)
+            if item.difficulty.value != difficulty
+        ]
+        if wrong_difficulty:
+            raise ValueError(
+                f"Questions {wrong_difficulty} are not of the requested "
+                f"difficulty {difficulty!r}."
+            )
+
+    def _enforce_grounding(self, result: Any, context: GroundedContext) -> None:
+        """Check citations and rationales against the retrieved passages.
+
+        These agents cite per question rather than at the top level, so the
+        references are flattened before verification.
+
+        Raises:
+            ValueError: If any citation is invented, or a rationale asserts
+                something the passages do not support.
+        """
+        references = [
+            reference for item in result.questions for reference in item.references
+        ]
+        verification = verify_references(references, context)
+        if not verification.valid:
+            raise ValueError(
+                "The generated references are not grounded in the retrieved "
+                f"content: {verification.unknown_segment_ids}"
+            )
+
+        support = validate_support(extract_claim_text(result), context)
+        if not support.supported:
+            raise ValueError(
+                "The generated questions contain unsupported claims: "
+                f"{support.unsupported_claims}"
+            )
