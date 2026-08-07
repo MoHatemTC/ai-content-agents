@@ -22,7 +22,12 @@ CI has none.
 from __future__ import annotations
 
 import os
+import re
 from typing import Any
+
+# Models wrap JSON in fences despite being told not to, and ``json.loads`` then
+# fails on output that was otherwise perfect.
+_FENCE = re.compile(r"^\s*```(?:json)?\s*(?P<body>.*?)\s*```\s*$", re.DOTALL)
 
 # Every agent defaulted to this same model id.
 DEFAULT_MODEL = "FW-Kimi-K2.6"
@@ -96,3 +101,78 @@ def build_client(*, timeout: float = DEFAULT_TIMEOUT) -> Any:
         base_url=os.getenv("LITELLM_BASE_URL"),
         timeout=timeout,
     )
+
+
+class UpstreamResponseError(RuntimeError):
+    """The gateway returned a success status carrying an error payload.
+
+    OpenAI-compatible gateways do not always signal upstream failure with an
+    HTTP error. OpenRouter, for instance, answers ``200`` with
+    ``{"choices": null, "error": {...}}`` when the backing provider is
+    saturated. The SDK sees a success and does not raise, so an agent doing
+    ``response.choices[0]`` dereferences ``None`` and surfaces
+    ``TypeError: 'NoneType' object is not subscriptable`` — an error naming
+    neither the cause nor a remedy, and not recognisably retryable.
+
+    **There is one of these, deliberately.** It previously existed twice, in
+    :mod:`src.validation.orchestrator` and :mod:`src.study.llm_client`, whose
+    own docstring said it was "worth consolidating once something else needs
+    it". Something did: the question agents disagreed about which exception to
+    raise for this condition, and because ``Orchestrator.transient_errors``
+    holds the orchestrator's copy by identity, the agent that handled the case
+    *correctly* was the one whose error was never retried, while the agent with
+    the unguarded dereference was retried by accident (BUG-08/09 in the
+    Sprint-4 QA report).
+
+    Both modules now re-export this class, so retry classification follows from
+    identity rather than from every agent remembering the same convention.
+    """
+
+
+def response_text(response: Any) -> str:
+    """Return the reply body from a chat completion, or raise something legible.
+
+    This is the guard that BUG-08 was about. Every agent needs it, and every
+    agent had its own version or none at all.
+
+    Args:
+        response: What the OpenAI-compatible client returned.
+
+    Returns:
+        The reply text, stripped, with any surrounding code fence removed.
+
+    Raises:
+        UpstreamResponseError: If the gateway returned no usable choice, or an
+            empty message. Always this type, so
+            :func:`~src.validation.orchestrator._default_transient_errors`
+            recognises it as retryable without any per-agent convention.
+    """
+    if response is None:
+        raise UpstreamResponseError("LLM returned no response.")
+
+    choices = getattr(response, "choices", None)
+    if not choices:
+        # Surface what the gateway said rather than letting choices[0] raise.
+        detail = getattr(response, "error", None) or "no detail provided"
+        raise UpstreamResponseError(f"LLM returned no choices ({detail}).")
+
+    message = getattr(choices[0], "message", None)
+    if message is None:
+        raise UpstreamResponseError("LLM returned an empty message.")
+
+    content = getattr(message, "content", None)
+    if not content or not content.strip():
+        # Some providers spend the whole budget on reasoning and return nothing
+        # else, so the finish reason is the only clue to what happened.
+        raise UpstreamResponseError(
+            "LLM returned an empty response. Finish reason: "
+            f"{getattr(choices[0], 'finish_reason', None)}"
+        )
+
+    return strip_fences(content)
+
+
+def strip_fences(text: str) -> str:
+    """Remove a surrounding ``` block, if the model added one."""
+    match = _FENCE.match(text)
+    return match.group("body") if match else text.strip()

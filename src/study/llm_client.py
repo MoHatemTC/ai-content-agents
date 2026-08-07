@@ -16,7 +16,8 @@ The SDK sees success, so the agent raises ``TypeError: 'NoneType' object is not
 subscriptable``, which names neither the cause nor a remedy.
 
 **No fence stripping.** Models wrap JSON in ``` blocks despite being told not
-to, and ``json.loads`` then fails on output that was otherwise perfect.
+to, and ``json.loads`` then fails on output that was otherwise perfect. Solved
+by :func:`src.llm_gateway.strip_fences`, re-exported here.
 
 **No retry.** Free-tier models are intermittent: the same prompt returned an
 error payload on one call and valid JSON on the next.
@@ -32,11 +33,15 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
 import time
 from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
+
+# Re-exported so existing imports keep working. Both now live in
+# src.llm_gateway, because retry classification depends on there being
+# exactly one UpstreamResponseError - see its docstring.
+from src.llm_gateway import UpstreamResponseError, strip_fences
 
 logger = logging.getLogger(__name__)
 
@@ -55,18 +60,6 @@ OUTPUT_OVERHEAD_TOKENS = 400
 # Upper bound whatever is requested, so a slider set to its maximum cannot ask
 # the gateway for more than it will fund. It refuses on the *requested* ceiling.
 MAX_OUTPUT_TOKENS = 8000
-
-_FENCE = re.compile(r"^\s*```(?:json)?\s*(?P<body>.*?)\s*```\s*$", re.DOTALL)
-
-
-class UpstreamResponseError(RuntimeError):
-    """The gateway returned a success status carrying an error payload.
-
-    Named separately from the identically-purposed error in
-    :mod:`src.validation.orchestrator` to avoid a ``study -> validation``
-    import for one exception type. Worth consolidating once something else
-    needs it.
-    """
 
 
 def max_tokens_default() -> int:
@@ -138,12 +131,6 @@ def schema_block(schema: type[BaseModel]) -> str:
         f"Required keys: {', '.join(required)}\n"
         f"JSON schema: {json.dumps(schema.model_json_schema())}\n"
     )
-
-
-def strip_fences(text: str) -> str:
-    """Remove a surrounding ``` block, if the model added one."""
-    match = _FENCE.match(text)
-    return match.group("body") if match else text.strip()
 
 
 def call_llm(

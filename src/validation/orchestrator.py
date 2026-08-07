@@ -33,6 +33,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel
 
+from src.llm_gateway import UpstreamResponseError
 from src.retrieval.models import GroundedContext, InsufficientGroundingError
 from src.validation.guardrails import GuardrailContext
 from src.validation.history import (
@@ -50,24 +51,6 @@ from src.validation.validator_base import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-class UpstreamResponseError(RuntimeError):
-    """The gateway returned a success status carrying an error payload.
-
-    OpenAI-compatible gateways do not always signal upstream failure with an
-    HTTP error. OpenRouter, for instance, answers ``200`` with
-    ``{"choices": null, "error": {...}}`` when the backing provider is
-    saturated. The SDK sees a success and does not raise, so the agent's
-    ``response.choices[0]`` dereferences ``None`` and surfaces as
-    ``TypeError: 'NoneType' object is not subscriptable`` — an error that says
-    nothing about the real cause and is not recognisably retryable.
-
-    This translates that into something legible and retryable. The proper fix
-    belongs in the agents' ``_call_llm``, which should check for the error
-    payload; until then this keeps a transient provider limit from being
-    recorded as a permanent, inscrutable failure.
-    """
 
 
 def _default_transient_errors() -> tuple[type[BaseException], ...]:
