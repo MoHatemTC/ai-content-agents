@@ -21,7 +21,7 @@ from streamlit.testing.v1 import AppTest
 from src.ingestion.loader import ContentLoader
 from src.ingestion.schema import Chunk, Document
 from src.ui_common import chunk_ids, render_current_content_status
-from tests.conftest import CompliantStudyClient
+from tests.conftest import CompliantAgentsClient, CompliantStudyClient
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STUDY_UI = REPO_ROOT / "src" / "study" / "ui.py"
@@ -60,17 +60,29 @@ def _no_live_calls(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("LITELLM_API_KEY", "sk-test-not-a-real-key")
     monkeypatch.setenv("LITELLM_BASE_URL", "https://gateway.invalid/v1")
 
+    from src.agents.concept_agent import ConceptAgent
+    from src.agents.mentor_agent import MentorAgent
     from src.study.flashcard_agent import FlashcardAgent
     from src.study.revision_agent import RevisionAgent
     from src.study.study_plan_agent import StudyPlanAgent
 
-    for agent_class in (FlashcardAgent, StudyPlanAgent, RevisionAgent):
+    # Mentor and concept take a different fake: CompliantAgentsClient reads the
+    # [chunk_id] markers back out of the prompt and echoes real ids and real
+    # text, so the reference and support checks those agents run have something
+    # they can actually verify. CompliantStudyClient answers the study prompts.
+    for agent_class, fake in (
+        (FlashcardAgent, CompliantStudyClient),
+        (StudyPlanAgent, CompliantStudyClient),
+        (RevisionAgent, CompliantStudyClient),
+        (MentorAgent, CompliantAgentsClient),
+        (ConceptAgent, CompliantAgentsClient),
+    ):
         original = agent_class.__init__
 
-        def patched(self, *, client=None, model=None, _original=original):
+        def patched(self, *, client=None, model=None, _original=original, _fake=fake):
             _original(
                 self,
-                client=client if client is not None else CompliantStudyClient(),
+                client=client if client is not None else _fake(),
                 model=model or "test-model",
             )
 
@@ -348,3 +360,114 @@ def test_deleting_the_active_document_clears_it(tmp_path, monkeypatch) -> None:
     assert not at.exception
     assert at.session_state["current_doc"] is None
     assert at.session_state["current_chunks"] == []
+
+
+# --------------------------------------------------------------------------- #
+# The mentor and concept pages retrieve, rather than sending the whole document
+#
+# These two pages had no coverage at all - the only page this file ever selected
+# in src/app.py was Flashcards - which is why the defect below reached a user.
+# --------------------------------------------------------------------------- #
+
+
+# A document large enough that sending it whole is obviously wrong. The real
+# report came from a 1,598-page textbook exceeding a 1,048,576-token limit; this
+# is the same shape, small enough to keep the test fast.
+BIG_DOCUMENT = (
+    "Diplomacy is the practice of negotiation between nations. "
+    "Treaties record the settlements those talks produce. "
+    "Envoys carry instructions from their capitals. "
+) * 400
+
+
+def _big_document(document_id: str = "doc-big") -> Document:
+    return Document(
+        id=document_id,
+        title="Diplomacy Primer (long)",
+        content=BIG_DOCUMENT,
+        source_type="paste",
+        file_type="txt",
+    )
+
+
+def _load_big_content(at: AppTest, count: int = 40) -> None:
+    at.session_state["current_doc"] = _big_document()
+    at.session_state["current_chunks"] = _chunks(document_id="doc-big", count=count)
+
+
+@pytest.mark.parametrize(
+    "page_label,button_label",
+    [
+        ("🧭 Mentor", "Generate Mentor Response"),
+        ("💡 Concept Explanation", "Generate Concept Explanation"),
+    ],
+    ids=["mentor", "concept"],
+)
+def test_the_page_generates_from_uploaded_content(page_label, button_label) -> None:
+    """The basic thing neither page had a test for: it runs at all."""
+    at = AppTest.from_file(str(COMBINED_APP), default_timeout=120)
+    _load_content(at, count=3)
+    at.run()
+
+    at.sidebar.radio[0].set_value(page_label).run()
+    _submit_button(at, button_label).click().run()
+
+    assert not at.exception
+    errors = [str(e.value) for e in at.error]
+    assert not errors, f"page reported: {errors}"
+
+
+@pytest.mark.parametrize(
+    "page_label,button_label",
+    [
+        ("🧭 Mentor", "Generate Mentor Response"),
+        ("💡 Concept Explanation", "Generate Concept Explanation"),
+    ],
+    ids=["mentor", "concept"],
+)
+def test_the_whole_document_is_not_sent_to_the_model(
+    page_label, button_label, monkeypatch
+) -> None:
+    """The reported bug: a 1,598-page textbook went to the model verbatim.
+
+    ``ContextWindowExceededError: The input token count exceeds the maximum
+    number of tokens allowed (1048576)``. Both pages passed ``doc.content``
+    while the three study pages retrieved first.
+
+    Asserting on the *prompt the model received* is what makes this specific.
+    A test that only checked the page did not error would pass either way, since
+    a small document fits regardless.
+    """
+    prompts: list[str] = []
+
+    from tests.conftest import CompliantAgentsClient
+
+    original_create = CompliantAgentsClient.create
+
+    def recording_create(self, **kwargs):
+        prompts.append(kwargs["messages"][0]["content"])
+        return original_create(self, **kwargs)
+
+    monkeypatch.setattr(CompliantAgentsClient, "create", recording_create)
+
+    at = AppTest.from_file(str(COMBINED_APP), default_timeout=120)
+    _load_big_content(at)
+    at.run()
+
+    at.sidebar.radio[0].set_value(page_label).run()
+    _submit_button(at, button_label).click().run()
+
+    assert not at.exception
+    assert prompts, "the page never called the model"
+
+    prompt = prompts[0]
+    assert BIG_DOCUMENT not in prompt, (
+        "the whole document reached the model - this is the "
+        "ContextWindowExceededError bug"
+    )
+    assert len(prompt) < len(BIG_DOCUMENT), (
+        f"prompt ({len(prompt):,} chars) is not smaller than the document "
+        f"({len(BIG_DOCUMENT):,} chars); retrieval did not narrow anything"
+    )
+    # Retrieval happened rather than the content simply being dropped.
+    assert "doc-big-c" in prompt, "no retrieved chunk markers in the prompt"
