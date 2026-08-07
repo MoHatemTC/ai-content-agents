@@ -6,6 +6,42 @@
 
 ---
 
+---
+
+> ## Update, 2026-08-07: all 13 bugs fixed
+>
+> On branch `fix/question-agents-contract`, stacked on the QA branch. The
+> results below are the **pre-fix** findings and are kept as the record; the
+> table that said 9 of 32 checks passed now reads **32 of 32**, plus 22 new
+> tests.
+>
+> | | before | after |
+> |---|---|---|
+> | Deterministic checks | 9 pass, 23 fail | **32 pass, 0 fail** |
+> | Suite | 546 passed, 32 xfailed | **600 passed, 0 xfailed** |
+> | LLM-judged | 4 metrics pass | 4 metrics pass |
+>
+> The count control is now honoured by the *agent*, not merely by the model —
+> which is the distinction the pre-fix report drew and could not act on.
+> Verified live: 3 asked, 3 returned, on 6 runs post-fix.
+>
+> **BLOCKER-01 is unchanged.** The Test Hub still does not exist (issue #30).
+> Note that BUG-04 was its stated prerequisite — an answer key outside the
+> options — and that is now enforced in the schema, so a scorer built on
+> `QuestionItem` can trust the key is selectable.
+>
+> Two known gaps are recorded rather than closed:
+>
+> * **Control conformance does not run on the production path.** Count, type and
+>   difficulty checks need the request, which only `generate()` has, and
+>   `RegistryAgentAdapter.run_raw` never calls it. Everything in the *schema*
+>   does apply there, and four new tests prove it. Filed as follow-up.
+> * `temperature=0.3` is hardcoded and no `max_tokens` is sent by any
+>   `src/agents` agent, where the study lane documents a real gateway 402 from
+>   an unbounded ceiling. Not in the bug list; not measured.
+
+---
+
 ## Headline: half the brief has nothing to test
 
 The brief asks me to *"assemble a test, complete an attempt through the UI, and
