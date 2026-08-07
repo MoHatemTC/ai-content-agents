@@ -155,8 +155,9 @@ class MentorAgent:
         # as a permanent failure and never retried. That is BUG-09 in a
         # different costume: the same defect the question agents had, unfiled
         # because nothing tested this path through the orchestrator.
-        # response_text raises UpstreamResponseError, which is retried, and
-        # keeps these four messages verbatim.
+        # response_text raises UpstreamResponseError, which is retried. Two of
+        # the four messages gain a detail suffix (the gateway's error payload,
+        # the finish reason); tests/test_week3_gaps.py matches on substrings.
         return response_text(response)
 
     def generate(

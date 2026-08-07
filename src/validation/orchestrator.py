@@ -148,13 +148,19 @@ class RegistryAgentAdapter:
         prompt = self._agent._build_prompt(content=content, **call_params)
         try:
             return self._agent._call_llm(prompt)
-        except (TypeError, ValueError) as exc:
-            # A shim for agents that have not adopted
-            # src.llm_gateway.response_text, which raises UpstreamResponseError
-            # directly. TypeError is an unguarded response.choices[0]; ValueError
-            # is a guard that raises the wrong type - and that one silently cost
-            # the retry, because ValueError is not in transient_errors while the
-            # translated TypeError is (BUG-09).
+        except TypeError as exc:
+            # A shim for an agent that indexes response.choices[0] unguarded.
+            # Every agent in this repo now uses src.llm_gateway.response_text,
+            # which raises UpstreamResponseError directly, so this fires for
+            # none of them - but AgentSpec is an open protocol and a third-party
+            # agent can still get here.
+            #
+            # Deliberately NOT widened to ValueError. That would make a
+            # deterministic bug after the gateway call - a bad int(), a failed
+            # parse - look like a saturated provider and be retried three times,
+            # each one a real billed call, while the run record asserted a
+            # diagnosis that was never true. BUG-09 is fixed by there being one
+            # UpstreamResponseError, not by classifying more types as transient.
             #
             # Note the scope: this try wraps the gateway call only.
             # _build_prompt is deliberately outside it, so a control-validation

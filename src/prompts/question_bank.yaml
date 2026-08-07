@@ -69,9 +69,14 @@ prompt_template: |
   - Use ONLY the supplied educational content.
   - Never invent facts.
   - Generate only questions that can be answered directly from the provided content.
+  - For true_false questions, set "options" to ["True", "False"].
+  - For short_answer questions, set "options" to null.
+  - correct_answer must be exactly one of the strings in options, character for
+    character, whenever options is not null. A key that is not among the choices
+    makes the question unanswerable and unscorable.
   - Every question must include:
       - question
-      - options (null for short_answer)
+      - options (["True", "False"] for true_false, null for short_answer)
       - correct_answer
       - rationale
       - difficulty

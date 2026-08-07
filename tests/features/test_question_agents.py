@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 
 import pytest
+from pydantic import ValidationError
 
 from src.agents.question_bank_agent import QuestionBankAgent
 from src.agents.test_help_agent import TestHelpAgent
@@ -91,7 +92,7 @@ def test_the_requested_question_count_is_enforced(agent_class, schema) -> None:
     """
     agent = agent_with(agent_class, reply([question()] * 3))
 
-    with pytest.raises(ValueError, match="1"):
+    with pytest.raises(ValueError, match="exactly 1"):
         agent.generate(SOURCE, "mcq", "beginner", 1)
 
 
@@ -151,7 +152,7 @@ def test_a_multiple_choice_question_has_options(agent_class, schema, empty) -> N
 def test_an_empty_question_set_is_rejected(agent_class, schema) -> None:
     agent = agent_with(agent_class, reply([]))
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="at least 1"):
         agent.generate(SOURCE, "mcq", "beginner", 1)
 
 
@@ -182,7 +183,9 @@ def test_the_review_flag_cannot_be_flipped_after_the_fact(agent_class, schema) -
     agent = agent_with(agent_class, reply([question()]))
     result = agent.generate(SOURCE, "mcq", "beginner", 1)
 
-    with pytest.raises(Exception):
+    # ValidationError specifically: a bare Exception would also be satisfied by
+    # an AttributeError from a typo in the field name.
+    with pytest.raises(ValidationError):
         result.requires_human_review = False
 
 
@@ -210,7 +213,7 @@ def test_unknown_control_values_are_rejected(
     """
     agent = agent_with(agent_class, reply([question()]))
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Invalid"):
         agent.generate(SOURCE, question_type, difficulty, 1)
 
 
@@ -220,7 +223,7 @@ def test_unknown_control_values_are_rejected(
 def test_a_nonsensical_question_count_is_rejected(agent_class, schema, count) -> None:
     agent = agent_with(agent_class, reply([question()]))
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="num_questions"):
         agent.generate(SOURCE, "mcq", "beginner", count)
 
 
@@ -452,3 +455,52 @@ def test_switching_off_review_is_warned_about(agent_class, schema, caplog) -> No
 
     assert "requires_human_review" in caplog.text
     assert "prompt injection" in caplog.text
+
+
+@pytest.mark.parametrize("agent_class,schema", AGENTS)
+def test_a_true_false_question_with_options_is_accepted(agent_class, schema) -> None:
+    """The positive half of the true/false rule.
+
+    Only the rejection case was covered at first, so "true_false needs options"
+    was satisfied by an agent that refused every true/false question. The
+    prompts now instruct the model to send ["True", "False"] for this type,
+    which is what makes the rule fair rather than stricter than the ask.
+    """
+    agent = agent_with(
+        agent_class,
+        reply(
+            [
+                question(
+                    type="true_false",
+                    options=["True", "False"],
+                    correct_answer="True",
+                    question="A while loop repeats while its condition is true.",
+                )
+            ]
+        ),
+    )
+
+    result = agent.generate(SOURCE, "true_false", "beginner", 1)
+
+    assert result.questions[0].type.value == "true_false"
+    assert result.questions[0].options == ["True", "False"]
+
+
+@pytest.mark.parametrize("agent_class,schema", AGENTS)
+def test_every_question_type_reaches_the_model(agent_class, schema) -> None:
+    """Control for BUG-02: the whole allowed set must get through, not just mcq."""
+    for question_type, options, answer in (
+        ("mcq", ["for", "while"], "while"),
+        ("true_false", ["True", "False"], "True"),
+        ("short_answer", None, "a while loop"),
+    ):
+        client = FakeLLMClient(
+            reply(
+                [question(type=question_type, options=options, correct_answer=answer)]
+            )
+        )
+        result = agent_class(client=client, model="test-model").generate(
+            SOURCE, question_type, "beginner", 1
+        )
+        assert result.questions[0].type.value == question_type
+        assert question_type in client.prompt

@@ -183,3 +183,110 @@ def test_agents_report_clear_empty_api_responses(
 
     with pytest.raises(RuntimeError, match=message):
         agent._call_llm("prompt")
+
+
+# --------------------------------------------------------------------------- #
+# BUG-12: support validation reaches question outputs, and only just far enough
+#
+# The narrowness is the whole design. Claiming too much is not a smaller bug
+# than claiming nothing: question stems trip the negation heuristic, and
+# distractors are deliberately false, so an over-broad extractor would report
+# every well-formed question bank as unsupported.
+# --------------------------------------------------------------------------- #
+
+
+def _question_output(**overrides):
+    from src.validation.schemas import QuestionBankOutput
+
+    item = {
+        "question": "Which of the following is NOT a Python loop type?",
+        "options": ["for", "while", "DISTRACTOR: a goto loop", "repeat"],
+        "correct_answer": "for",
+        "rationale": "A while loop repeats while its condition is true.",
+        "difficulty": "beginner",
+        "type": "mcq",
+        "references": [
+            {"segment_id": "chunk_001", "text": "REFERENCE TEXT, NOT A CLAIM"}
+        ],
+    }
+    item.update(overrides)
+    return QuestionBankOutput.model_validate(
+        {"questions": [item], "requires_human_review": True}
+    )
+
+
+def test_a_question_rationale_is_now_a_claim() -> None:
+    """Before BUG-12 was fixed this returned [], so validate_support passed
+    anything at all - a check that cannot fail, which reads as coverage."""
+    claims = extract_claim_text(_question_output())
+
+    assert claims == ["A while loop repeats while its condition is true."]
+
+
+def test_the_question_stem_is_not_a_claim() -> None:
+    """Stems read "Which of the following is NOT ..." routinely.
+
+    ``_contains_negation`` fires on that, and a stem shares few tokens with the
+    source, so treating it as a claim reports a correct question as both
+    contradictory and unsupported - two false positives from one field.
+    """
+    claims = extract_claim_text(_question_output())
+
+    assert not any("Which of the following" in claim for claim in claims)
+
+
+def test_distractors_are_not_claims() -> None:
+    """Distractors are deliberately false. Checking them for support against
+    the source would fail every well-formed question bank."""
+    claims = extract_claim_text(_question_output())
+
+    assert not any("DISTRACTOR" in claim for claim in claims)
+
+
+def test_reference_text_is_not_a_claim() -> None:
+    """Provenance is verify_references' job, as extract_claim_text's own
+    docstring has always said."""
+    claims = extract_claim_text(_question_output())
+
+    assert not any("REFERENCE TEXT" in claim for claim in claims)
+
+
+@pytest.mark.parametrize("agent_class", [MentorAgent, ConceptAgent])
+def test_extending_the_extractor_did_not_disturb_mentor_or_concept(
+    agent_class: type,
+) -> None:
+    """The containers walk is keyed to `questions`, which neither schema has.
+
+    Their groundedness ratios are pinned elsewhere (tests/test_evaluation.py),
+    so a generic "collect every string leaf" rewrite would have shifted numbers
+    other tests depend on.
+    """
+    from src.validation.schemas import ConceptOutput, MentorOutput
+
+    if agent_class is MentorAgent:
+        output = MentorOutput.model_validate(
+            {
+                "explanation": "Loops repeat instructions.",
+                "key_points": ["for loops"],
+                "next_steps": ["Practice."],
+                "references": [
+                    {"segment_id": "c1", "text": "REFERENCE TEXT, NOT A CLAIM"}
+                ],
+            }
+        )
+    else:
+        output = ConceptOutput.model_validate(
+            {
+                "definition": "A loop repeats instructions.",
+                "explanation": "Loops repeat instructions.",
+                "key_points": ["for loops"],
+                "references": [
+                    {"segment_id": "c1", "text": "REFERENCE TEXT, NOT A CLAIM"}
+                ],
+            }
+        )
+
+    claims = extract_claim_text(output)
+
+    assert claims, "mentor/concept claims disappeared"
+    assert not any("REFERENCE TEXT" in claim for claim in claims)

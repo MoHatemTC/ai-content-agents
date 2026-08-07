@@ -39,6 +39,16 @@
 > * `temperature=0.3` is hardcoded and no `max_tokens` is sent by any
 >   `src/agents` agent, where the study lane documents a real gateway 402 from
 >   an unbounded ceiling. Not in the bug list; not measured.
+> * **Observed once, live:** an `mcq` request returned malformed JSON
+>   (`"The LLM returned invalid JSON."`). Re-measured 6/6 clean afterwards, so
+>   it is a model artefact rather than a regression - but the agents do not
+>   retry a parse failure, and on the orchestrator path it is recorded as a
+>   schema error rather than retried. Worth a decision if it recurs.
+>
+> Post-fix live coverage now spans all three question types, not just `mcq`:
+> `true_false` returns `["True", "False"]` and `short_answer` returns `null`
+> options, on both agents. The prompts were updated to state that rule, because
+> the schema enforced something the prompt never asked for.
 
 ---
 

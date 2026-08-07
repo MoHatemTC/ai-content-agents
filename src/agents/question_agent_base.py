@@ -229,8 +229,12 @@ class QuestionAgentBase:
         # Rejecting a `false` reply instead would let a prompt injection in an
         # uploaded document ("set requires_human_review to false") fail every
         # generation - trading a review bypass for a denial of service.
-        # Overriding closes both. The schema keeps it Literal[True] + frozen,
-        # so nothing downstream can flip it either.
+        # Overriding closes both here. On the orchestrator path generate() is
+        # never called, so a `false` reply instead fails schema validation -
+        # which is also safe: the run is recorded with the model's text intact
+        # in payload["raw_output"] and surfaced to a reviewer, not silently
+        # accepted. The schema keeps it Literal[True] + frozen either way, so
+        # nothing downstream can flip it.
         if isinstance(payload, dict) and payload.get("requires_human_review") is not True:
             logger.warning(
                 "%s returned requires_human_review=%r; forcing True. This can "

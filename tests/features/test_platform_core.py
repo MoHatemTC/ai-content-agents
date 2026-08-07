@@ -62,6 +62,7 @@ from src.validation.schemas import (
 )
 from src.agents.question_bank_agent import QuestionBankAgent
 from src.agents.test_help_agent import TestHelpAgent
+from src.validation.orchestrator import _default_transient_errors
 from src.validation.store import PlatformStore
 from tests.conftest import FakeLLMClient, Reply
 from src.validation.validator_base import ValidatorBase
@@ -1251,27 +1252,56 @@ def test_summary_rows_render_rates_readably(store: PlatformStore) -> None:
 # --------------------------------------------------------------------------- #
 
 
-# Closes BUG-09: question_bank's correct guard raised ValueError, which is
-# not in transient_errors, so it was never retried - while test_help's
-# unguarded dereference raised TypeError, which IS translated and retried.
-# Both agents now raise UpstreamResponseError, and the adapter translates
-# ValueError too for any agent that has not adopted response_text().
-def test_a_guarded_empty_choices_error_is_still_retryable() -> None:
+# Closes BUG-09: question_bank's correct guard raised ValueError, which is not
+# in transient_errors, so it was never retried - while test_help's unguarded
+# dereference raised TypeError, which IS translated and retried. The agent that
+# handled the case correctly was the one that lost the retry.
+#
+# The fix is that there is now one UpstreamResponseError, so an agent raising it
+# is transient by identity. It is NOT that the adapter classifies more exception
+# types as transient: widening it to ValueError would retry deterministic bugs
+# three times and label them as a saturated provider.
+def test_an_agent_raising_the_shared_error_is_retryable() -> None:
     """The retry classification must not depend on which bug an agent has.
 
-    This is the trap in fixing BUG-08. Copying question_bank's guard into
-    test_help - the obvious fix - swaps its TypeError for a ValueError and
-    silently turns off retries for a genuinely transient provider condition.
-    The guard and the transient-error set have to change together.
+    This asserts the property that actually fixes BUG-09 - that the type the
+    agents raise is the type the orchestrator retries - rather than that the
+    adapter translates something on their behalf.
     """
+    assert UpstreamResponseError in _default_transient_errors()
+
     adapter = RegistryAgentAdapter(
         name="question_bank",
-        agent=_FakeAgentModule(ValueError("The LLM returned no choices.")),
+        agent=_FakeAgentModule(
+            UpstreamResponseError("LLM returned no choices (saturated).")
+        ),
         schema=QuestionBankOutput,
     )
 
-    with pytest.raises(UpstreamResponseError):
+    with pytest.raises(UpstreamResponseError, match="no choices"):
         adapter.run_raw("content")
+
+
+def test_a_deterministic_bug_after_the_gateway_call_is_not_retried() -> None:
+    """The other half: not everything that goes wrong is a saturated provider.
+
+    A ValueError raised after the gateway answered - a failed parse, a bad
+    int() - is deterministic. Retrying it burns real billed calls and, if the
+    adapter translated it, would file the run under a diagnosis that was never
+    true.
+    """
+    adapter = RegistryAgentAdapter(
+        name="question_bank",
+        agent=_FakeAgentModule(ValueError("invalid literal for int()")),
+        schema=QuestionBankOutput,
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        adapter.run_raw("content")
+
+    assert not isinstance(excinfo.value, UpstreamResponseError), (
+        "a deterministic bug was mislabelled as a transient upstream failure"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -1325,13 +1355,13 @@ def test_a_saturated_provider_reaches_the_adapter_as_upstream(
 def test_a_saturated_provider_is_retried_for_both_agents(
     store: PlatformStore, agent_class, schema
 ) -> None:
-    """The test that proves BUG-08 and BUG-09 are fixed *together*.
+    """A saturated provider is retried, for both real agents, end to end.
 
-    Fixing BUG-08 the obvious way - copying question_bank's guard into
-    test_help - would swap a retried TypeError for an un-retried ValueError and
-    silently switch retries off for a genuinely transient condition. Counting
-    the gateway calls is what catches that; asserting the exception type alone
-    would not.
+    Counting gateway calls is the point: the type assertion lives in
+    test_an_error_shaped_success_is_a_legible_error, and the classification
+    property in test_an_agent_raising_the_shared_error_is_retryable. This is
+    the integration of the two - the real agent, the real adapter, the real
+    retry policy.
     """
     client = FakeLLMClient(*[Reply(error={"message": "saturated"})] * 3)
     name = "question_bank" if schema is QuestionBankOutput else "test_help"
@@ -1346,7 +1376,11 @@ def test_a_saturated_provider_is_retried_for_both_agents(
 
     assert len(client.calls) == 3, "a transient upstream failure was not retried"
     assert result.run.status is RunStatus.FAILURE
-    assert "choices" in (result.run.error or "")
+    # Name the agent's own error type, not the adapter's canned wording - the
+    # canned message contains "choices" whatever went wrong, so asserting on it
+    # would pass even with the agent's guard reverted.
+    assert "UpstreamResponseError" in (result.run.error or ""), result.run.error
+    assert "saturated" in (result.run.error or ""), result.run.error
 
 
 @pytest.mark.parametrize(
@@ -1425,3 +1459,40 @@ def test_a_fenced_reply_survives_the_production_path(
     result = orchestrator.run_agent(name, content="Loops repeat instructions.")
 
     assert result.validation.passed, result.validation.schema_errors
+
+
+@pytest.mark.parametrize(
+    "agent_class,schema",
+    [
+        pytest.param(QuestionBankAgent, QuestionBankOutput, id="question_bank"),
+        pytest.param(TestHelpAgent, TestHelpOutput, id="test_help"),
+    ],
+)
+@pytest.mark.parametrize(
+    "bad_params",
+    [
+        pytest.param({"question_type": "ESSAY_BANANA"}, id="bad-type"),
+        pytest.param({"difficulty": "impossible"}, id="bad-difficulty"),
+        pytest.param({"num_questions": 0}, id="zero-count"),
+    ],
+)
+def test_bad_controls_are_rejected_before_a_gateway_call(
+    agent_class, schema, bad_params
+) -> None:
+    """Input validation must run on the production path, and run *first*.
+
+    This is the placement claim the whole design rests on: `run_raw` calls
+    `_build_prompt` and never `generate()`, so validation living in `generate()`
+    would pass every unit test and do nothing here.
+
+    Asserting no gateway call is what makes it specific. A test that only
+    asserted `pytest.raises(ValueError)` would stay green if the check moved
+    into `generate()` or ran after the model had already been paid for.
+    """
+    client = FakeLLMClient("{}")
+    adapter = _question_adapter(agent_class, schema, client)
+
+    with pytest.raises(ValueError):
+        adapter.run_raw("Loops repeat instructions.", **bad_params)
+
+    assert client.calls == [], "the model was called before the input was checked"
