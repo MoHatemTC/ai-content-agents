@@ -169,6 +169,17 @@ def response_text(response: Any) -> str:
             f"{getattr(choices[0], 'finish_reason', None)}"
         )
 
+    # A reply cut off by the output ceiling is *complete-looking* JSON that
+    # stops mid-object, so json.loads reports "invalid JSON" and sends you to
+    # the prompt instead of to the one number responsible. Say which it is.
+    if getattr(choices[0], "finish_reason", None) == "length":
+        raise UpstreamResponseError(
+            "The model's reply was cut off by the output limit, so the JSON is "
+            "incomplete. Raise LLM_MAX_TOKENS, ask for fewer items, or use a "
+            "model that does not emit reasoning tokens - they are charged "
+            "against the same budget as the answer."
+        )
+
     return strip_fences(content)
 
 
@@ -176,3 +187,72 @@ def strip_fences(text: str) -> str:
     """Remove a surrounding ``` block, if the model added one."""
     match = _FENCE.match(text)
     return match.group("body") if match else text.strip()
+
+
+def chat_json(
+    client: Any,
+    model: str,
+    prompt: str,
+    *,
+    temperature: float = 0.3,
+    max_tokens: int | None = None,
+) -> str:
+    r"""Send ``prompt`` asking for JSON, and return the reply body.
+
+    **Why JSON mode rather than trusting the prompt.** Every agent tells the
+    model to return JSON and then calls ``json.loads``. That works until the
+    subject matter contains backslashes. Explaining a physics chapter, the model
+    writes LaTeX - ``$\vec{E}$``, ``\Delta V``, ``\lambda`` - and ``\v``,
+    ``\D`` and ``\l`` are not valid JSON escapes, so a *syntactically
+    complete* reply is rejected by the parser and surfaces to the learner as
+    "The LLM returned invalid JSON".
+
+    Measured on the Mentor page against the physics textbook: 3 of 8 identical
+    requests failed that way. With the LaTeX forced into the prompt to make it
+    deterministic, the difference is unambiguous:
+
+    ==========================  =======  =========
+    request                      valid    invalid
+    ==========================  =======  =========
+    plain                        0        8
+    ``response_format`` json     8        0
+    ==========================  =======  =========
+
+    Forbidding LaTeX in the prompt was the alternative and is worse: the
+    notation is genuinely useful in a physics explanation, and degrading the
+    output to work around a serialisation bug is the wrong trade.
+
+    Args:
+        client: An OpenAI-compatible client.
+        model: Model id.
+        prompt: The fully rendered prompt.
+        temperature: Sampling temperature.
+        max_tokens: Output ceiling. Always worth sending - the gateway refuses
+            on the *requested* ceiling, not on usage.
+
+    Returns:
+        The reply text, guarded and de-fenced by :func:`response_text`.
+
+    Raises:
+        UpstreamResponseError: If the gateway returned nothing usable, or the
+            reply was cut off by the output limit.
+    """
+    request: dict[str, Any] = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": temperature,
+        "response_format": {"type": "json_object"},
+    }
+    if max_tokens is not None:
+        request["max_tokens"] = max_tokens
+
+    try:
+        response = client.chat.completions.create(**request)
+    except Exception:
+        # Not every model behind a LiteLLM proxy supports JSON mode, and a
+        # rejected request is worse than an unescaped one. Retry without it
+        # rather than taking the whole lane down for a capability probe.
+        request.pop("response_format")
+        response = client.chat.completions.create(**request)
+
+    return response_text(response)

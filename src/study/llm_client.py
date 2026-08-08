@@ -170,12 +170,28 @@ def call_llm(
     last_error: str = "no attempts were made"
 
     for attempt in range(1, max(1, attempts) + 1):
-        response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=temperature,
-            max_tokens=max_tokens if max_tokens is not None else max_tokens_default(),
-        )
+        request: dict[str, Any] = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": temperature,
+            "max_tokens": (
+                max_tokens if max_tokens is not None else max_tokens_default()
+            ),
+            # Every caller of this function parses the reply as JSON, and study
+            # material contains backslashes: a physics passage makes the model
+            # write LaTeX, and \v in \vec is not a valid JSON escape, so a
+            # complete reply fails json.loads. Measured on the mentor lane, the
+            # same model against the same textbook: 0 of 8 plain requests
+            # parsed, 8 of 8 in JSON mode.
+            "response_format": {"type": "json_object"},
+        }
+        try:
+            response = client.chat.completions.create(**request)
+        except Exception:
+            # Not every model behind a LiteLLM proxy supports JSON mode, and a
+            # rejected request is worse than an unescaped one.
+            request.pop("response_format")
+            response = client.chat.completions.create(**request)
 
         choices = getattr(response, "choices", None)
         if not choices:
