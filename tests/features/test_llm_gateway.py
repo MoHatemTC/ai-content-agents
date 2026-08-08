@@ -13,9 +13,12 @@ import pytest
 from src.llm_gateway import (
     DEFAULT_MODEL,
     GatewayCredentialsError,
+    UpstreamResponseError,
     build_client,
+    chat_json,
     default_model,
     gateway_availability,
+    response_text,
 )
 
 
@@ -88,3 +91,102 @@ def test_the_model_falls_back_to_the_shared_default(
     monkeypatch.delenv("DEFAULT_MODEL", raising=False)
 
     assert default_model() == DEFAULT_MODEL
+
+
+# --------------------------------------------------------------------------- #
+# JSON mode
+#
+# Every caller parses the reply with json.loads, and study material contains
+# backslashes. Explaining a physics chapter the model writes LaTeX - $\vec{E}$,
+# \Delta V, \lambda - and \v, \D and \l are not valid JSON escapes, so a
+# syntactically *complete* reply is rejected by the parser and reaches the
+# learner as "The LLM returned invalid JSON".
+#
+# Measured on the Mentor page against the physics textbook: 3 of 8 identical
+# requests failed. With the LaTeX forced to make it deterministic: 0 of 8 plain
+# requests parsed, 8 of 8 in JSON mode.
+# --------------------------------------------------------------------------- #
+
+
+class _Recorder:
+    """Records requests. Optionally refuses the first one, like a model
+    that does not support JSON mode."""
+
+    def __init__(self, *, reject_json_mode: bool = False, content: str = '{"a": 1}'):
+        self._reject = reject_json_mode
+        self._content = content
+        self.calls: list[dict] = []
+        self.chat = self
+        self.completions = self
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        if self._reject and "response_format" in kwargs:
+            raise RuntimeError("this model does not support response_format")
+        message = type("M", (), {"content": self._content})
+        choice = type("C", (), {"message": message, "finish_reason": "stop"})
+        return type("R", (), {"choices": [choice], "error": None})
+
+
+def test_json_mode_is_requested() -> None:
+    """The fix for the reported bug, in one assertion.
+
+    Without this the model is free to emit raw LaTeX backslashes, which are
+    invalid JSON escapes.
+    """
+    client = _Recorder()
+
+    chat_json(client, "some-model", "prompt")
+
+    assert client.calls[0]["response_format"] == {"type": "json_object"}
+
+
+def test_a_model_that_refuses_json_mode_still_answers() -> None:
+    """Not every model behind a LiteLLM proxy supports JSON mode.
+
+    A rejected request is worse than an unescaped one, so the call is retried
+    without it rather than taking the whole lane down for a capability probe.
+    """
+    client = _Recorder(reject_json_mode=True)
+
+    assert chat_json(client, "some-model", "prompt") == '{"a": 1}'
+
+    assert len(client.calls) == 2, "the request was not retried"
+    assert "response_format" in client.calls[0]
+    assert "response_format" not in client.calls[1]
+
+
+def test_the_output_ceiling_is_sent() -> None:
+    """The gateway refuses on the *requested* ceiling, not on usage."""
+    client = _Recorder()
+
+    chat_json(client, "some-model", "prompt", max_tokens=1234)
+
+    assert client.calls[0]["max_tokens"] == 1234
+
+
+def test_a_truncated_reply_says_so_rather_than_blaming_the_json() -> None:
+    """A reply cut off mid-object is complete-looking JSON that will not parse.
+
+    Reported as "invalid JSON" it sends you to the prompt; the cause is the one
+    number in the request. src/agents had no such check at all - only the study
+    lane did.
+    """
+    message = type("M", (), {"content": '{"explanation": "half a sen'})
+    choice = type("C", (), {"message": message, "finish_reason": "length"})
+    truncated = type("R", (), {"choices": [choice], "error": None})
+
+    with pytest.raises(UpstreamResponseError) as excinfo:
+        response_text(truncated)
+
+    text = str(excinfo.value)
+    assert "cut off" in text
+    assert "LLM_MAX_TOKENS" in text
+
+
+def test_a_complete_reply_is_not_mistaken_for_truncation() -> None:
+    message = type("M", (), {"content": '{"a": 1}'})
+    choice = type("C", (), {"message": message, "finish_reason": "stop"})
+    complete = type("R", (), {"choices": [choice], "error": None})
+
+    assert response_text(complete) == '{"a": 1}'

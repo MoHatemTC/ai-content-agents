@@ -18,7 +18,8 @@ from typing import Any, Optional
 import yaml
 from dotenv import load_dotenv
 
-from src.llm_gateway import build_client, default_model, response_text
+from src.llm_gateway import build_client, chat_json, default_model
+from src.study.llm_client import max_tokens_default
 from pydantic import ValidationError
 
 from src.models.batch import BatchGenerationFailure, BatchGenerationResult
@@ -142,26 +143,19 @@ class ConceptAgent:
             Raw LLM response.
         """
 
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt,
-                }
-            ],
-            temperature=0.3,
-        )
 
-        # These guards were correct but raised RuntimeError, which is not in
-        # Orchestrator.transient_errors - so a saturated provider was recorded
-        # as a permanent failure and never retried. That is BUG-09 in a
-        # different costume: the same defect the question agents had, unfiled
-        # because nothing tested this path through the orchestrator.
-        # response_text raises UpstreamResponseError, which is retried. Two of
-        # the four messages gain a detail suffix (the gateway's error payload,
-        # the finish reason); tests/test_week3_gaps.py matches on substrings.
-        return response_text(response)
+        # chat_json asks for JSON mode, because a physics explanation makes the
+        # model write LaTeX and ec is not a valid JSON escape - a complete
+        # reply that json.loads rejects. It also guards the response and reports
+        # a truncated reply as such rather than as "invalid JSON".
+        #
+        # The guards behind it raise UpstreamResponseError rather than the
+        # RuntimeError these agents used to raise: RuntimeError is not in
+        # Orchestrator.transient_errors, so a saturated provider was recorded as
+        # a permanent failure and never retried - BUG-09 in a different costume.
+        return chat_json(
+            self.client, self.model, prompt, max_tokens=max_tokens_default()
+        )
 
 
 

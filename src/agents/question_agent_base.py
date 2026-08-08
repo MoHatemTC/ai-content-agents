@@ -34,13 +34,14 @@ from typing import Any, ClassVar
 import yaml
 from pydantic import BaseModel, ValidationError
 
-from src.llm_gateway import build_client, default_model, response_text
+from src.llm_gateway import build_client, chat_json, default_model
 from src.retrieval.grounding import verify_references
 from src.retrieval.models import GroundedContext
 from src.validation.schemas import (
     validate_difficulty,
     validate_question_type,
 )
+from src.study.llm_client import max_tokens_default, output_budget
 from src.validation.support_validator import extract_claim_text, validate_support
 
 logger = logging.getLogger(__name__)
@@ -170,20 +171,25 @@ class QuestionAgentBase:
     # LLM
     # ------------------------------------------------------------------
 
-    def _call_llm(self, prompt: str) -> str:
+    def _call_llm(self, prompt: str, num_questions: int | None = None) -> str:
         """Send the prompt and return the reply body.
 
         Raises:
-            UpstreamResponseError: If the gateway returned no usable choice.
-                Always that type, so the orchestrator's retry policy recognises
-                a saturated provider without a per-agent convention (BUG-09).
+            UpstreamResponseError: If the gateway returned no usable choice,
+                or the reply was cut off by the output limit. Always that type,
+                so the orchestrator's retry policy recognises a saturated
+                provider without a per-agent convention (BUG-09).
         """
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
+        return chat_json(
+            self.client,
+            self.model,
+            prompt,
+            # Sized to the request, like the study lane: the gateway refuses on
+            # the *requested* ceiling, so a flat cap is wrong in both directions.
+            max_tokens=output_budget(num_questions)
+            if num_questions is not None
+            else max_tokens_default(),
         )
-        return response_text(response)
 
     # ------------------------------------------------------------------
     # Public API
@@ -218,7 +224,7 @@ class QuestionAgentBase:
             UpstreamResponseError: If the gateway returned nothing usable.
         """
         prompt = self._build_prompt(content, question_type, difficulty, num_questions)
-        raw_response = self._call_llm(prompt)
+        raw_response = self._call_llm(prompt, num_questions)
 
         try:
             payload = json.loads(raw_response)

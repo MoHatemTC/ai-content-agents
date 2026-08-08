@@ -278,3 +278,43 @@ def test_generate_sizes_the_budget_from_the_cards_requested() -> None:
 
     assert large_cap > small_cap, "the cap does not grow with the card count"
     assert large_cap >= 3059, "would still truncate the measured 20-card case"
+
+
+# --------------------------------------------------------------------------- #
+# JSON mode reaches the study lane too
+#
+# These three agents parse the reply with json.loads on the same model and the
+# same study material, so a physics passage breaks them the same way it broke
+# the Mentor page: the model writes LaTeX and \vec is not a valid JSON escape.
+# --------------------------------------------------------------------------- #
+
+
+def test_json_mode_is_requested() -> None:
+    client = FakeLLMClient(Reply("ok"))
+
+    call_llm(client, "some-model", "prompt")
+
+    assert client.calls[0]["response_format"] == {"type": "json_object"}
+
+
+def test_a_model_that_refuses_json_mode_still_answers() -> None:
+    """The proxy fallback, so an unsupported capability is not an outage."""
+
+    class _Refuses:
+        def __init__(self):
+            self.calls: list[dict] = []
+            self.chat = self
+            self.completions = self
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+            if "response_format" in kwargs:
+                raise RuntimeError("unsupported parameter: response_format")
+            return Reply("ok")
+
+    client = _Refuses()
+
+    assert call_llm(client, "some-model", "prompt") == "ok"
+
+    assert len(client.calls) == 2
+    assert "response_format" not in client.calls[1]
