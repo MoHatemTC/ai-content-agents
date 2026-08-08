@@ -31,7 +31,7 @@ from src.study.formatters import (
 from src.study.revision_agent import RevisionAgent
 from src.study.study_plan_agent import StudyPlanAgent
 from src.services.mentor_concept import MentorConceptService
-from src.ui_common import render_current_content_status
+from src.ui_common import render_current_content_status, render_provenance
 from src.retrieval import ChunkIndex, RetrievalConfig
 from src.study.grounding import NoGroundingError, grounded_content, index_chunks
 
@@ -738,7 +738,7 @@ elif page == "🧭 Mentor":
                 # embeds. The allow-list is the fallback query when it is blank,
                 # and is pure local string processing, no model call.
                 allow_list = FlashcardAgent.extract_topics(content, max_topics=30)
-                grounded, _cited, _context = ground(user_question, allow_list)
+                grounded, cited, _context = ground(user_question, allow_list)
                 # `context=` is deliberately NOT passed, though the agents
                 # accept it. Supplying it switches on validate_support, which
                 # requires every sentence to share >=60% of its tokens with the
@@ -769,9 +769,9 @@ elif page == "🧭 Mentor":
                 st.subheader("Next steps")
                 for step in payload.get("next_steps", []):
                     st.markdown(f"- {step}")
-                st.subheader("Provenance references")
-                for reference in payload.get("references", []):
-                    st.write(f"**{reference['segment_id']}**: {reference['text']}")
+                render_provenance(
+                    payload.get("references", []), cited, title=doc.title
+                )
             except NoGroundingError as exc:
                 st.error(str(exc))
             except Exception as error:
@@ -800,7 +800,7 @@ elif page == "💡 Concept Explanation":
                 # Same wiring as the mentor page: the question is the retrieval
                 # query, the allow-list is the fallback when it is blank.
                 allow_list = FlashcardAgent.extract_topics(content, max_topics=30)
-                grounded, _cited, _context = ground(user_question, allow_list)
+                grounded, cited, _context = ground(user_question, allow_list)
                 # `context=` is deliberately NOT passed, though the agents
                 # accept it. Supplying it switches on validate_support, which
                 # requires every sentence to share >=60% of its tokens with the
@@ -830,9 +830,9 @@ elif page == "💡 Concept Explanation":
                 st.subheader("Key points")
                 for point in payload.get("key_points", []):
                     st.markdown(f"- {point}")
-                st.subheader("Provenance references")
-                for reference in payload.get("references", []):
-                    st.write(f"**{reference['segment_id']}**: {reference['text']}")
+                render_provenance(
+                    payload.get("references", []), cited, title=doc.title
+                )
             except NoGroundingError as exc:
                 st.error(str(exc))
             except Exception as error:

@@ -36,6 +36,7 @@ from src.validation.review_schema import (
     assert_exportable,
 )
 from src.validation.store import PlatformStore
+from src.retrieval.models import describe_chunk_id
 
 logger = logging.getLogger(__name__)
 
@@ -270,6 +271,15 @@ def _payload_lines(value: Any, depth: int = 0) -> list[str]:
                 lines.append(f"{indent}- **{label}:**")
                 lines += _payload_lines(item, depth + 1)
             else:
+                # Markdown and PDF go to a person, so a bare chunk id reads as
+                # noise: "segment id: 54f8b219-1298-46c1-8add-...-c0004".
+                #
+                # Both are kept, unlike in the app. An export carries no
+                # document title and may span several documents, so "Passage 1"
+                # alone would not identify anything - the id is what makes an
+                # exported claim traceable back to its source.
+                if key == "segment_id":
+                    item = f"{describe_chunk_id(str(item))} ({item})"
                 lines.append(f"{indent}- **{label}:** {item}")
     elif isinstance(value, list):
         for index, item in enumerate(value, start=1):

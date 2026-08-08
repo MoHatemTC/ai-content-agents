@@ -84,3 +84,62 @@ def chunk_ids(chunks: Sequence[Chunk]) -> list[str]:
         Their ``id`` values, in order.
     """
     return [chunk.id for chunk in chunks]
+
+
+def render_provenance(references, retrieved_ids, *, title=None) -> None:
+    """Show where an answer came from, and say when it cannot be shown.
+
+    Two problems this solves. The section used to print the raw chunk id -
+    ``54f8b219-1298-46c1-8add-46d3f5020e07-c0004`` - which is a database key,
+    not a citation. And it was headed "Provenance references" while nothing
+    checked the ids were real: ``verify_references`` only runs when the agent
+    is given a ``GroundedContext``, and these pages deliberately do not pass one
+    (see the note at the call site, and issue #33). A model could invent an id
+    and the page would present it as a source.
+
+    So the label is made readable *and* checked in the same place. Doing only
+    the first would be worse than the status quo: an invented citation reading
+    ``Passage 5 · Physics Notes.pdf`` is far more convincing than a UUID.
+
+    The raw id stays in an expander, because a reviewer tracing an output back
+    to its chunk needs the real string, and stays untouched in the payload -
+    eight consumers compare it by exact string match.
+
+    Args:
+        references: The ``references`` list from the agent payload.
+        retrieved_ids: The chunk ids retrieval actually returned for this
+            request.
+        title: The source document's title, when known.
+    """
+    from src.retrieval.models import describe_chunk_id
+
+    st.subheader("Sources")
+    if not references:
+        st.caption("The model cited no sources.")
+        return
+
+    known = set(retrieved_ids or [])
+    for reference in references:
+        segment_id = reference.get("segment_id", "")
+        text = reference.get("text", "")
+
+        if segment_id in known:
+            st.markdown(f"**{describe_chunk_id(segment_id, title=title)}**")
+            st.write(text)
+        else:
+            # Not a formatting problem: the model cited something that was not
+            # retrieved, so this quote has no verified source behind it.
+            st.warning(
+                f"**Unverified citation** — the model cited `{segment_id}`, "
+                "which was not among the passages retrieved for this question. "
+                "Treat the quote below as unsourced."
+            )
+            st.write(text)
+
+    with st.expander("Raw citation ids"):
+        st.caption(
+            "The identifiers the model returned, exactly as stored in the "
+            "output payload. Used to trace an answer back to its chunk."
+        )
+        for reference in references:
+            st.code(reference.get("segment_id", ""), language=None)
