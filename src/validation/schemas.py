@@ -54,6 +54,52 @@ class QuestionType(str, Enum):
     SHORT_ANSWER = "short_answer"
 
 
+def normalize_question_type(raw: object) -> str:
+    """Map common LLM spellings of a question type to the canonical enum value.
+
+    Real gateway responses are inconsistent ("short", "Short Answer",
+    "short-answer", "MCQ", "true/false", ...) while the schema enum only
+    accepts the canonical values. Normalising before validation turns a
+    cosmetic abbreviation into a 500 into a working request.
+    """
+    if isinstance(raw, QuestionType):
+        return raw.value
+    value = " ".join(
+        str(raw).strip().lower().replace("_", " ").replace("-", " ").replace("/", " ").split()
+    )
+    aliases: dict[str, str] = {
+        "mcq": "mcq",
+        "multiple choice": "mcq",
+        "multiplechoice": "mcq",
+        "true false": "true_false",
+        "true or false": "true_false",
+        "truefalse": "true_false",
+        "tf": "true_false",
+        "boolean": "true_false",
+        "short answer": "short_answer",
+        "shortanswer": "short_answer",
+        "short": "short_answer",
+    }
+    return aliases.get(value, str(raw))
+
+
+def normalize_question_payload(payload: dict) -> dict:
+    """Rewrite every ``questions[].type`` to its canonical enum value.
+
+    Returns a shallow-copied payload so the caller's dict is untouched.
+    """
+    questions = payload.get("questions")
+    if not isinstance(questions, list):
+        return payload
+    cleaned: list[dict] = []
+    for question in questions:
+        if not isinstance(question, dict):
+            cleaned.append(question)
+            continue
+        cleaned.append({**question, "type": normalize_question_type(question.get("type"))})
+    return {**payload, "questions": cleaned}
+
+
 class QuestionItem(BaseModel):
     """
     Represents a single generated question.

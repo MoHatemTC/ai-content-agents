@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 from pydantic import ValidationError
 
 from src.llm_gateway import build_client, default_model
-from src.validation.schemas import QuestionBankOutput
+from src.validation.schemas import QuestionBankOutput, normalize_question_payload
 
 load_dotenv()
 
@@ -200,7 +200,9 @@ class QuestionBankAgent:
             raise ValueError("The LLM returned invalid JSON.") from e
 
         try:
-            return QuestionBankOutput.model_validate(response_json)
+            return QuestionBankOutput.model_validate(
+                normalize_question_payload(response_json)
+            )
 
         except ValidationError as e:
             raise ValueError(

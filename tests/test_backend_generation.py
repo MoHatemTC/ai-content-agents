@@ -39,7 +39,12 @@ def gen_app_client(tmp_path) -> tuple[TestClient, str, str]:
             files={
                 "file": (
                     "biology.txt",
-                    b"Mitochondria is the powerhouse of the cell. Photosynthesis converts sunlight into energy.",
+                    b"Mitochondria are the organelles that produce most of the cell's supply of "
+                    b"adenosine triphosphate, the molecule cells use as a source of chemical energy. "
+                    b"Photosynthesis is the process by which green plants and certain other organisms "
+                    b"transform light energy into chemical energy. During photosynthesis in green plants "
+                    b"light energy is captured and used to convert water, carbon dioxide and minerals "
+                    b"into oxygen and energy-rich organic compounds. Cells divide to reproduce and grow.",
                     "text/plain",
                 )
             },
@@ -83,6 +88,7 @@ def test_generate_questions_success(gen_app_client):
     assert "generationId" in data
     assert len(data["questions"]) > 0
     assert data["grounding_score"] >= 0.0
+    assert all(q["type"] == "MCQ" for q in data["questions"])
 
 
 def test_generate_test_help_success(gen_app_client):

@@ -35,7 +35,13 @@ def chat_app_client(tmp_path) -> tuple[TestClient, str, str]:
             files={
                 "file": (
                     "physics.txt",
-                    b"Newton's laws of motion govern mechanics.",
+                    b"Newton's laws of motion are three physical laws that together describe the "
+                    b"relationship between the motion of an object and the forces acting on it. The "
+                    b"first law states that an object at rest stays at rest and an object in motion "
+                    b"stays in motion unless acted upon by a net external force. The second law states "
+                    b"that the acceleration of an object is directly proportional to the net force "
+                    b"acting on it and inversely proportional to its mass. The third law states that "
+                    b"every action has an equal and opposite reaction.",
                     "text/plain",
                 )
             },

@@ -15,6 +15,8 @@ from uuid import uuid4
 
 from backend.generation.schemas import (
     Citation,
+    FlashcardTopicsRequest,
+    FlashcardTopicsResponse,
     GeneratedQuestion,
     GenerateFlashcardsRequest,
     GenerateFlashcardsResponse,
@@ -29,36 +31,75 @@ from backend.generation.schemas import (
     WeakTopic,
     WsFlashcard,
 )
+from backend.errors import ApiError
 from backend.search.service import build_grounded_context
 from src.agents.question_bank_agent import QuestionBankAgent
 from src.agents.test_help_agent import TestHelpAgent
 from src.llm_gateway import build_client, default_model
 from src.retrieval.models import InsufficientGroundingError
+from src.schemas.flashcards import Flashcard
 from src.study.flashcard_agent import FlashcardAgent
 from src.study.revision_agent import RevisionAgent
 from src.study.study_plan_agent import StudyPlanAgent
 from src.validation.review_schema import AgentRun, GeneratedOutput, OutputStatus
-from src.validation.schemas import QuestionBankOutput
+from src.validation.schemas import QuestionBankOutput, QuestionItem
 from src.validation.store import PlatformStore
 from src.validation.support_validator import extract_claim_text, validate_support
-from tests.conftest import CompliantAgentsClient, CompliantStudyClient
 
 logger = logging.getLogger(__name__)
 
 
-def _chunk_texts(grounded) -> list[str]:
-    """Extract non-empty chunk texts from a grounded context."""
-    return [c.chunk.text for c in grounded.chunks if c.chunk.text.strip()]
-
-
 def _get_llm_client(for_study: bool = False) -> Any:
-    """Resolve an LLM client: real LiteLLM client if configured, or compliant fake double."""
+    """Resolve an LLM client.
+
+    Returns the real LiteLLM client when credentials are configured. The
+    compliant test doubles are used ONLY when ``SENSEI_USE_TEST_DOUBLES`` is
+    set (the pytest suite, via ``tests/conftest.py``). In production a missing
+    or broken LLM configuration raises a 503 rather than fabricating content,
+    so the API never serves placeholder "Question 1 about the supplied
+    content?" output from the doubles.
+
+    The doubles are imported lazily from ``src.testing.compliant`` — never from
+    ``tests.conftest``, whose import-time env writes would wipe the gateway
+    credentials in a running server.
+    """
+    if os.getenv("SENSEI_USE_TEST_DOUBLES"):
+        if for_study:
+            from src.testing.compliant import CompliantStudyClient
+
+            return CompliantStudyClient()
+        from src.testing.compliant import CompliantAgentsClient
+
+        return CompliantAgentsClient()
     if os.getenv("LITELLM_API_KEY") or os.getenv("OPENAI_API_KEY"):
         try:
             return build_client()
-        except Exception:  # noqa: BLE001, S110
-            pass
-    return CompliantStudyClient() if for_study else CompliantAgentsClient()
+        except Exception as exc:  # noqa: BLE001
+            raise ApiError(
+                status_code=503,
+                code="llm_unavailable",
+                message=f"LLM provider unavailable: {type(exc).__name__}",
+            ) from exc
+    raise ApiError(
+        status_code=503,
+        code="llm_unavailable",
+        message=(
+            "LLM provider is not configured. Set LITELLM_API_KEY and "
+            "LITELLM_BASE_URL in .env and restart the server."
+        ),
+    )
+
+
+_DISPLAY_TYPES = {
+    "mcq": "MCQ",
+    "true_false": "True/False",
+    "short_answer": "Short Answer",
+}
+
+
+def _display_type(raw: str) -> str:
+    """Map an agent question-type value to the UI display label."""
+    return _DISPLAY_TYPES.get((raw or "").lower(), raw)
 
 
 def _resolve_model(requested: str | None) -> str:
@@ -122,21 +163,46 @@ def generate_questions_service(
             num_questions=request.count,
         )
 
-    # 3. Build citations from grounded chunks
-    citations: list[Citation] = []
-    for chunk in grounded.chunks:
-        doc_id = (
-            chunk.chunk.chunk_id.split("-c")[0]
-            if "-c" in chunk.chunk.chunk_id
-            else chunk.chunk.chunk_id
-        )
-        citations.append(
-            Citation(
-                doc=doc_id,
-                snippet=chunk.chunk.text[:200],
-                score=round(chunk.score, 3),
+    # 3. Build per-question citations from each question's own grounded references.
+    # The agent returns references per question, so citations must follow the
+    # question rather than reusing one shared list for the whole request.
+    chunk_by_id = {chunk.chunk.chunk_id: chunk for chunk in grounded.chunks}
+
+    def _question_citations(q: QuestionItem) -> list[Citation]:
+        """Map one question's agent references to the citation contract."""
+        refs = getattr(q, "references", None) or []
+        if not refs:
+            # No per-question references: fall back to the retrieved context so
+            # every question still shows where the material came from.
+            return [
+                Citation(
+                    doc=(
+                        chunk.chunk.chunk_id.split("-c")[0]
+                        if "-c" in chunk.chunk.chunk_id
+                        else chunk.chunk.chunk_id
+                    ),
+                    chunk=chunk.chunk.chunk_id,
+                    snippet=chunk.chunk.text[:200],
+                    score=round(chunk.score, 3),
+                )
+                for chunk in grounded.chunks
+            ]
+
+        result: list[Citation] = []
+        for ref in refs:
+            segment_id = ref.segment_id
+            retrieved = chunk_by_id.get(segment_id)
+            doc_id = segment_id.split("-c")[0] if "-c" in segment_id else segment_id
+            snippet = ref.text or (retrieved.chunk.text if retrieved else "")
+            result.append(
+                Citation(
+                    doc=doc_id,
+                    chunk=segment_id,
+                    snippet=snippet[:200],
+                    score=round(retrieved.score, 3) if retrieved else 0.0,
+                )
             )
-        )
+        return result
 
     # 4. Support validation score
     support = validate_support(extract_claim_text(output), grounded)
@@ -149,7 +215,7 @@ def generate_questions_service(
             GeneratedQuestion(
                 id=f"q-{uuid4().hex[:8]}",
                 prompt=q.question,
-                type=q.type.upper() if hasattr(q, "type") and q.type else q_type,
+                type=_display_type(getattr(q, "type", "") or q_type),
                 difficulty=request.difficulty,
                 options=getattr(q, "options", None),
                 answer=getattr(q, "correct_answer", "") or getattr(q, "answer", ""),
@@ -159,7 +225,7 @@ def generate_questions_service(
                 grounded=grounding_score,
                 estMinutes=2,
                 review="Pending",
-                citations=citations,
+                citations=_question_citations(q),
             )
         )
 
@@ -212,11 +278,24 @@ def generate_flashcards_service(
     db_path: str,
     chroma_dir: str,
 ) -> GenerateFlashcardsResponse:
-    """Generate flashcards grounded in workspace documents."""
+    """Generate flashcards grounded in workspace documents.
+
+    When ``request.topic`` names a real topic (anything but "All chapters"),
+    it becomes the retrieval query so the deck drills that specific material
+    instead of the whole document. Every card carries its own citations built
+    from the chunk id the model cited (or, as a fallback, the chunks whose
+    text contains the card's source topic).
+    """
     store = PlatformStore(db_path)
+    topic = (request.topic or "").strip()
+    query = (
+        topic
+        if topic and topic.lower() != "all chapters"
+        else "flashcards key concepts definitions terms"
+    )
     grounded = build_grounded_context(
         workspace_id=request.workspaceId,
-        query="flashcards key concepts definitions terms",
+        query=query,
         document_ids=request.documentIds if request.documentIds else None,
         chroma_dir=chroma_dir,
     )
@@ -229,18 +308,61 @@ def generate_flashcards_service(
     client = _get_llm_client(for_study=True)
     agent = FlashcardAgent(client=client, model=_resolve_model(request.model))
 
-    topics = [t.split()[0] for t in _chunk_texts(grounded)]
-    if not topics:
-        topics = ["Educational Concept"]
-
+    content_text = grounded.as_prompt_content()
     card_set = agent.generate(
-        topics=topics,
-        card_format="term-definition",
+        content=content_text,
+        card_format=request.cardFormat,
         card_count=request.count,
     )
 
+    chunk_by_id = {c.chunk.chunk_id: c for c in grounded.chunks}
+
+    def _card_citations(card: Flashcard) -> list[Citation]:
+        """Map one card's cited chunk (or topic match) to citations."""
+        chunk_id = card.source_chunk_id
+        retrieved = chunk_by_id.get(chunk_id) if chunk_id else None
+        if retrieved:
+            doc_id = chunk_id.split("-c")[0] if "-c" in chunk_id else chunk_id
+            return [
+                Citation(
+                    doc=doc_id,
+                    chunk=chunk_id,
+                    snippet=retrieved.chunk.text[:200],
+                    score=round(retrieved.score, 3),
+                )
+            ]
+        if not card.source_topic:
+            return []
+        needle = card.source_topic.lower()
+        matched = [
+            c
+            for c in grounded.chunks
+            if needle in c.chunk.text.lower()
+        ]
+        return [
+            Citation(
+                doc=(
+                    c.chunk.chunk_id.split("-c")[0]
+                    if "-c" in c.chunk.chunk_id
+                    else c.chunk.chunk_id
+                ),
+                chunk=c.chunk.chunk_id,
+                snippet=c.chunk.text[:200],
+                score=round(c.score, 3),
+            )
+            for c in matched[:3]
+        ]
+
     flashcards: list[WsFlashcard] = [
-        WsFlashcard(front=card.front, back=card.back, tag=card.source_topic)
+        WsFlashcard(
+            front=card.front,
+            back=card.back,
+            tag=card.source_topic,
+            format=card.format,
+            topic=card.source_topic,
+            sourceChunkId=card.source_chunk_id,
+            citations=_card_citations(card),
+        )
         for card in card_set.cards
     ]
 
@@ -273,6 +395,32 @@ def generate_flashcards_service(
     )
 
 
+def flashcard_topics_service(
+    request: FlashcardTopicsRequest,
+    *,
+    db_path: str,
+    chroma_dir: str,
+) -> FlashcardTopicsResponse:
+    """Extract the real topic allow-list from the indexed document chunks.
+
+    Uses the same deterministic :meth:`FlashcardAgent.extract_topics` heuristic
+    the agent itself runs on the grounded content, so the topic selector in the
+    studio is always in sync with what the PDF actually covers.
+    """
+    grounded = build_grounded_context(
+        workspace_id=request.workspaceId,
+        query="flashcards key concepts definitions terms",
+        document_ids=request.documentIds if request.documentIds else None,
+        chroma_dir=chroma_dir,
+    )
+    if not grounded.chunks:
+        return FlashcardTopicsResponse(topics=[])
+
+    content_text = grounded.as_prompt_content()
+    topics = FlashcardAgent.extract_topics(content_text)
+    return FlashcardTopicsResponse(topics=topics)
+
+
 def generate_study_plan_service(
     request: GenerateStudyPlanRequest,
     *,
@@ -296,30 +444,40 @@ def generate_study_plan_service(
     client = _get_llm_client(for_study=True)
     agent = StudyPlanAgent(client=client, model=_resolve_model(request.model))
 
-    topics = list({t.split()[0] for t in _chunk_texts(grounded)})
-    if not topics:
-        topics = ["Core Concept"]
+    content_text = grounded.as_prompt_content()
 
     start = date.today()  # noqa: DTZ011
-    weeks = request.weeks or 4
-    end = start + timedelta(weeks=weeks)
+    if request.days:
+        span_days = max(int(request.days), 1)
+        is_day_based = True
+        end = start + timedelta(days=span_days)
+    else:
+        weeks = max(request.weeks or 4, 1)
+        span_days = weeks * 7
+        is_day_based = span_days < 14
+        end = start + timedelta(weeks=weeks)
+
+    hours_per_week = request.hoursPerWeek or (
+        (request.hoursPerDay or 2) * 7 if request.hoursPerDay is not None else 10.0
+    )
 
     plan = agent.generate(
-        topics=topics,
+        content=content_text,
         start_date=start,
         end_date=end,
         learner_goal="Master workspace topics",
         difficulty="medium",
-        hours_per_week=request.hoursPerWeek or 10.0,
+        hours_per_week=hours_per_week,
     )
 
     sections: list[StudyPlanSection] = []
     days: list[StudyPlanDay] = []
 
     for idx, item in enumerate(plan.topic_schedule, start=1):
+        label = f"Day {idx}" if is_day_based else f"Week {(idx - 1) // 7 + 1}"
         sections.append(
             StudyPlanSection(
-                title=f"Week {(idx - 1) // 7 + 1}: {item.topic}",
+                title=f"{label}: {item.topic}",
                 items=[f"Resource: {r}" for r in item.resources]
                 or [f"Study {item.topic}"],
             )
@@ -357,7 +515,11 @@ def generate_study_plan_service(
     return GenerateStudyPlanResponse(
         generationId=gen_id,
         kind="study_plan",
-        summary=f"Structured {weeks}-week study plan for {plan.goal}",
+        summary=(
+            f"Structured {span_days}-day study plan for {plan.goal}"
+            if is_day_based
+            else f"Structured {weeks}-week study plan for {plan.goal}"
+        ),
         sections=sections,
         days=days,
     )
@@ -386,18 +548,18 @@ def generate_revision_sheet_service(
     client = _get_llm_client(for_study=True)
     agent = RevisionAgent(client=client, model=_resolve_model(request.model))
 
-    topics = (
-        request.topics
-        if request.topics
-        else [t.split()[0] for t in _chunk_texts(grounded)][:3]
-    )
+    content_text = grounded.as_prompt_content()
+    extracted_topics = FlashcardAgent.extract_topics(content_text)
+    topics = [t for t in (request.topics or []) if t in extracted_topics]
+    if not topics:
+        topics = extracted_topics[:3]
     if not topics:
         topics = ["Core Concept"]
 
     session = agent.generate(
+        content=content_text,
         selected_topics=topics,
         session_date=date.today(),  # noqa: DTZ011
-        difficulty="medium",
     )
 
     sections: list[StudyPlanSection] = []

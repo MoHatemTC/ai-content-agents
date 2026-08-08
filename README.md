@@ -72,6 +72,38 @@ client and never need a key.
 
 ## Run
 
+The FastAPI backend serves the Sensei frontend on port `8000`:
+
+```bash
+.venv/bin/python -c "
+import os
+from dotenv import load_dotenv
+load_dotenv('.env', override=False)
+os.environ.pop('SUPABASE_JWT_SECRET', None)
+import uvicorn
+uvicorn.run('backend.main:app', host='127.0.0.1', port=8000)
+"
+```
+
+Or simply:
+
+```bash
+~/Desktop/Sensei-AI/start-dev.sh   # starts this backend AND the frontend together
+~/Desktop/Sensei-AI/start-dev.sh status   # check what is running
+~/Desktop/Sensei-AI/start-dev.sh stop     # stop both
+```
+
+- `backend/main.py` loads `.env` from an absolute path, so uvicorn works from
+  any working directory.
+- `SUPABASE_JWT_SECRET` is dropped at launch so the backend verifies Supabase
+  access tokens via GoTrue (local HS256 verification breaks login).
+- Health check: `curl http://127.0.0.1:8000/health`.
+- **The backend stops on laptop shutdown** — after a reboot run
+  `start-dev.sh` again before using the frontend, or the app shows
+  "Unable to load your workspaces / Load failed".
+
+Other entrypoints:
+
 ```bash
 streamlit run src/app.py               # combined study-assistant UI
 streamlit run src/validation/ui.py     # review / history / export / metrics

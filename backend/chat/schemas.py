@@ -34,6 +34,7 @@ class WsChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     text: str
     time: str
+    citations: list[ChatCitation] = Field(default_factory=list)
 
 
 class MentorChatRequest(BaseModel):

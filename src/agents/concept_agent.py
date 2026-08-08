@@ -162,6 +162,7 @@ class ConceptAgent:
         user_question: str | None = None,
         difficulty: str | DifficultyLevel = DifficultyLevel.BEGINNER,
         context: GroundedContext | None = None,
+        strict: bool = True,
     ) -> ConceptOutput:
         """
         Generate a concept explanation.
@@ -180,6 +181,12 @@ class ConceptAgent:
                 Optional retrieved content used to ground the explanation.
                 When supplied, generated references and the explanation are
                 validated against this context.
+
+            strict:
+                When ``True`` (default), a reference or support validation
+                failure raises. Interactive chat passes ``strict=False`` so a
+                well-formed but synthesized answer is still delivered to the
+                learner instead of failing the request.
 
         Returns:
             Validated ConceptOutput object.
@@ -214,7 +221,7 @@ class ConceptAgent:
                 context,
             )
 
-            if not verification.valid:
+            if not verification.valid and strict:
                 raise ValueError(
                     "The generated references are not grounded in the retrieved content."
                 )
@@ -222,7 +229,7 @@ class ConceptAgent:
         if context is not None:
             support = validate_support(extract_claim_text(result), context)
 
-            if not support.supported:
+            if not support.supported and strict:
                 raise ValueError(
                     "The generated explanation contains unsupported claims."
                 )

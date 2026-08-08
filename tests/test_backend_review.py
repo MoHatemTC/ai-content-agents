@@ -36,7 +36,11 @@ def review_app_client(tmp_path) -> tuple[TestClient, str, str]:
             files={
                 "file": (
                     "chem.txt",
-                    b"Organic chemistry involves carbon compounds.",
+                    b"Organic chemistry is the study of the structure, properties, composition, "
+                    b"reactions and preparation of carbon-containing compounds. Most organic "
+                    b"compounds contain carbon and hydrogen atoms, and they may also contain "
+                    b"oxygen, nitrogen, sulfur or halogens. Hydrocarbons, alcohols, carboxylic "
+                    b"acids, amines and esters are common families of organic compounds.",
                     "text/plain",
                 )
             },
@@ -77,8 +81,8 @@ def test_review_queue_and_approve(review_app_client):
     assert app_resp.status_code == 200
     data = app_resp.json()
     assert data["itemId"] == target_id
-    assert data["status"] == "Approved"
-    assert data["audit"]["action"] == "Approved"
+    assert data["status"] == "approved"
+    assert data["audit"]["action"] == "approve"
 
 
 def test_review_actions_reject_needs_edit_comment(review_app_client):
@@ -95,7 +99,7 @@ def test_review_actions_reject_needs_edit_comment(review_app_client):
         headers=headers,
     )
     assert edit_resp.status_code == 200
-    assert edit_resp.json()["status"] in ["Needs Edit", "Pending"]
+    assert edit_resp.json()["status"] in ["edited", "pending"]
 
     # Reject
     rej_resp = client.post(
@@ -108,7 +112,7 @@ def test_review_actions_reject_needs_edit_comment(review_app_client):
         headers=headers,
     )
     assert rej_resp.status_code == 200
-    assert rej_resp.json()["status"] == "Rejected"
+    assert rej_resp.json()["status"] == "rejected"
 
     # Audit history
     audit_resp = client.get(f"/review/audit?workspace_id={ws_id}", headers=headers)

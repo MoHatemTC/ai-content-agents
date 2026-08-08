@@ -57,6 +57,10 @@ class WsFlashcard(BaseModel):
     front: str
     back: str
     tag: str | None = None
+    format: str = "term-definition"
+    topic: str | None = None
+    sourceChunkId: str | None = None
+    citations: list[Citation] = Field(default_factory=list)
 
 
 class GenerateFlashcardsRequest(BaseModel):
@@ -65,12 +69,24 @@ class GenerateFlashcardsRequest(BaseModel):
     model: str = "gemini"
     options: dict[str, Any] = Field(default_factory=dict)
     count: int = 10
+    cardFormat: str = "term-definition"
+    topic: str | None = None
 
 
 class GenerateFlashcardsResponse(BaseModel):
     generationId: str
     kind: Literal["flashcards"] = "flashcards"
     flashcards: list[WsFlashcard]
+
+
+class FlashcardTopicsRequest(BaseModel):
+    workspaceId: str
+    documentIds: list[str] = Field(default_factory=list)
+    model: str = "gemini"
+
+
+class FlashcardTopicsResponse(BaseModel):
+    topics: list[str] = Field(default_factory=list)
 
 
 class StudyPlanSection(BaseModel):

@@ -14,6 +14,8 @@ from backend.auth.schemas import AuthUser
 from backend.config import Settings
 from backend.deps import get_current_user, get_settings, require_workspace_member
 from backend.generation.schemas import (
+    FlashcardTopicsRequest,
+    FlashcardTopicsResponse,
     GenerateFlashcardsRequest,
     GenerateFlashcardsResponse,
     GenerateQuestionsRequest,
@@ -24,6 +26,7 @@ from backend.generation.schemas import (
     GenerateStudyPlanResponse,
 )
 from backend.generation.service import (
+    flashcard_topics_service,
     generate_flashcards_service,
     generate_questions_service,
     generate_revision_sheet_service,
@@ -86,6 +89,25 @@ async def generate_flashcards(
         user=current_user,
     )
     return generate_flashcards_service(
+        request_body,
+        db_path=settings.platform_db_path,
+        chroma_dir=settings.chroma_dir,
+    )
+
+
+@router.post("/flashcard-topics", response_model=FlashcardTopicsResponse)
+async def flashcard_topics(
+    request_body: FlashcardTopicsRequest,
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> FlashcardTopicsResponse:
+    """Return the topic allow-list extracted from the indexed documents."""
+    require_workspace_member(
+        db_path=settings.platform_db_path,
+        workspace_id=request_body.workspaceId,
+        user=current_user,
+    )
+    return flashcard_topics_service(
         request_body,
         db_path=settings.platform_db_path,
         chroma_dir=settings.chroma_dir,

@@ -18,11 +18,23 @@ Run the server with::
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+# Load the repository .env from an absolute path so the app works no matter
+# which working directory uvicorn is launched from. Without this the gateway
+# credentials are missing and generation would fall back to fabricated output.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=False)
+except Exception:  # pragma: no cover - python-dotenv is a dev convenience
+    pass
 
 from backend import __version__
 from backend.auth.router import router as auth_router
@@ -39,6 +51,7 @@ from backend.documents.router import (
 from backend.errors import register_exception_handlers
 from backend.exports.router import router as exports_router
 from backend.generation.router import router as generation_router
+from backend.history.router import router as history_router
 from backend.migrations import run_pending
 from backend.review.router import router as review_router
 from backend.routers import health
@@ -87,6 +100,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(documents_router)
     app.include_router(search_router)
     app.include_router(generation_router)
+    app.include_router(history_router)
     app.include_router(chat_router)
     app.include_router(review_router)
     app.include_router(exports_router)

@@ -30,6 +30,7 @@ from datetime import datetime, timezone
 from backend.auth.migrations import MIGRATIONS as AUTH_MIGRATIONS
 from backend.chat.migrations import MIGRATIONS as CHATS_MIGRATIONS
 from backend.documents.migrations import MIGRATIONS as DOCUMENTS_MIGRATIONS
+from backend.history.migrations import MIGRATIONS as HISTORY_MIGRATIONS
 from backend.workspaces.migrations import MIGRATIONS as WORKSPACES_MIGRATIONS
 
 Migration = Callable[[sqlite3.Connection], None]
@@ -39,6 +40,7 @@ MIGRATIONS: list[tuple[str, Migration]] = [
     *WORKSPACES_MIGRATIONS,
     *DOCUMENTS_MIGRATIONS,
     *CHATS_MIGRATIONS,
+    *HISTORY_MIGRATIONS,
 ]
 
 

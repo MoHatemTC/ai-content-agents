@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 from pydantic import ValidationError
 
 from src.llm_gateway import build_client, default_model
-from src.validation.schemas import TestHelpOutput
+from src.validation.schemas import TestHelpOutput, normalize_question_payload
 
 __test__ = False
 
@@ -191,7 +191,7 @@ class TestHelpAgent:
             raise ValueError("The LLM returned invalid JSON.") from e
 
         try:
-            return TestHelpOutput.model_validate(response_json)
+            return TestHelpOutput.model_validate(normalize_question_payload(response_json))
 
         except ValidationError as e:
             raise ValueError(

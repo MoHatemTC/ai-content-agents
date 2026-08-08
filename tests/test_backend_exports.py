@@ -35,7 +35,12 @@ def export_app_client(tmp_path) -> tuple[TestClient, str, str]:
             files={
                 "file": (
                     "history.txt",
-                    b"World War II began in 1939 and ended in 1945.",
+                    b"World War II was a global conflict that lasted from 1939 until 1945, "
+                    b"involving the great powers of the time and almost every country in the "
+                    b"world. The war was fought between the Axis powers and the Allies across "
+                    b"multiple theatres, including Europe, the Pacific, Africa and Asia. Key "
+                    b"events include the invasion of Poland, the attack on Pearl Harbor and the "
+                    b"atomic bombings of Japan.",
                     "text/plain",
                 )
             },

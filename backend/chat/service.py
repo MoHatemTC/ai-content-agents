@@ -97,7 +97,7 @@ def list_chats_service(
         for c_id, title, kind, model, created_at in chat_rows:
             msg_rows = conn.execute(
                 """
-                SELECT id, role, text, created_at
+                SELECT id, role, text, citations_json, created_at
                 FROM chat_messages
                 WHERE chat_id = ?
                 ORDER BY created_at ASC
@@ -111,8 +111,11 @@ def list_chats_service(
                     role=role,
                     text=text,
                     time=m_created[:16].replace("T", " "),
+                    citations=[
+                        ChatCitation(**c) for c in (json.loads(raw) if raw else [])
+                    ],
                 )
-                for m_id, role, text, m_created in msg_rows
+                for m_id, role, text, raw, m_created in msg_rows
             ]
 
             chats.append(
@@ -193,39 +196,64 @@ def send_chat_message_service(
 
     if kind == "concept":
         agent = ConceptAgent(client=client, model=_resolve_model(request.model))
-        concept_output = agent.generate(
+        output = agent.generate(
             content=grounded,
             user_question=request.message,
             difficulty="intermediate",
             context=grounded,
+            strict=False,
         )
-        reply_text = f"{concept_output.definition}\n\n{concept_output.explanation}"
+        reply_text = f"{output.definition}\n\n{output.explanation}"
     else:
         agent = MentorAgent(client=client, model=_resolve_model(request.model))
-        mentor_output = agent.generate(
+        output = agent.generate(
             content=grounded,
             user_question=request.message,
             difficulty="intermediate",
             context=grounded,
+            strict=False,
         )
-        reply_text = mentor_output.explanation
+        reply_text = output.explanation
+
+    # Build citations from the references the agent actually cited for this
+    # reply, so each message shows its own sources rather than every chunk that
+    # was retrieved. Falls back to the retrieved context when the reply carries
+    # no references.
+    chunk_by_id = {c.chunk.chunk_id: c for c in grounded.chunks}
+    refs = getattr(output, "references", None) or []
 
     citations: list[ChatCitation] = []
-    for chunk in grounded.chunks:
-        doc_id = (
-            chunk.chunk.chunk_id.split("-c")[0]
-            if "-c" in chunk.chunk.chunk_id
-            else chunk.chunk.chunk_id
-        )
-        title = doc_titles.get(doc_id, "Document")
-        citations.append(
-            ChatCitation(
-                docId=doc_id,
-                docTitle=title,
-                page=getattr(chunk, "page", None),
-                snippet=chunk.chunk.text[:200],
+    if refs:
+        for ref in refs:
+            segment_id = ref.segment_id
+            retrieved = chunk_by_id.get(segment_id)
+            doc_id = segment_id.split("-c")[0] if "-c" in segment_id else segment_id
+            title = doc_titles.get(doc_id, "Document")
+            snippet = ref.text or (retrieved.chunk.text if retrieved else "")
+            citations.append(
+                ChatCitation(
+                    docId=doc_id,
+                    docTitle=title,
+                    page=getattr(retrieved, "page", None) if retrieved else None,
+                    snippet=snippet[:200],
+                )
             )
-        )
+    else:
+        for chunk in grounded.chunks:
+            doc_id = (
+                chunk.chunk.chunk_id.split("-c")[0]
+                if "-c" in chunk.chunk.chunk_id
+                else chunk.chunk.chunk_id
+            )
+            title = doc_titles.get(doc_id, "Document")
+            citations.append(
+                ChatCitation(
+                    docId=doc_id,
+                    docTitle=title,
+                    page=getattr(chunk, "page", None),
+                    snippet=chunk.chunk.text[:200],
+                )
+            )
 
     assistant_msg_id = f"m-{uuid4().hex[:8]}"
     assistant_now = datetime.now(timezone.utc).isoformat()

@@ -1,6 +1,41 @@
 from src.agents.question_bank_agent import QuestionBankAgent
-from src.validation.schemas import QuestionBankOutput
+from src.validation.schemas import (
+    QuestionBankOutput,
+    normalize_question_payload,
+    normalize_question_type,
+)
 from tests.conftest import CompliantAgentsClient
+
+
+def test_normalize_question_type_aliases():
+    """LLM-typed variants map to the canonical enum values."""
+    assert normalize_question_type("short") == "short_answer"
+    assert normalize_question_type("Short Answer") == "short_answer"
+    assert normalize_question_type("short-answer") == "short_answer"
+    assert normalize_question_type("true/false") == "true_false"
+    assert normalize_question_type("True or False") == "true_false"
+    assert normalize_question_type("Multiple Choice") == "mcq"
+    assert normalize_question_type("MCQ") == "mcq"
+
+
+def test_question_bank_accepts_short_abbreviation():
+    """A payload with type 'short' validates after normalisation."""
+    payload = {
+        "requires_human_review": True,
+        "questions": [
+            {
+                "question": "What is Python?",
+                "options": None,
+                "correct_answer": "A language",
+                "rationale": "It is a language.",
+                "difficulty": "beginner",
+                "type": "short",
+                "references": [{"segment_id": "seg1", "text": "Python is a language."}],
+            }
+        ],
+    }
+    output = QuestionBankOutput.model_validate(normalize_question_payload(payload))
+    assert output.questions[0].type.value == "short_answer"
 
 
 def test_question_bank_generation():
