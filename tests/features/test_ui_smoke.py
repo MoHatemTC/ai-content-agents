@@ -471,3 +471,117 @@ def test_the_whole_document_is_not_sent_to_the_model(
     )
     # Retrieval happened rather than the content simply being dropped.
     assert "doc-big-c" in prompt, "no retrieved chunk markers in the prompt"
+
+
+# --------------------------------------------------------------------------- #
+# "Sources" has to be earned
+#
+# The section was headed "Provenance references" while nothing verified it:
+# verify_references only runs when the agent is handed a GroundedContext, and
+# these pages deliberately do not pass one (issue #33). A model could invent a
+# chunk id and the page would present it as a source.
+# --------------------------------------------------------------------------- #
+
+
+class _CitesAnInventedChunk:
+    """A gateway that answers correctly but cites a chunk that does not exist."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+        self.chat = self
+        self.completions = self
+
+    def create(self, **kwargs):
+        import json as _json
+
+        self.calls.append(kwargs)
+        body = _json.dumps(
+            {
+                "explanation": "Diplomacy is the practice of negotiation.",
+                "definition": "Diplomacy is the practice of negotiation.",
+                "key_points": ["Envoys carry instructions."],
+                "next_steps": ["Read the treaty chapter."],
+                "references": [
+                    {"segment_id": "doc-1-c9999", "text": "a passage never retrieved"}
+                ],
+                "requires_human_review": True,
+            }
+        )
+        message = type("M", (), {"content": body})
+        choice = type("C", (), {"message": message, "finish_reason": "stop"})
+        return type("R", (), {"choices": [choice], "error": None})
+
+
+@pytest.mark.parametrize(
+    "page_label,button_label",
+    [
+        ("🧭 Mentor", "Generate Mentor Response"),
+        ("💡 Concept Explanation", "Generate Concept Explanation"),
+    ],
+    ids=["mentor", "concept"],
+)
+def test_an_invented_citation_is_flagged_not_displayed_as_a_source(
+    page_label, button_label, monkeypatch
+) -> None:
+    """A citation the retriever never returned must not read as provenance.
+
+    Relabelling without this check would make things worse: an invented
+    citation rendered as "Passage 5 - Diplomacy Primer" is far more convincing
+    than the raw UUID it replaced.
+    """
+    from src.agents.concept_agent import ConceptAgent
+    from src.agents.mentor_agent import MentorAgent
+
+    for agent_class in (MentorAgent, ConceptAgent):
+        original = agent_class.__init__
+
+        def patched(self, *, client=None, model=None, _original=original):
+            _original(self, client=_CitesAnInventedChunk(), model="test-model")
+
+        monkeypatch.setattr(agent_class, "__init__", patched)
+
+    at = AppTest.from_file(str(COMBINED_APP), default_timeout=120)
+    _load_content(at, count=3)
+    at.run()
+
+    at.sidebar.radio[0].set_value(page_label).run()
+    _submit_button(at, button_label).click().run()
+
+    assert not at.exception
+    warnings = " ".join(str(w.value) for w in at.warning)
+    assert "Unverified citation" in warnings, (
+        "an invented chunk id was presented as a source"
+    )
+    assert "doc-1-c9999" in warnings
+
+
+@pytest.mark.parametrize(
+    "page_label,button_label",
+    [
+        ("🧭 Mentor", "Generate Mentor Response"),
+        ("💡 Concept Explanation", "Generate Concept Explanation"),
+    ],
+    ids=["mentor", "concept"],
+)
+def test_a_real_citation_is_shown_as_a_readable_passage(
+    page_label, button_label
+) -> None:
+    """The other half: a genuine citation must not be flagged.
+
+    A check that rejects everything would satisfy the test above.
+    """
+    at = AppTest.from_file(str(COMBINED_APP), default_timeout=120)
+    _load_content(at, count=3)
+    at.run()
+
+    at.sidebar.radio[0].set_value(page_label).run()
+    _submit_button(at, button_label).click().run()
+
+    assert not at.exception
+    warnings = " ".join(str(w.value) for w in at.warning)
+    assert "Unverified citation" not in warnings, (
+        "a genuine citation was flagged as invented"
+    )
+
+    rendered = " ".join(str(m.value) for m in at.markdown)
+    assert "Passage " in rendered, "no readable passage label was rendered"
