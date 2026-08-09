@@ -54,6 +54,7 @@ from src.validation.review_schema import (
 from src.validation.schemas import (
     ContentReference,
     DifficultyLevel,
+    ConceptOutput,
     MentorOutput,
     QuestionBankOutput,
     QuestionItem,
@@ -1496,3 +1497,84 @@ def test_bad_controls_are_rejected_before_a_gateway_call(
         adapter.run_raw("Loops repeat instructions.", **bad_params)
 
     assert client.calls == [], "the model was called before the input was checked"
+
+
+# --------------------------------------------------------------------------- #
+# Mentor and Concept on the path that actually runs in production
+#
+# The sibling question agents have this; mentor and concept never did, and that
+# is precisely why their control validation sits in generate() - a method
+# RegistryAgentAdapter.run_raw never calls. These tests exist so the gap cannot
+# reopen.
+# --------------------------------------------------------------------------- #
+
+
+def _explanation_adapter(agent_class, schema, client):
+    from src.validation.orchestrator import DEFAULT_AGENT_PARAMS
+
+    name = "mentor" if schema is MentorOutput else "concept"
+    return RegistryAgentAdapter(
+        name=name,
+        agent=agent_class(client=client, model="test-model"),
+        schema=schema,
+        default_params=DEFAULT_AGENT_PARAMS[name],
+    )
+
+
+EXPLANATION_AGENTS = [
+    pytest.param("mentor", MentorOutput, id="mentor"),
+    pytest.param("concept", ConceptOutput, id="concept"),
+]
+
+
+def _explanation_agent_class(name):
+    from src.agents.concept_agent import ConceptAgent
+    from src.agents.mentor_agent import MentorAgent
+
+    return MentorAgent if name == "mentor" else ConceptAgent
+
+
+@pytest.mark.parametrize("name,schema", EXPLANATION_AGENTS)
+def test_a_bad_difficulty_is_rejected_before_a_gateway_call(name, schema) -> None:
+    """Control validation has to run where production runs.
+
+    `run_raw` calls `_build_prompt` and `_call_llm` directly and never calls
+    `generate()`. A check in `generate()` passes every unit test and does
+    nothing here - today `difficulty="ESSAY_BANANA"` is interpolated into the
+    prompt verbatim and the call is billed.
+
+    Asserting no gateway call is what makes this specific: a bare
+    `pytest.raises(ValueError)` would stay green if the check ran after the
+    model had already answered.
+    """
+    client = FakeLLMClient("{}")
+    adapter = _explanation_adapter(_explanation_agent_class(name), schema, client)
+
+    with pytest.raises(ValueError, match="[Dd]ifficulty"):
+        adapter.run_raw("Loops repeat instructions.", difficulty="ESSAY_BANANA")
+
+    assert client.calls == [], "the model was called before the input was checked"
+
+
+@pytest.mark.parametrize("name,schema", EXPLANATION_AGENTS)
+def test_a_saturated_provider_is_retried(store: PlatformStore, name, schema) -> None:
+    """A transient upstream failure must be retried for these agents too.
+
+    Counting gateway calls rather than asserting the exception type: the type
+    alone would not catch an agent whose guard raises something the retry policy
+    does not recognise, which is the defect the sibling pair had (BUG-09).
+    """
+    client = FakeLLMClient(*[Reply(error={"message": "saturated"})] * 3)
+    orchestrator = Orchestrator(
+        store,
+        agents={
+            name: _explanation_adapter(_explanation_agent_class(name), schema, client)
+        },
+        max_retries=2,
+        retry_backoff=0.0,
+    )
+
+    result = orchestrator.run_agent(name, content="Loops repeat instructions.")
+
+    assert len(client.calls) == 3, "a transient upstream failure was not retried"
+    assert result.run.status is RunStatus.FAILURE
