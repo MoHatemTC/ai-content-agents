@@ -495,18 +495,24 @@ class _CitesAnInventedChunk:
         import json as _json
 
         self.calls.append(kwargs)
-        body = _json.dumps(
-            {
-                "explanation": "Diplomacy is the practice of negotiation.",
-                "definition": "Diplomacy is the practice of negotiation.",
-                "key_points": ["Envoys carry instructions."],
-                "next_steps": ["Read the treaty chapter."],
-                "references": [
-                    {"segment_id": "doc-1-c9999", "text": "a passage never retrieved"}
-                ],
-                "requires_human_review": True,
-            }
-        )
+        # Answer whichever agent asked. This used to send `definition` and
+        # `next_steps` together so one payload would satisfy both schemas;
+        # with extra="forbid" that is now rejected before the grounding check
+        # it is here to exercise - which is the point of forbidding extras.
+        prompt = kwargs["messages"][0]["content"]
+        payload = {
+            "explanation": "Diplomacy is the practice of negotiation.",
+            "key_points": ["Envoys carry instructions."],
+            "references": [
+                {"segment_id": "doc-1-c9999", "text": "a passage never retrieved"}
+            ],
+            "requires_human_review": True,
+        }
+        if "next_steps" in prompt:
+            payload["next_steps"] = ["Read the treaty chapter."]
+        else:
+            payload["definition"] = "Diplomacy is the practice of negotiation."
+        body = _json.dumps(payload)
         message = type("M", (), {"content": body})
         choice = type("C", (), {"message": message, "finish_reason": "stop"})
         return type("R", (), {"choices": [choice], "error": None})
