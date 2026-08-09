@@ -15,11 +15,12 @@ import logging
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 import yaml
 from dotenv import load_dotenv
 
+from src.validation.review_schema import GeneratedOutput
+from src.validation.reviewable import persist_reviewable_run
 from src.llm_gateway import build_client, default_model
 from src.study.flashcard_agent import FlashcardAgent
 from src.study.llm_client import (
@@ -168,7 +169,13 @@ class StudyPlanAgent:
                     f"Topic schedule duration_hours must be > 0: {s.topic}"
                 )
 
-    def _wrap_for_review_gate(self, plan: StudyPlan, *, run_id: str) -> StudyPlan:
+    def _wrap_for_review_gate(self, plan: StudyPlan) -> StudyPlan:
+        """Force the review-gate flags and normalise.
+
+        This took a ``run_id`` and never used it, so the plan agent had no audit
+        trail at all and the signature promised one. generate_reviewable records
+        the run properly.
+        """
         source_topics = sorted({s.topic for s in plan.topic_schedule})
         return StudyPlan(
             goal=plan.goal,
@@ -218,7 +225,6 @@ class StudyPlanAgent:
             raise ValueError("content is empty; cannot build plan")
         sd = self._parse_date(start_date)
         ed = self._parse_date(end_date)
-        run_id = f"sp-{uuid4().hex[:8]}"
         extracted_topics = FlashcardAgent.extract_topics(content)
         if not extracted_topics:
             extracted_topics = [
@@ -237,4 +243,46 @@ class StudyPlanAgent:
         raw = parse_json(text, StudyPlan)
 
         self._validate_plan(raw, extracted_topics)
-        return self._wrap_for_review_gate(raw, run_id=run_id)
+        return self._wrap_for_review_gate(raw)
+
+    def generate_reviewable(
+        self,
+        content: str,
+        *,
+        store: Any | None = None,
+        source_chunk_ids: list[str] | None = None,
+        **kwargs: Any,
+    ) -> GeneratedOutput:
+        """Generate and queue the result for human review.
+
+        **This lane persisted nothing.** Every study agent set
+        ``needs_human_review=True`` and its docstring told the caller to route
+        the result through :mod:`src.validation.review_schema` - and no caller
+        ever did, in app.py, in study/ui.py or in study/batch.py. The pages said
+        "pending review" while the reviewer's queue stayed empty, so a study plan
+        could never be approved, and never reached the export gate that
+        :func:`~src.validation.review_schema.assert_exportable` guards.
+
+        Args:
+            content: Cleaned study material.
+            store: Where to persist. Defaults to the shared
+                :class:`~src.validation.store.PlatformStore`; tests inject one.
+            source_chunk_ids: Provenance from ingestion, when the caller has it.
+            **kwargs: Passed through to :meth:`generate`.
+
+        Returns:
+            The persisted :class:`GeneratedOutput`, pending review.
+        """
+        return persist_reviewable_run(
+            store=store,
+            agent_name="study_plan_agent",
+            output_type="study_plan",
+            output_schema=StudyPlan,
+            model=self.model,
+            input_context=content,
+            source_chunk_ids=source_chunk_ids,
+            generate=lambda: self.generate(
+                content,
+                **kwargs,
+            ),
+        )
