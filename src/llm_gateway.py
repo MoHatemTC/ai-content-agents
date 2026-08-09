@@ -21,9 +21,12 @@ CI has none.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # Models wrap JSON in fences despite being told not to, and ``json.loads`` then
 # fails on output that was otherwise perfect.
@@ -248,10 +251,24 @@ def chat_json(
 
     try:
         response = client.chat.completions.create(**request)
-    except Exception:
+    except Exception as exc:
         # Not every model behind a LiteLLM proxy supports JSON mode, and a
-        # rejected request is worse than an unescaped one. Retry without it
-        # rather than taking the whole lane down for a capability probe.
+        # rejected request is worse than an unescaped one - so retry without it.
+        #
+        # But only when the gateway rejected the *shape* of the request. A bare
+        # `except Exception` also caught RateLimitError and APITimeoutError and
+        # immediately fired a second identical call with no backoff: double the
+        # load on a provider that just said it was saturated, and a second
+        # timeout doubling the user's wait. 400 and 422 are the codes that mean
+        # "this request is malformed for this model"; everything else - 401,
+        # 429, 5xx, connection failures - propagates.
+        if getattr(exc, "status_code", None) not in (400, 422):
+            raise
+        logger.info(
+            "%s rejected response_format (HTTP %s); retrying without JSON mode",
+            model,
+            getattr(exc, "status_code", None),
+        )
         request.pop("response_format")
         response = client.chat.completions.create(**request)
 

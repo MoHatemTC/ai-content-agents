@@ -108,12 +108,26 @@ def test_the_model_falls_back_to_the_shared_default(
 # --------------------------------------------------------------------------- #
 
 
-class _Recorder:
-    """Records requests. Optionally refuses the first one, like a model
-    that does not support JSON mode."""
+class _ApiError(Exception):
+    """Shaped like an OpenAI SDK error: carries the HTTP status."""
 
-    def __init__(self, *, reject_json_mode: bool = False, content: str = '{"a": 1}'):
+    def __init__(self, status_code: int, message: str):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class _Recorder:
+    """Records requests. Optionally fails the first one with a given status."""
+
+    def __init__(
+        self,
+        *,
+        reject_json_mode: bool = False,
+        reject_status: int = 400,
+        content: str = '{"a": 1}',
+    ):
         self._reject = reject_json_mode
+        self._reject_status = reject_status
         self._content = content
         self.calls: list[dict] = []
         self.chat = self
@@ -122,7 +136,9 @@ class _Recorder:
     def create(self, **kwargs):
         self.calls.append(kwargs)
         if self._reject and "response_format" in kwargs:
-            raise RuntimeError("this model does not support response_format")
+            raise _ApiError(
+                self._reject_status, "this model does not support response_format"
+            )
         message = type("M", (), {"content": self._content})
         choice = type("C", (), {"message": message, "finish_reason": "stop"})
         return type("R", (), {"choices": [choice], "error": None})
@@ -154,6 +170,32 @@ def test_a_model_that_refuses_json_mode_still_answers() -> None:
     assert len(client.calls) == 2, "the request was not retried"
     assert "response_format" in client.calls[0]
     assert "response_format" not in client.calls[1]
+
+
+@pytest.mark.parametrize("status", [401, 429, 500, 503])
+def test_a_failure_that_is_not_about_the_request_shape_is_not_retried(status) -> None:
+    """The capability probe used to sit behind a bare ``except Exception``.
+
+    So a 429 - the provider saying it is saturated - fired a second identical
+    request immediately, with no backoff: double the load on a provider that
+    had just asked for less, and on a timeout, double the user's wait. Only 400
+    and 422 mean "this request is malformed for this model".
+    """
+    client = _Recorder(reject_json_mode=True, reject_status=status)
+
+    with pytest.raises(_ApiError):
+        chat_json(client, "some-model", "prompt")
+
+    assert len(client.calls) == 1, "a non-shape failure was retried without backoff"
+
+
+@pytest.mark.parametrize("status", [400, 422])
+def test_a_rejected_request_shape_is_retried(status) -> None:
+    """Control: narrowing the except must not disable the probe itself."""
+    client = _Recorder(reject_json_mode=True, reject_status=status)
+
+    assert chat_json(client, "some-model", "prompt") == '{"a": 1}'
+    assert len(client.calls) == 2
 
 
 def test_the_output_ceiling_is_sent() -> None:
