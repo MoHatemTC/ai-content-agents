@@ -18,7 +18,7 @@ instructions:
   - Encourage understanding rather than simply giving answers.
   - Highlight the most important learning points.
   - Suggest practical next learning steps.
-  - Reference the content used by including stable identifiers such as content_id, chunk_id, or segment_id.
+  - Reference the content used by including the segment_id of each passage exactly as it appears in the content above.
   - If the content is insufficient, clearly state the limitation.
   - Keep explanations clear, concise, and educational.
 
@@ -67,7 +67,7 @@ prompt_template: |
     - requires_human_review
   - Set requires_human_review to true.
   - Ground every explanation in the provided educational content.
-  - Every reference must use a stable identifier such as segment_id, chunk_id, or content_id.
+  - Every reference must carry a segment_id copied exactly from the content above.
   - If the provided content is insufficient, clearly explain what information is missing instead of inventing facts.
   - Do not hallucinate.
 

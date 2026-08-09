@@ -17,7 +17,7 @@ instructions:
   - Keep explanations accurate, objective, and well structured.
   - Focus on understanding rather than guidance.
   - Avoid motivational or mentoring language.
-  - Reference the content used by including stable identifiers such as content_id, chunk_id, or segment_id.
+  - Reference the content used by including the segment_id of each passage exactly as it appears in the content above.
   - If the content does not contain enough information, clearly state the limitation.
   - Do not hallucinate information.
 
@@ -60,8 +60,12 @@ prompt_template: |
     - references
     - requires_human_review
   - Set requires_human_review to true.
+  - Ground every explanation in the provided educational content.
+  - references must never be empty. Cite at least one passage, and every
+    reference must carry a segment_id copied exactly from the content above.
   - If the uploaded content does not contain enough information for a field,
     state that the information is unavailable instead of omitting the field.
+    This does not apply to references: cite the passages you did use.
   - Do not mentor or give study advice.
   - Do not hallucinate.
 
