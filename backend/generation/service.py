@@ -577,6 +577,10 @@ def generate_revision_sheet_service(
                 topic=item.topic,
                 strength=40 if item.difficulty == "hard" else 60,
                 action=f"Review by {item.next_revision_date}",
+                description=item.description,
+                difficulty=item.difficulty,
+                nextRevisionDate=str(item.next_revision_date),
+                confidencePrompt=item.confidence_prompt,
             )
         )
 

@@ -123,6 +123,18 @@ class WeakTopic(BaseModel):
     topic: str
     strength: int = 40
     action: str = "Review key concepts and active recall"
+    description: str | None = Field(
+        None, description="One-line summary of what to revisit for this topic."
+    )
+    difficulty: str = Field(
+        "medium", description="Per-topic difficulty: easy/medium/hard."
+    )
+    nextRevisionDate: str | None = Field(
+        None, description="Suggested review-by date (ISO), from the revision session."
+    )
+    confidencePrompt: str | None = Field(
+        None, description="Optional self-check prompt for this topic."
+    )
 
 
 class GenerateRevisionSheetRequest(BaseModel):

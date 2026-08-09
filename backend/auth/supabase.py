@@ -237,7 +237,7 @@ class SupabaseAuthVerifier:
                         email=claims.get("email", ""),
                         name=claims.get("name")
                         or (claims.get("user_metadata") or {}).get("name", ""),
-                        role="student",
+                        role=(claims.get("app_metadata") or {}).get("role", "student"),
                     )
                 except InvalidTokenError as exc:
                     last_error = str(exc)

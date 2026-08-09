@@ -8,7 +8,12 @@ Supabase integration milestone. Do not build M3+ features on top of it.
 
 from __future__ import annotations
 
+import json
+import logging
 import sqlite3
+import time
+import urllib.error
+import urllib.request
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -20,9 +25,68 @@ from .security import (
     verify_password,
 )
 
+logger = logging.getLogger(__name__)
+
+# How long a resolved Supabase role is trusted before re-syncing.
+_ROLE_SYNC_TTL_SECONDS = 120
+_role_sync_cache: dict[str, tuple[float, str | None]] = {}
+
 
 def now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def sync_role_from_supabase(
+    conn: sqlite3.Connection,
+    *,
+    user_id: str,
+    access_token: str,
+    supabase_url: str,
+    anon_key: str,
+) -> None:
+    """Best-effort mirror of the authoritative Supabase role onto the platform.
+
+    The frontend treats ``public.user_roles`` (read through the Data API with
+    the user's own token) as the role source of truth. This function reads the
+    same row the same way and keeps the platform ``user_roles`` table in sync,
+    so staff-gated endpoints agree with what the UI shows.
+
+    Results are cached per user for ``_ROLE_SYNC_TTL_SECONDS`` so at most one
+    REST call happens per user per window. The sync never raises — auth must
+    keep working even when Supabase is unreachable.
+    """
+    if not supabase_url:
+        return
+    now_ts = time.time()
+    cached = _role_sync_cache.get(user_id)
+    if cached is not None and now_ts - cached[0] < _ROLE_SYNC_TTL_SECONDS:
+        return
+    url = (
+        f"{supabase_url.rstrip('/')}/rest/v1/user_roles"
+        f"?user_id=eq.{user_id}&select=role"
+    )
+    req = urllib.request.Request(
+        url,
+        headers={
+            "apikey": anon_key,
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5.0) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+        role = body[0].get("role") if isinstance(body, list) and body else None
+        _role_sync_cache[user_id] = (now_ts, role)
+        if not role:
+            return
+        conn.execute(
+            "UPDATE user_roles SET role = ? WHERE user_id = ?", (role, user_id)
+        )
+        conn.commit()
+    except Exception as exc:  # noqa: BLE001 - auth must never fail on sync
+        _role_sync_cache[user_id] = (now_ts, None)
+        logger.warning("Supabase role sync failed for %s: %s", user_id, exc)
 
 
 def create_user(

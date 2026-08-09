@@ -18,7 +18,6 @@ Run the server with::
 
 from __future__ import annotations
 
-import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -37,6 +36,7 @@ except Exception:  # pragma: no cover - python-dotenv is a dev convenience
     pass
 
 from backend import __version__
+from backend.admin.router import router as admin_router
 from backend.auth.router import router as auth_router
 from backend.auth.seed import seed_if_empty
 from backend.chat.router import router as chat_router
@@ -104,6 +104,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(chat_router)
     app.include_router(review_router)
     app.include_router(exports_router)
+    app.include_router(admin_router)
     return app
 
 

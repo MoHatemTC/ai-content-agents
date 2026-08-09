@@ -15,7 +15,7 @@ from backend.workspaces.schemas import (
     CreateWorkspaceResponse,
     GetWorkspaceResponse,
     GetWorkspacesResponse,
-    UpdateWorkspaceRequest,
+    PatchWorkspace,
     WorkspaceData,
 )
 
@@ -85,10 +85,10 @@ def get_workspace(workspace_id: str, db: Db, user: User) -> GetWorkspaceResponse
 
 @router.patch("/{workspace_id}", status_code=204)
 def update_workspace(
-    workspace_id: str, payload: UpdateWorkspaceRequest, db: Db, user: User
+    workspace_id: str, payload: PatchWorkspace, db: Db, user: User
 ) -> None:
     row = service.update_workspace(
-        db, workspace_id, payload.patch.model_dump(exclude_none=True)
+        db, workspace_id, payload.model_dump(exclude_none=True)
     )
     if row is None:
         raise ApiError(status_code=404, code="not_found", message="Workspace not found")

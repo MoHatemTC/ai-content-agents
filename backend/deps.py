@@ -89,6 +89,16 @@ def get_current_user(
         name=profile.name,
         role=profile.role,
     )
+    # Keep the platform role in sync with Supabase's user_roles table (the
+    # same source the frontend reads), so staff-gated endpoints match the UI.
+    auth_service.sync_role_from_supabase(
+        db,
+        user_id=user["id"],
+        access_token=token,
+        supabase_url=settings.supabase_url,
+        anon_key=settings.supabase_anon_key,
+    )
+    user = auth_service.find_user_by_id(db, user["id"]) or user
     return AuthUser(**user)
 
 

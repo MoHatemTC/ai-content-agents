@@ -56,8 +56,3 @@ class PatchWorkspace(BaseModel):
     name: str | None = None
     description: str | None = None
     subject: str | None = None
-
-
-class UpdateWorkspaceRequest(BaseModel):
-    id: str
-    patch: PatchWorkspace
