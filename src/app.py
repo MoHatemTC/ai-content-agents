@@ -738,29 +738,24 @@ elif page == "🧭 Mentor":
                 # embeds. The allow-list is the fallback query when it is blank,
                 # and is pure local string processing, no model call.
                 allow_list = FlashcardAgent.extract_topics(content, max_topics=30)
-                grounded, cited, _context = ground(user_question, allow_list)
-                # `context=` is deliberately NOT passed, though the agents
-                # accept it. Supplying it switches on validate_support, which
-                # requires every sentence to share >=60% of its tokens with the
-                # retrieved passages - while mentor.yaml instructs the model to
-                # answer "in a supportive and encouraging way". The model
-                # complies, opens with "Hello! You are doing a wonderful job
-                # exploring...", and that sentence cannot overlap a physics
-                # passage. Measured live against the textbook: 7 of 10
-                # generations withheld, mentor 5 of 5, and every failure was the
-                # explanation's opening line - key_points and next_steps all
-                # passed. The prompt and the validator contradict each other;
-                # until that is reconciled, turning this on trades "crashes on
-                # large documents" for "refuses most questions". See issue.
+                grounded, cited, context = ground(user_question, allow_list)
                 with st.spinner("Generating mentor response..."):
                     reviewable = mentor_concept_service.generate_mentor_reviewable(
                         content=grounded,
                         user_question=user_question or None,
                         difficulty=difficulty,
+                        context=context,
                     )
                 payload = reviewable.payload
                 st.warning("⚠️ Requires Human Review")
                 st.write(f"Review status: **{reviewable.status.value.upper()}**")
+                # The grounding heuristic is advisory, not a gate - it rejected
+                # 5 of 20 correct live generations, so it flags rather than
+                # blocks. Shown here and recorded on the review record.
+                for warning in (reviewable.validation_report or {}).get(
+                    "grounding_warnings", []
+                ):
+                    st.caption(f":orange[⚑ {warning}]")
                 st.subheader("Explanation")
                 st.write(payload.get("explanation", ""))
                 st.subheader("Key points")
@@ -774,6 +769,19 @@ elif page == "🧭 Mentor":
                 )
             except NoGroundingError as exc:
                 st.error(str(exc))
+            except ValueError as exc:
+                # The agent verifies every citation against what was
+                # actually retrieved. A rejection here means the model
+                # cited something that does not exist - a quality gate
+                # doing its job, not a crash, and it must not read as one.
+                st.warning(
+                    "**Output withheld by the grounding check.** "
+                    f"{exc}"
+                )
+                st.caption(
+                    "Try a more specific question, or one the uploaded "
+                    "document actually covers."
+                )
             except Exception as error:
                 st.error(f"Error generating mentor response: {error}")
 
@@ -800,29 +808,24 @@ elif page == "💡 Concept Explanation":
                 # Same wiring as the mentor page: the question is the retrieval
                 # query, the allow-list is the fallback when it is blank.
                 allow_list = FlashcardAgent.extract_topics(content, max_topics=30)
-                grounded, cited, _context = ground(user_question, allow_list)
-                # `context=` is deliberately NOT passed, though the agents
-                # accept it. Supplying it switches on validate_support, which
-                # requires every sentence to share >=60% of its tokens with the
-                # retrieved passages - while mentor.yaml instructs the model to
-                # answer "in a supportive and encouraging way". The model
-                # complies, opens with "Hello! You are doing a wonderful job
-                # exploring...", and that sentence cannot overlap a physics
-                # passage. Measured live against the textbook: 7 of 10
-                # generations withheld, mentor 5 of 5, and every failure was the
-                # explanation's opening line - key_points and next_steps all
-                # passed. The prompt and the validator contradict each other;
-                # until that is reconciled, turning this on trades "crashes on
-                # large documents" for "refuses most questions". See issue.
+                grounded, cited, context = ground(user_question, allow_list)
                 with st.spinner("Generating concept explanation..."):
                     reviewable = mentor_concept_service.generate_concept_reviewable(
                         content=grounded,
                         user_question=user_question or None,
                         difficulty=difficulty,
+                        context=context,
                     )
                 payload = reviewable.payload
                 st.warning("⚠️ Requires Human Review")
                 st.write(f"Review status: **{reviewable.status.value.upper()}**")
+                # The grounding heuristic is advisory, not a gate - it rejected
+                # 5 of 20 correct live generations, so it flags rather than
+                # blocks. Shown here and recorded on the review record.
+                for warning in (reviewable.validation_report or {}).get(
+                    "grounding_warnings", []
+                ):
+                    st.caption(f":orange[⚑ {warning}]")
                 st.subheader("Definition")
                 st.write(payload.get("definition", ""))
                 st.subheader("Explanation")
@@ -835,5 +838,18 @@ elif page == "💡 Concept Explanation":
                 )
             except NoGroundingError as exc:
                 st.error(str(exc))
+            except ValueError as exc:
+                # The agent verifies every citation against what was
+                # actually retrieved. A rejection here means the model
+                # cited something that does not exist - a quality gate
+                # doing its job, not a crash, and it must not read as one.
+                st.warning(
+                    "**Output withheld by the grounding check.** "
+                    f"{exc}"
+                )
+                st.caption(
+                    "Try a more specific question, or one the uploaded "
+                    "document actually covers."
+                )
             except Exception as error:
                 st.error(f"Error generating concept explanation: {error}")

@@ -549,7 +549,13 @@ def test_an_invented_citation_is_flagged_not_displayed_as_a_source(
 
     assert not at.exception
     warnings = " ".join(str(w.value) for w in at.warning)
-    assert "Unverified citation" in warnings, (
+
+    # The page now passes a GroundedContext, so the agent verifies citations
+    # itself and refuses outright - stronger than the previous behaviour, which
+    # rendered the answer with an "Unverified citation" caveat beside it.
+    # render_provenance still carries that caveat as defence in depth for any
+    # caller that does not supply a context.
+    assert "withheld by the grounding check" in warnings, (
         "an invented chunk id was presented as a source"
     )
     assert "doc-1-c9999" in warnings
