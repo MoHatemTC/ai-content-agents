@@ -30,6 +30,7 @@ class MentorConceptService:
         user_question: Optional[str] = None,
         difficulty: str = "beginner",
         context: GroundedContext | None = None,
+        store: Any | None = None,
     ) -> GeneratedOutput:
         """Generate a Mentor response as a pending review record."""
         return self.mentor_agent.generate_reviewable(
@@ -37,6 +38,7 @@ class MentorConceptService:
             user_question=user_question,
             difficulty=difficulty,
             context=context,
+            store=store,
         )
 
     def generate_concept_reviewable(
@@ -45,6 +47,7 @@ class MentorConceptService:
         user_question: Optional[str] = None,
         difficulty: str = "beginner",
         context: GroundedContext | None = None,
+        store: Any | None = None,
     ) -> GeneratedOutput:
         """Generate a Concept response as a pending review record."""
         return self.concept_agent.generate_reviewable(
@@ -52,4 +55,5 @@ class MentorConceptService:
             user_question=user_question,
             difficulty=difficulty,
             context=context,
+            store=store,
         )

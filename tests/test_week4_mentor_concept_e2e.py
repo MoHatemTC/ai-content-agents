@@ -110,9 +110,9 @@ def test_week4_support_check_blocks_off_content_mentor_claims(monkeypatch) -> No
     def fake_call_llm(_: str) -> str:
         return json.dumps(
             {
-                "explanation": "Python has for loops.",
+                "explanation": "Python automatically parallelizes loops.",
                 "key_points": ["Python has for loops."],
-                "next_steps": ["Python automatically parallelizes loops."],
+                "next_steps": ["Re-read the loop section."],
                 "references": [{"segment_id": "chunk-mentor", "text": "Python has for loops."}],
                 "requires_human_review": True,
             }
@@ -120,13 +120,21 @@ def test_week4_support_check_blocks_off_content_mentor_claims(monkeypatch) -> No
 
     monkeypatch.setattr(agent, "_call_llm", fake_call_llm)
 
-    with pytest.raises(ValueError, match="unsupported claims"):
-        agent.generate(
-            content="content",
-            user_question="Explain loops.",
-            difficulty="beginner",
-            context=context,
-        )
+    # A support failure is a warning now, not a rejection: the overlap
+    # heuristic rejected 5 of 20 correct live generations, so raising on it
+    # meant grounding was switched off entirely. The output is flagged for the
+    # reviewer instead - see ExplanationAgentBase._enforce_grounding.
+    agent.generate(
+        content="content",
+        user_question="Explain loops.",
+        difficulty="beginner",
+        context=context,
+    )
+
+    assert agent._grounding_warnings, "the off-content claim was not flagged"
+    assert any(
+        "parallelizes" in w for w in agent._grounding_warnings
+    ), agent._grounding_warnings
 
 
 def test_week4_support_check_blocks_off_content_concept_claims(monkeypatch) -> None:
@@ -146,13 +154,18 @@ def test_week4_support_check_blocks_off_content_concept_claims(monkeypatch) -> N
 
     monkeypatch.setattr(agent, "_call_llm", fake_call_llm)
 
-    with pytest.raises(ValueError, match="unsupported claims"):
-        agent.generate(
-            content="content",
-            user_question="What is a loop?",
-            difficulty="beginner",
-            context=context,
-        )
+    # Same contract change as the mentor case above: flagged, not rejected.
+    agent.generate(
+        content="content",
+        user_question="What is a loop?",
+        difficulty="beginner",
+        context=context,
+    )
+
+    assert agent._grounding_warnings, "the off-content definition was not flagged"
+    assert any(
+        "machine code" in w for w in agent._grounding_warnings
+    ), agent._grounding_warnings
 
 
 @pytest.mark.parametrize("agent_class", [MentorAgent, ConceptAgent])
