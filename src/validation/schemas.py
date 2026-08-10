@@ -13,10 +13,21 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 __test__ = False
 
+# All four prompts end with "Do not add extra fields", and until now nothing
+# enforced it: pydantic's default is to ignore unknown keys silently. The danger
+# is not model creativity, it is a near-miss on an *optional* field - a reply
+# carrying "option" instead of "options" was dropped without a word and produced
+# a multiple-choice question with no choices, which then went to a learner.
+# Forbidding extras turns that into a visible, retryable generation error.
+_STRICT = ConfigDict(extra="forbid")
+
+
 class ContentReference(BaseModel):
     """
     Reference to a retrieved content segment used for grounding.
     """
+
+    model_config = _STRICT
 
     segment_id: str
     text: str
@@ -83,6 +94,8 @@ class QuestionItem(BaseModel):
     This schema is shared by both the Question Bank
     and Test Help agents.
     """
+
+    model_config = _STRICT
 
     question: str = Field(
         ...,
@@ -157,6 +170,8 @@ class QuestionBankOutput(BaseModel):
     questions that require human review before use.
     """
 
+    model_config = _STRICT
+
     questions: list[QuestionItem] = Field(
         ...,
         min_length=1,
@@ -187,7 +202,7 @@ class TestHelpOutput(BaseModel):
     """
     __test__ = False
 
-    model_config = ConfigDict(protected_namespaces=())
+    model_config = ConfigDict(protected_namespaces=(), extra="forbid")
 
     questions: list[QuestionItem] = Field(
         ...,
@@ -217,6 +232,8 @@ class MentorOutput(BaseModel):
     The Mentor Agent explains educational content while guiding
     learners with key takeaways and suggested next learning steps.
     """
+
+    model_config = _STRICT
 
     explanation: str = Field(
         ...,
@@ -252,6 +269,8 @@ class ConceptOutput(BaseModel):
     This agent focuses on explaining a concept clearly without
     providing mentoring or study guidance.
     """
+
+    model_config = _STRICT
 
     definition: str = Field(
         ...,

@@ -323,6 +323,16 @@ class CompliantStudyClient:
         )
 
 
+_OPTIONS_FOR = {
+    "mcq": ["for", "while", "if", "switch"],
+    "true_false": ["True", "False"],
+    "short_answer": None,
+}
+# correct_answer must be one of the options character for character when options
+# is not null, and free text when it is.
+_ANSWER_FOR = {"mcq": "while", "true_false": "False", "short_answer": "a while loop"}
+
+
 class CompliantAgentsClient:
     """A fake gateway for the four content agents in ``src/agents``.
 
@@ -375,10 +385,13 @@ class CompliantAgentsClient:
         questions = [
             {
                 "question": f"Question {index + 1} about the supplied content?",
-                "options": ["for", "while", "if", "switch"]
-                if question_type == "mcq"
-                else None,
-                "correct_answer": "while",
+                # Must match what question_bank.yaml:72-79 tells the model and
+                # what the schema enforces: ["True", "False"] for true_false,
+                # null for short_answer, and correct_answer drawn from options.
+                # The double used to answer None for every non-mcq type, so a
+                # true_false generation failed schema validation.
+                "options": _OPTIONS_FOR.get(question_type),
+                "correct_answer": _ANSWER_FOR.get(question_type, "while"),
                 "rationale": text[:240],
                 "difficulty": difficulty.group(1) if difficulty else "beginner",
                 "type": question_type,

@@ -32,11 +32,19 @@ def _context(text: str) -> GroundedContext:
     )
 
 
-def test_support_validation_flags_unsupported_key_point_and_next_step() -> None:
+def test_support_validation_flags_an_unsupported_key_point() -> None:
+    """The fabricated claim sits in key_points, not next_steps.
+
+    next_steps is no longer a claim field: advice about what to study next is
+    by construction absent from the source, so checking it rejected every
+    correct mentor answer (5 of 5 measured). The cost is real and accepted -
+    a fabricated fact smuggled into next_steps is no longer caught - so this
+    test now pins the check where it genuinely works.
+    """
     output = MentorOutput(
         explanation="Python has for loops.",
-        key_points=["Python has for loops."],
-        next_steps=["Python automatically parallelizes loops."],
+        key_points=["Python automatically parallelizes loops."],
+        next_steps=["Re-read the loop section."],
         references=[ContentReference(segment_id="chunk-1", text="loops")],
     )
 
@@ -67,8 +75,8 @@ def test_support_validation_flags_unsupported_concept_definition() -> None:
 def test_support_validation_returns_each_unsupported_claim() -> None:
     output = MentorOutput(
         explanation="Python has for loops. Python has no while loops.",
-        key_points=["for loops"],
-        next_steps=["Practice quantum loops."],
+        key_points=["Quantum loops run on a QPU."],
+        next_steps=["Re-read the loop section."],
         references=[ContentReference(segment_id="chunk-1", text="loops")],
     )
 
@@ -77,7 +85,7 @@ def test_support_validation_returns_each_unsupported_claim() -> None:
     assert result.supported is False
     assert result.unsupported_claims == [
         "Python has no while loops.",
-        "Practice quantum loops.",
+        "Quantum loops run on a QPU.",
     ]
 
 

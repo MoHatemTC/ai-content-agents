@@ -1,48 +1,48 @@
+"""End-to-end control round-trip for the Test Help agent.
+
+The sibling of ``test_question_bank``; see that file for what was removed and
+why. Kept separate because the two agents render different prompts, and the
+whole point is that both do it correctly.
+"""
+
+import pytest
 
 from src.agents.test_help_agent import TestHelpAgent
-from src.validation.schemas import TestHelpOutput
 from tests.conftest import CompliantAgentsClient
 
-
-def test_test_help_generation():
-    """
-    Verify that the Test Help Agent generates
-    a valid TestHelpOutput object.
-    """
-
-    agent = TestHelpAgent(client=CompliantAgentsClient())
-    
-    result = agent.generate(
-        content="""
+CONTENT = """
 Python provides two loop types: for and while.
 A for loop is commonly used when the number of
 iterations is known in advance.
 A while loop continues until its condition
 becomes false.
-""",
-        question_type="mcq",
-        difficulty="beginner",
-        num_questions=1,
+"""
+
+
+@pytest.mark.parametrize("num_questions", [1, 3])
+@pytest.mark.parametrize("question_type", ["mcq", "true_false"])
+@pytest.mark.parametrize("difficulty", ["beginner", "advanced"])
+def test_every_control_reaches_the_prompt(num_questions, question_type, difficulty):
+    agent = TestHelpAgent(client=CompliantAgentsClient())
+
+    result = agent.generate(
+        content=CONTENT,
+        question_type=question_type,
+        difficulty=difficulty,
+        num_questions=num_questions,
     )
 
-    print("\n=== GENERATED OUTPUT ===")
-    print(result.model_dump_json(indent=2))
-    print("========================\n")
+    assert len(result.questions) == num_questions
+    assert {q.type for q in result.questions} == {question_type}
+    assert {q.difficulty for q in result.questions} == {difficulty}
 
-    assert isinstance(result, TestHelpOutput)
 
-    assert result.requires_human_review is True
-    assert len(result.questions) == 1
+def test_the_content_is_what_gets_cited():
+    agent = TestHelpAgent(client=CompliantAgentsClient())
 
-    question = result.questions[0]
+    result = agent.generate(
+        content=CONTENT, question_type="mcq", difficulty="beginner", num_questions=1
+    )
 
-    assert question.question
-    assert question.correct_answer
-    assert question.rationale
-    assert question.options is not None
-    assert len(question.options) > 0
-    assert question.references
-
-    for reference in question.references:
-        assert reference.segment_id
-        assert reference.text
+    (reference,) = result.questions[0].references
+    assert reference.text.strip() in CONTENT.strip()
