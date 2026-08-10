@@ -176,6 +176,13 @@ def run_flashcard_batch(
 ) -> list[BatchFlashcardResult]:
     """Run the flashcard agent over every row of the demo dataset.
 
+    Calls ``generate``, not ``generate_reviewable``, and that is deliberate:
+    this is the benchmark harness, and filling a reviewer's queue with three
+    demo rows per agent every time somebody measures groundedness would make
+    the queue useless for the thing it exists for. The pages that a learner
+    actually generates from - ``src/app.py`` and ``src/study/ui.py`` - both
+    persist. Do not "fix" this one to match them.
+
     Args:
         dataset: Rows to process.
         card_format: ``term-definition`` or ``qa``.

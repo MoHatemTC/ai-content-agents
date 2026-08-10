@@ -40,7 +40,9 @@ from src.study.formatters import (
 )
 from src.study.revision_agent import RevisionAgent
 from src.study.grounding import NoGroundingError, grounded_content, index_chunks
+from src.study.schemas import RevisionSession, StudyPlan
 from src.study.study_plan_agent import StudyPlanAgent
+from src.schemas import FlashcardSet
 from src.ui_common import render_current_content_status
 
 PENDING_BADGE = ":warning: **PENDING HUMAN REVIEW — not final.**"
@@ -145,12 +147,17 @@ def flashcards_page() -> None:
         try:
             grounded, cited = ground(focus, allow_list)
             with st.spinner("Generating cards..."):
-                card_set = agent.generate(
+                # generate_reviewable, not generate: this page rendered the
+                # PENDING badge below while persisting nothing, so the badge was
+                # the only trace a review was ever due. app.py was fixed; this
+                # entry point kept the bypass one `streamlit run` away.
+                reviewable = agent.generate_reviewable(
                     grounded,
                     card_format=card_format,
                     card_count=card_count,
                     source_chunk_ids=cited,
                 )
+                card_set = FlashcardSet.model_validate(reviewable.payload)
         except NoGroundingError as exc:
             st.error(str(exc))
             return
@@ -220,14 +227,16 @@ def study_plan_page() -> None:
             # so it doubles as the retrieval query.
             grounded, _cited = ground(goal, allow_list)
             with st.spinner("Building study plan..."):
-                plan = agent.generate(
+                reviewable = agent.generate_reviewable(
                     grounded,
+                    source_chunk_ids=_cited,
                     learner_goal=goal,
                     difficulty=difficulty,
                     start_date=start_date,
                     end_date=end_date,
                     hours_per_week=float(hours_per_week),
                 )
+                plan = StudyPlan.model_validate(reviewable.payload)
         except NoGroundingError as exc:
             st.error(str(exc))
             return
@@ -292,11 +301,13 @@ def revision_page() -> None:
             # The chosen weak topics say exactly which passages are needed.
             grounded, _cited = ground(" ".join(selected), allow_list)
             with st.spinner("Planning revision items..."):
-                session = agent.generate(
+                reviewable = agent.generate_reviewable(
                     grounded,
+                    source_chunk_ids=_cited,
                     selected_topics=list(selected),
                     session_date=session_date,
                 )
+                session = RevisionSession.model_validate(reviewable.payload)
         except NoGroundingError as exc:
             st.error(str(exc))
             return
