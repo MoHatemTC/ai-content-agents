@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
 from pathlib import Path
 from time import perf_counter
 from typing import Any, ClassVar, Optional
@@ -49,10 +48,10 @@ from src.models.batch import BatchGenerationFailure, BatchGenerationResult
 from src.retrieval.grounding import verify_references
 from src.retrieval.models import GroundedContext
 from src.study.llm_client import max_tokens_default
-from src.validation.review_schema import AgentRun, GeneratedOutput, RunStatus
+from src.validation.review_schema import GeneratedOutput
+from src.validation.reviewable import persist_reviewable_run
 from src.validation.schemas import validate_difficulty
 from src.validation.support_validator import extract_claim_text, validate_support
-from src.validation.validator_base import ValidatorBase, build_generated_output
 
 logger = logging.getLogger(__name__)
 
@@ -366,11 +365,6 @@ class ExplanationAgentBase:
         Returns:
             The persisted :class:`GeneratedOutput`, pending review.
         """
-        if store is None:
-            from src.validation.store import PlatformStore
-
-            store = PlatformStore()
-
         # The record must describe what the model actually saw. `content` is
         # discarded when a context is supplied, so storing it would assert an
         # input that was never used - and a GroundedContext is not a str, which
@@ -385,57 +379,26 @@ class ExplanationAgentBase:
             )
         )
 
-        agent_run = AgentRun(
+        return persist_reviewable_run(
+            store=store,
             agent_name=self.agent_name,
+            output_type=self.output_type,
+            output_schema=self.output_schema,
+            model=self.model,
             input_context=resolved,
             source_chunk_ids=context.chunk_ids if context is not None else [],
-            model=self.model,
-        )
-        store.save_agent_run(agent_run)
-
-        try:
-            generated = self.generate(
+            generate=lambda: self.generate(
                 content=content,
                 user_question=user_question,
                 difficulty=difficulty,
                 context=context,
-            )
-        except Exception as error:
-            # A failed run is a fact about the run, and the History page should
-            # show it rather than the run hanging in SUCCESS forever.
-            agent_run.status = RunStatus.FAILURE
-            agent_run.error = str(error)
-            agent_run.finished_at = datetime.now(timezone.utc)
-            store.save_agent_run(agent_run)
-            raise
-
-        agent_run.finished_at = datetime.now(timezone.utc)
-        store.save_agent_run(agent_run)
-
-        payload = generated.model_dump()
-        validation_result, validated_output = ValidatorBase().validate(
-            payload, self.output_schema
-        )
-
-        output = build_generated_output(
-            agent_run_id=agent_run.id,
-            output_type=self.output_type,
-            output_schema=self.output_schema,
-            payload=(
-                validated_output.model_dump()
-                if validated_output is not None
-                else payload
             ),
-            result=validation_result,
+            collect_report=lambda: (
+                {"grounding_warnings": list(self._grounding_warnings)}
+                if self._grounding_warnings
+                else {}
+            ),
         )
-        if self._grounding_warnings:
-            # Surfaced to the reviewer, who can judge what an overlap heuristic
-            # cannot. The output is still queued - it is flagged, not rejected.
-            report = dict(output.validation_report or {})
-            report["grounding_warnings"] = list(self._grounding_warnings)
-            output.validation_report = report
-        store.save_output(output)
-        return output
 
     # ------------------------------------------------------------------
     # Batch

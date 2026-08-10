@@ -30,6 +30,8 @@ from src.study.formatters import (
 )
 from src.study.revision_agent import RevisionAgent
 from src.study.study_plan_agent import StudyPlanAgent
+from src.schemas import FlashcardSet
+from src.study.schemas import RevisionSession, StudyPlan
 from src.services.mentor_concept import MentorConceptService
 from src.ui_common import render_current_content_status, render_provenance
 from src.retrieval import ChunkIndex, RetrievalConfig
@@ -513,12 +515,16 @@ elif page == "🃏 Generate Flashcards":
             try:
                 grounded, cited, _context = ground(focus, allow_list)
                 with st.spinner("Generating cards..."):
-                    card_set = fc_agent.generate(
+                    # generate_reviewable, not generate: the plain call returned
+                    # a set flagged needs_human_review and persisted nothing, so
+                    # the badge below was the only trace a review was ever due.
+                    reviewable = fc_agent.generate_reviewable(
                         grounded,
                         card_format=card_format,
                         card_count=card_count,
                         source_chunk_ids=cited,
                     )
+                    card_set = FlashcardSet.model_validate(reviewable.payload)
             except NoGroundingError as exc:
                 st.error(str(exc))
             except Exception as exc:
@@ -580,14 +586,16 @@ elif page == "📅 Study Plan":
                 # plan should cover, so it doubles as the retrieval query.
                 grounded, _cited, _context = ground(goal, allow_list)
                 with st.spinner("Building study plan..."):
-                    plan = sp_agent.generate(
+                    reviewable = sp_agent.generate_reviewable(
                         grounded,
+                        source_chunk_ids=_cited,
                         learner_goal=goal,
                         difficulty=difficulty,
                         start_date=start_date,
                         end_date=end_date,
                         hours_per_week=float(hours_per_week),
                     )
+                    plan = StudyPlan.model_validate(reviewable.payload)
             except NoGroundingError as exc:
                 st.error(str(exc))
             except Exception as exc:
@@ -651,11 +659,13 @@ elif page == "🔄 Revision Plan":
                     # session needs, so they are the retrieval query.
                     grounded, _cited, _context = ground(" ".join(selected), allow_list)
                     with st.spinner("Planning revision items..."):
-                        session = rv_agent.generate(
+                        reviewable = rv_agent.generate_reviewable(
                             grounded,
+                            source_chunk_ids=_cited,
                             selected_topics=list(selected),
                             session_date=session_date,
                         )
+                        session = RevisionSession.model_validate(reviewable.payload)
                 except NoGroundingError as exc:
                     st.error(str(exc))
                 except Exception as exc:

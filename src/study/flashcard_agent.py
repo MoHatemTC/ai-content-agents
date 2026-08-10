@@ -27,14 +27,14 @@ import json
 import logging
 import re
 from collections import Counter
-from datetime import datetime
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 import yaml
 from dotenv import load_dotenv
 
+from src.validation.review_schema import GeneratedOutput
+from src.validation.reviewable import persist_reviewable_run
 from src.llm_gateway import build_client, default_model
 from src.schemas import FlashcardSet
 from src.study.llm_client import (
@@ -330,14 +330,18 @@ class FlashcardAgent:
         self,
         card_set: FlashcardSet,
         *,
-        agent_run_id: str,
         extracted_topics: list[str],
     ) -> FlashcardSet:
         """Force the human-review gate flags and normalise.
 
+        The run id used to be appended to ``description`` as
+        "[run_id=fc-... pending_review]", and app.py renders that field
+        verbatim - so every learner read the audit trail off the front of the
+        card set. It belongs on the persisted AgentRun, which is where
+        :meth:`generate_reviewable` now puts it.
+
         Args:
             card_set: Validated card set.
-            agent_run_id: Opaque run id for audit (stored in description tail).
             extracted_topics: Topic allow-list used.
 
         Returns:
@@ -350,8 +354,7 @@ class FlashcardAgent:
         )
         return FlashcardSet(
             title=card_set.title,
-            description=(card_set.description or "")
-            + f" [run_id={agent_run_id} pending_review]",
+            description=card_set.description,
             cards=card_set.cards,
             source_topics=source_topics,
             source_chunk_ids=list(card_set.source_chunk_ids or []),
@@ -393,7 +396,6 @@ class FlashcardAgent:
         if not content or not content.strip():
             raise ValueError("content is empty; cannot generate flashcards")
 
-        run_id = f"fc-{uuid4().hex[:8]}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
         extracted_topics = self.extract_topics(content)
         prompt = self._build_prompt(content, extracted_topics, card_format, card_count)
 
@@ -411,6 +413,47 @@ class FlashcardAgent:
             raw.source_chunk_ids = list(source_chunk_ids)
 
         self._validate_grounding(raw, extracted_topics)
-        return self._wrap_for_review_gate(
-            raw, agent_run_id=run_id, extracted_topics=extracted_topics
+        return self._wrap_for_review_gate(raw, extracted_topics=extracted_topics)
+
+    def generate_reviewable(
+        self,
+        content: str,
+        *,
+        store: Any | None = None,
+        source_chunk_ids: list[str] | None = None,
+        **kwargs: Any,
+    ) -> GeneratedOutput:
+        """Generate and queue the result for human review.
+
+        **This lane persisted nothing.** Every study agent set
+        ``needs_human_review=True`` and its docstring told the caller to route
+        the result through :mod:`src.validation.review_schema` - and no caller
+        ever did, in app.py, in study/ui.py or in study/batch.py. The pages said
+        "pending review" while the reviewer's queue stayed empty, so a flashcard set
+        could never be approved, and never reached the export gate that
+        :func:`~src.validation.review_schema.assert_exportable` guards.
+
+        Args:
+            content: Cleaned study material.
+            store: Where to persist. Defaults to the shared
+                :class:`~src.validation.store.PlatformStore`; tests inject one.
+            source_chunk_ids: Provenance from ingestion, when the caller has it.
+            **kwargs: Passed through to :meth:`generate`.
+
+        Returns:
+            The persisted :class:`GeneratedOutput`, pending review.
+        """
+        return persist_reviewable_run(
+            store=store,
+            agent_name="flashcard_agent",
+            output_type="flashcard_set",
+            output_schema=FlashcardSet,
+            model=self.model,
+            input_context=content,
+            source_chunk_ids=source_chunk_ids,
+            generate=lambda: self.generate(
+                content,
+                source_chunk_ids=source_chunk_ids,
+                **kwargs,
+            ),
         )
