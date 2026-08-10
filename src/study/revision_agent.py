@@ -106,20 +106,19 @@ class RevisionAgent:
         selected_topics: list[str],
         session_date: date,
     ) -> str:
-        template = self.prompt_cfg.get("system_prompt")
+        template = self.prompt_cfg.get("prompt_template")
         if not template:
-            raise KeyError("'system_prompt' missing in revision.yaml")
-        extracted_json = json.dumps(extracted_topics, ensure_ascii=False)
-        selected_json = json.dumps(selected_topics, ensure_ascii=False)
-        return (
-            f"{template}\n\n"
-            f"extracted_topics (full allow-list): {extracted_json}\n"
-            f"selected_topics (subset to revise): {selected_json}\n"
-            f"session_date: {session_date.isoformat()}\n"
-            # The YAML names the schema but never sends it; without the shape
-            # the model omits required keys and validation fails.
-            f"{schema_block(RevisionSession)}"
+            raise KeyError("'prompt_template' missing in revision.yaml")
+
+        rendered = template.format(
+            extracted_topics=json.dumps(extracted_topics, ensure_ascii=False),
+            selected_topics=json.dumps(selected_topics, ensure_ascii=False),
+            session_date=session_date.isoformat(),
         )
+        # The literal example in the YAML shows the shape; this appends the
+        # generated JSON schema too. Without one or the other the model omits
+        # required keys and validation fails.
+        return f"{rendered}{schema_block(RevisionSession)}"
 
     # ------------------------------------------------------------------
     # LLM
