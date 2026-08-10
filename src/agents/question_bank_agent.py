@@ -35,3 +35,5 @@ class QuestionBankAgent(QuestionAgentBase):
 
     prompt_file = "question_bank.yaml"
     output_schema = QuestionBankOutput
+    agent_name = "question_bank_agent"
+    output_type = "question_bank"

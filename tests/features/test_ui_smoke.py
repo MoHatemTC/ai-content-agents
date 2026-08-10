@@ -62,6 +62,8 @@ def _no_live_calls(monkeypatch: pytest.MonkeyPatch):
 
     from src.agents.concept_agent import ConceptAgent
     from src.agents.mentor_agent import MentorAgent
+    from src.agents.question_bank_agent import QuestionBankAgent
+    from src.agents.test_help_agent import TestHelpAgent
     from src.study.flashcard_agent import FlashcardAgent
     from src.study.revision_agent import RevisionAgent
     from src.study.study_plan_agent import StudyPlanAgent
@@ -69,13 +71,17 @@ def _no_live_calls(monkeypatch: pytest.MonkeyPatch):
     # Mentor and concept take a different fake: CompliantAgentsClient reads the
     # [chunk_id] markers back out of the prompt and echoes real ids and real
     # text, so the reference and support checks those agents run have something
-    # they can actually verify. CompliantStudyClient answers the study prompts.
+    # they can actually verify. It serves the two question agents for the same
+    # reason - they verify citations too. CompliantStudyClient answers the
+    # study prompts.
     for agent_class, fake in (
         (FlashcardAgent, CompliantStudyClient),
         (StudyPlanAgent, CompliantStudyClient),
         (RevisionAgent, CompliantStudyClient),
         (MentorAgent, CompliantAgentsClient),
         (ConceptAgent, CompliantAgentsClient),
+        (QuestionBankAgent, CompliantAgentsClient),
+        (TestHelpAgent, CompliantAgentsClient),
     ):
         original = agent_class.__init__
 
@@ -597,3 +603,122 @@ def test_a_real_citation_is_shown_as_a_readable_passage(
 
     rendered = " ".join(str(m.value) for m in at.markdown)
     assert "Passage " in rendered, "no readable passage label was rendered"
+
+
+# --------------------------------------------------------------------------- #
+# The Question Bank and Test Help pages
+#
+# Both agents were built, tested and documented in Sprint 4 and then had no
+# interface at all - not a page in src/app.py, and frontend/qbank_ui.py was
+# `def render(): pass`. The only way to reach either was a pytest file.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "page_label",
+    ["📝 Question Bank", "🎯 Test Help"],
+    ids=["question_bank", "test_help"],
+)
+def test_the_question_page_generates_from_uploaded_content(page_label) -> None:
+    """The basic thing neither page could do before: run at all."""
+    at = AppTest.from_file(str(COMBINED_APP), default_timeout=120)
+    _load_content(at, count=3)
+    at.run()
+
+    at.sidebar.radio[0].set_value(page_label).run()
+    _submit_button(at, "Generate Questions").click().run()
+
+    assert not at.exception
+    errors = [str(e.value) for e in at.error]
+    assert not errors, f"page reported: {errors}"
+
+    rendered = " ".join(str(block.value) for block in at.markdown)
+    assert "PENDING HUMAN REVIEW" in rendered
+
+
+@pytest.mark.parametrize(
+    "page_label",
+    ["📝 Question Bank", "🎯 Test Help"],
+    ids=["question_bank", "test_help"],
+)
+def test_the_question_page_queues_its_output_for_review(
+    page_label, tmp_path, monkeypatch
+) -> None:
+    """The badge has to mean something.
+
+    The page cannot be handed a store - it builds its own - so this points
+    PLATFORM_DB_PATH at a temporary file and reads the queue back out. Without
+    it the page would write into the repo's ingestion.db during the test run.
+    """
+    monkeypatch.setenv("PLATFORM_DB_PATH", str(tmp_path / "platform.db"))
+
+    at = AppTest.from_file(str(COMBINED_APP), default_timeout=120)
+    _load_content(at, count=3)
+    at.run()
+
+    at.sidebar.radio[0].set_value(page_label).run()
+    _submit_button(at, "Generate Questions").click().run()
+
+    assert not at.exception
+
+    from src.validation.review_schema import OutputStatus
+    from src.validation.store import PlatformStore
+
+    store = PlatformStore(db_path=str(tmp_path / "platform.db"))
+    queued = store.list_outputs(status=OutputStatus.PENDING)
+    assert queued, "the page printed PENDING but queued nothing for review"
+
+
+@pytest.mark.parametrize(
+    "page_label",
+    ["📝 Question Bank", "🎯 Test Help"],
+    ids=["question_bank", "test_help"],
+)
+def test_the_question_page_retrieves_instead_of_sending_the_document(
+    page_label, monkeypatch
+) -> None:
+    """The same defect the mentor and concept pages shipped (issue #33).
+
+    Asserting on the prompt the model received is what makes this specific; a
+    page that merely does not error would pass either way on a small document.
+    """
+    prompts: list[str] = []
+    original_create = CompliantAgentsClient.create
+
+    def recording_create(self, **kwargs):
+        prompts.append(kwargs["messages"][0]["content"])
+        return original_create(self, **kwargs)
+
+    monkeypatch.setattr(CompliantAgentsClient, "create", recording_create)
+
+    at = AppTest.from_file(str(COMBINED_APP), default_timeout=120)
+    _load_big_content(at)
+    at.run()
+
+    at.sidebar.radio[0].set_value(page_label).run()
+    _submit_button(at, "Generate Questions").click().run()
+
+    assert not at.exception
+    assert prompts, "the page never called the model"
+    assert BIG_DOCUMENT not in prompts[0], "the whole document reached the model"
+    assert "doc-big-c" in prompts[0], "no retrieved chunk markers in the prompt"
+
+
+@pytest.mark.parametrize(
+    "page_label",
+    ["📝 Question Bank", "🎯 Test Help"],
+    ids=["question_bank", "test_help"],
+)
+def test_the_question_page_is_gated_until_content_is_loaded(page_label) -> None:
+    """With nothing uploaded, the page asks for content and offers no form."""
+    at = AppTest.from_file(str(COMBINED_APP), default_timeout=120)
+    at.run()
+
+    at.sidebar.radio[0].set_value(page_label).run()
+
+    assert not at.exception
+    warnings = [str(w.value) for w in at.warning]
+    assert any("upload educational content" in text for text in warnings), warnings
+    assert not [
+        button for button in at.button if "Generate Questions" in str(button.label)
+    ]
