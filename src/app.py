@@ -19,8 +19,6 @@ from src.ingestion.loader import ContentLoader
 from src.ingestion.batch import BatchIngestion
 from src.ingestion.library import ContentLibrary
 from src.ingestion.demo_data import DemoDataLoader
-from src.registry import AgentRegistry
-from src.generation import MockGenerator
 from src.llm_gateway import gateway_availability
 from src.study.flashcard_agent import FlashcardAgent
 from src.study.formatters import (
@@ -57,14 +55,6 @@ def get_library():
 @st.cache_resource
 def get_demo():
     return DemoDataLoader()
-
-@st.cache_resource
-def get_registry():
-    return AgentRegistry()
-
-@st.cache_resource
-def get_generator():
-    return MockGenerator(get_registry())
 
 @st.cache_resource
 def get_flashcard_agent():
@@ -200,10 +190,6 @@ loader = get_loader()
 batch = get_batch()
 library = get_library()
 demo = get_demo()
-# `registry` and `generator` used to be built here and then never read. Since
-# AgentRegistry constructs all four content agents, that alone was enough to
-# take the whole page down when the gateway is unconfigured. The factories stay
-# for whoever needs them; nothing calls them at import.
 
 # Say whether generation can actually happen. The app spent weeks serving
 # placeholder cards - "See the source text for a fuller treatment" - because
