@@ -19,7 +19,9 @@ import pytest
 import yaml
 
 from src.agents.concept_agent import ConceptAgent
+from src.agents.explanation_agent_base import EXPLANATION_TOKENS
 from src.agents.mentor_agent import MentorAgent
+from tests.conftest import CompliantAgentsClient
 
 PROMPTS = Path(__file__).resolve().parents[2] / "src" / "prompts"
 
@@ -113,3 +115,28 @@ def test_the_grounding_prohibitions_survive(agent_class, filename) -> None:
 @pytest.mark.parametrize("agent_class,filename", AGENTS)
 def test_the_prompt_keeps_the_shared_shape(agent_class, filename) -> None:
     assert list(load(filename)) == EXPECTED_KEYS
+
+
+# --------------------------------------------------------------------------- #
+# Room to write it
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("agent_class,filename", AGENTS)
+def test_the_agent_sends_the_larger_budget(agent_class, filename) -> None:
+    """Assert on what reached the gateway, not on the constant.
+
+    The same trap as the question-budget fix: a constant can be right while the
+    call site still sends something else.
+    """
+    client = CompliantAgentsClient()
+    agent = agent_class(client=client, model="test-model")
+
+    agent.generate("Vector spaces are closed under addition.", "What is a vector space?")
+
+    assert client.calls[-1]["max_tokens"] == EXPLANATION_TOKENS
+
+
+def test_the_budget_leaves_room_for_a_detailed_answer() -> None:
+    """4,000 tokens is roughly 3,000 words, against a 254-843 char baseline."""
+    assert EXPLANATION_TOKENS >= 4000
