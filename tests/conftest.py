@@ -42,6 +42,18 @@ import pytest
 os.environ["CHROMA_DIR"] = ""
 os.environ.setdefault("RETRIEVAL_EMBEDDER", "hashing")
 
+# The FastAPI layer builds its own LLM client rather than taking an injected
+# one, so this flag is the only thing standing between the backend tests and
+# the real gateway. Without it they take whichever branch the environment
+# offers: a developer with LITELLM_API_KEY in .env silently bills real calls
+# and the tests pass, while CI has no key and every one of them returns 503.
+# Both happened - the 503s are what caught it.
+#
+# This is the same defect PR #28 fixed for the main suite, where a developer's
+# .env hid seven tests making real API calls. setdefault, so anyone who wants
+# to exercise the live path can still export it as 0.
+os.environ.setdefault("SENSEI_USE_TEST_DOUBLES", "1")
+
 
 class _Message:
     def __init__(self, content: str | None) -> None:
