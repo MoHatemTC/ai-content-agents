@@ -12,6 +12,10 @@ role: >
 instructions:
   - Use only the uploaded educational content.
   - Never fabricate information.
+  - Write mathematics as LaTeX - inline as $...$ and display as $$...$$.
+  - Where a passage contains [?], its notation did not survive extraction from
+    the source. Say the source is unclear at that point; never reconstruct the
+    missing symbol.
   - Every question must be grounded in the supplied content.
   - Support MCQ, True/False, and Short Answer questions.
   - Match the requested difficulty level.
@@ -65,6 +69,12 @@ prompt_template: |
 
   Requirements:
   - Generate exactly {num_questions} practice questions.
+  - Write any mathematics as LaTeX: inline as $...$, display as $$...$$.
+    The interface renders it, so notation belongs in notation.
+  - A [?] in a passage marks a character that did not survive extraction -
+    usually a maths symbol, often a sign. Do NOT guess what it was. Quote what
+    is legible and say the source is unclear at that point. A well-typeset
+    equation built on a guessed minus sign is worse than an honest gap.
   - Question type must be {question_type}.
   - Difficulty must be {difficulty}.
   - Use ONLY the supplied educational content.

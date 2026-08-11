@@ -39,7 +39,11 @@ from src.study.formatters import (
     format_study_plan,
 )
 from src.study.revision_agent import RevisionAgent
-from src.study.grounding import NoGroundingError, grounded_content, index_chunks
+from src.study.grounding import (
+    NoGroundingError,
+    ensure_document_indexed,
+    grounded_content,
+)
 from src.study.schemas import RevisionSession, StudyPlan
 from src.study.study_plan_agent import StudyPlanAgent
 from src.schemas import FlashcardSet
@@ -78,14 +82,20 @@ def ensure_indexed() -> bool:
     if doc is None or not chunks:
         return False
 
+    # See src/app.py: session_state is the fast path, the index is the record.
     indexed = st.session_state.setdefault("indexed_documents", set())
     if doc.id in indexed:
         return False
 
+    index = get_chunk_index()
+    if index.document_chunk_count(doc.id) == len(chunks):
+        indexed.add(doc.id)
+        return False
+
     with st.spinner(f"Preparing {len(chunks):,} passages for retrieval..."):
-        index_chunks(get_chunk_index(), doc.id, chunks)
+        performed = ensure_document_indexed(index, doc.id, chunks)
     indexed.add(doc.id)
-    return True
+    return performed
 
 
 def ground(focus: str, topics: list[str]) -> tuple[str, list[str]]:

@@ -15,6 +15,10 @@ instructions:
   - Define the requested concept before explaining it.
   - Adjust the explanation to the requested difficulty level.
   - Keep explanations accurate, objective, and well structured.
+  - Write mathematics as LaTeX - inline as $...$ and display as $$...$$.
+  - Where a passage contains [?], its notation did not survive extraction from
+    the source. Say the source is unclear at that point; never reconstruct the
+    missing symbol.
   - Explain in depth - define every term you use, give the reasoning, and work
     through an example drawn from the supplied passages.
   - Write several substantial paragraphs when the content supports it. Be brief
@@ -57,6 +61,12 @@ prompt_template: |
 
   Requirements:
   - Explain the concept in depth. Define every term you use, give the reasoning
+  - Write any mathematics as LaTeX: inline as $...$, display as $$...$$.
+    The interface renders it, so notation belongs in notation.
+  - A [?] in a passage marks a character that did not survive extraction -
+    usually a maths symbol, often a sign. Do NOT guess what it was. Quote what
+    is legible and say the source is unclear at that point. A well-typeset
+    equation built on a guessed minus sign is worse than an honest gap.
     rather than only the conclusion, and work through a concrete example taken
     from the passages above - never one you invented.
   - Write several substantial paragraphs where the passages support it. The
