@@ -434,6 +434,24 @@ class ChunkIndex:
             )
         return self.add_chunks(chunks)
 
+    def document_chunk_count(self, document_id: str) -> int:
+        """How many chunks of ``document_id`` are currently indexed.
+
+        Exists so a caller can ask whether a document is already embedded
+        instead of guessing. Embedding is ~97% of ingest cost and its rate
+        cannot be tuned, so re-embedding a document that is already in a
+        persisted index is the single most expensive avoidable thing the app
+        does - measured at 76 ms per chunk, 65 s for an 861-chunk textbook.
+
+        Args:
+            document_id: The document to count.
+
+        Returns:
+            The number of indexed chunks; 0 when the document is absent.
+        """
+        existing = self._collection.get(where={"document_id": document_id}, include=[])
+        return len(existing["ids"])
+
     def remove_document(self, document_id: str) -> int:
         """Remove every chunk of a document from the index.
 
