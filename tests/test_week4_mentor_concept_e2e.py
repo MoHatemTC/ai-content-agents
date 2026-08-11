@@ -107,7 +107,7 @@ def test_week4_support_check_blocks_off_content_mentor_claims(monkeypatch) -> No
     context = _context(chunk_id="chunk-mentor", text="Python has for loops.")
     agent = MentorAgent(client=CompliantAgentsClient())
 
-    def fake_call_llm(_: str) -> str:
+    def fake_call_llm(_: str, **kwargs) -> str:
         return json.dumps(
             {
                 "explanation": "Python automatically parallelizes loops.",
@@ -141,7 +141,7 @@ def test_week4_support_check_blocks_off_content_concept_claims(monkeypatch) -> N
     context = _context(chunk_id="chunk-concept", text="Python has for loops.")
     agent = ConceptAgent(client=CompliantAgentsClient())
 
-    def fake_call_llm(_: str) -> str:
+    def fake_call_llm(_: str, **kwargs) -> str:
         return json.dumps(
             {
                 "definition": "Loops are compiled into machine code automatically.",
@@ -175,7 +175,7 @@ def test_week4_reference_verification_blocks_fabricated_segment_ids(
     context = _context(chunk_id="chunk-real", text="Python has for loops.")
     agent = agent_class(client=CompliantAgentsClient())
 
-    def fake_call_llm(_: str) -> str:
+    def fake_call_llm(_: str, **kwargs) -> str:
         payload: dict[str, object]
         if agent_class is MentorAgent:
             payload = {

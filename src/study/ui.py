@@ -156,6 +156,7 @@ def flashcards_page() -> None:
                     card_format=card_format,
                     card_count=card_count,
                     source_chunk_ids=cited,
+                    extracted_topics=allow_list,
                 )
                 card_set = FlashcardSet.model_validate(reviewable.payload)
         except NoGroundingError as exc:
@@ -230,6 +231,7 @@ def study_plan_page() -> None:
                 reviewable = agent.generate_reviewable(
                     grounded,
                     source_chunk_ids=_cited,
+                    extracted_topics=allow_list,
                     learner_goal=goal,
                     difficulty=difficulty,
                     start_date=start_date,
@@ -304,6 +306,7 @@ def revision_page() -> None:
                 reviewable = agent.generate_reviewable(
                     grounded,
                     source_chunk_ids=_cited,
+                    extracted_topics=allow_list,
                     selected_topics=list(selected),
                     session_date=session_date,
                 )

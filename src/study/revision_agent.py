@@ -185,6 +185,7 @@ class RevisionAgent:
         *,
         selected_topics: list[str],
         session_date: date | str,
+        extracted_topics: list[str] | None = None,
     ) -> RevisionSession:
         """Produce targeted revision items for the selected weak topics.
 
@@ -196,6 +197,17 @@ class RevisionAgent:
                 deterministic substring of ``content``) otherwise the call
                 raises.
             session_date: ISO date/date for the session.
+            extracted_topics: The allow-list the caller already showed the
+                learner. Defaults to deriving it from ``content``.
+
+                Passing it is what keeps the two ends honest. The pages build
+                their widgets from ``extract_topics(doc.content)`` and then
+                hand the agent the *retrieved* passages, so the agent derived a
+                different, smaller list and rejected topics its own page had
+                just offered. Live: picking "Radiation" raised
+                ``selected_topics reference content topics that were not
+                extracted``. One extraction, supplied by whoever owns the
+                widget, cannot disagree with itself.
 
         Returns:
             Validated :class:`RevisionSession` marked
@@ -214,13 +226,19 @@ class RevisionAgent:
 
         sdate = self._parse_date(session_date)
 
-        extracted_topics = FlashcardAgent.extract_topics(content)
+        if extracted_topics is None:
+            extracted_topics = FlashcardAgent.extract_topics(content)
         # Fall back if heuristic yielded nothing for very short content
         extracted_topics = extracted_topics or list(dict.fromkeys(selected_topics))
 
-        invalid_selected = [
-            t for t in selected_topics if t not in set(extracted_topics)
-        ]
+        canonical_selected: list[str] = []
+        invalid_selected: list[str] = []
+        for topic in selected_topics:
+            canonical = FlashcardAgent.canonical_topic(topic, extracted_topics)
+            if canonical is None:
+                invalid_selected.append(topic)
+            else:
+                canonical_selected.append(canonical)
         if invalid_selected:
             raise RevisionGroundingError(
                 "selected_topics reference content topics that were not "
@@ -228,6 +246,7 @@ class RevisionAgent:
                 f"Extracted allow-list: {sorted(extracted_topics)}"
             )
 
+        selected_topics = canonical_selected
         prompt = self._build_prompt(extracted_topics, selected_topics, sdate)
         try:
             text = self._call_llm(prompt, output_budget(len(selected_topics)))

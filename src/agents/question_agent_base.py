@@ -34,7 +34,12 @@ from typing import Any, ClassVar
 import yaml
 from pydantic import BaseModel, ValidationError
 
-from src.llm_gateway import build_client, chat_json, default_model
+from src.llm_gateway import (
+    DEFAULT_ATTEMPTS,
+    build_client,
+    chat_json,
+    default_model,
+)
 from src.retrieval.grounding import verify_references
 from src.retrieval.models import GroundedContext
 from src.validation.review_schema import GeneratedOutput
@@ -77,6 +82,10 @@ class QuestionAgentBase:
         self.prompt = self._load_prompt()
         self.client = client if client is not None else build_client()
         self.model = model or default_model()
+        # Warnings from the most recent generate(), read by generate_reviewable
+        # so a fuzzy grounding signal reaches the reviewer rather than the
+        # learner. See _enforce_grounding for why it is not a hard reject.
+        self._grounding_warnings: list[str] = []
 
     # ------------------------------------------------------------------
     # Prompt
@@ -177,8 +186,18 @@ class QuestionAgentBase:
     # LLM
     # ------------------------------------------------------------------
 
-    def _call_llm(self, prompt: str, num_questions: int | None = None) -> str:
+    def _call_llm(
+        self, prompt: str, num_questions: int | None = None, *, attempts: int = 1
+    ) -> str:
         """Send the prompt and return the reply body.
+
+        Args:
+            prompt: The rendered prompt.
+            num_questions: Sizes the output budget when known.
+            attempts: Left at 1 for the orchestrator, which calls this method
+                directly and runs its own retry - two layers would multiply.
+                :meth:`generate` passes ``DEFAULT_ATTEMPTS``, because the pages
+                that call it get no retry from anywhere else.
 
         Raises:
             UpstreamResponseError: If the gateway returned no usable choice,
@@ -190,6 +209,7 @@ class QuestionAgentBase:
             self.client,
             self.model,
             prompt,
+            attempts=attempts,
             # Sized to the request, like the study lane: the gateway refuses on
             # the *requested* ceiling, so a flat cap is wrong in both directions.
             max_tokens=output_budget(num_questions)
@@ -230,7 +250,11 @@ class QuestionAgentBase:
             UpstreamResponseError: If the gateway returned nothing usable.
         """
         prompt = self._build_prompt(content, question_type, difficulty, num_questions)
-        raw_response = self._call_llm(prompt, num_questions)
+        # The orchestrator never calls generate(); it calls _call_llm and
+        # retries itself. This is the page path, which had no retry at all.
+        raw_response = self._call_llm(
+            prompt, num_questions, attempts=DEFAULT_ATTEMPTS
+        )
 
         try:
             payload = json.loads(raw_response)
@@ -275,7 +299,9 @@ class QuestionAgentBase:
         self._enforce_request(result, question_type, difficulty, num_questions)
 
         if context is not None:
-            self._enforce_grounding(result, context)
+            self._grounding_warnings = self._enforce_grounding(result, context)
+        else:
+            self._grounding_warnings = []
 
         return result
 
@@ -394,21 +420,56 @@ class QuestionAgentBase:
                 num_questions=num_questions,
                 context=context,
             ),
+            # A fuzzy signal belongs in front of the human reviewer, not in a
+            # hard reject the learner reads as a failure. persist_reviewable_run
+            # merges this into validation_report; the page renders it.
+            collect_report=lambda: (
+                {"grounding_warnings": list(self._grounding_warnings)}
+                if self._grounding_warnings
+                else {}
+            ),
         )
 
-    def _enforce_grounding(self, result: Any, context: GroundedContext) -> None:
+    def _enforce_grounding(self, result: Any, context: GroundedContext) -> list[str]:
         """Check citations and rationales against the retrieved passages.
 
         These agents cite per question rather than at the top level, so the
         references are flattened before verification.
 
+        **Exact checks block; the fuzzy one informs** - the same split
+        :class:`~src.agents.explanation_agent_base.ExplanationAgentBase` made,
+        for the same measured reason. Citation verification is set membership
+        over chunk ids and produced zero false positives across 20 live
+        generations, so it raises. ``validate_support`` is a 0.6 token-overlap
+        heuristic over prose, and it rejected 5 of those same 20 - one correct
+        answer in four withheld from the learner, which is what got grounding
+        switched off wholesale last time.
+
+        These two agents kept raising on both long after mentor and concept
+        stopped, because nothing called them with a context: they had no UI
+        until the Question Bank and Test Help pages existed. The moment they
+        got one, they inherited the failure that fix was written to prevent.
+
+        Returns:
+            Human-readable warnings; empty when nothing was flagged.
+
         Raises:
-            ValueError: If any citation is invented, or a rationale asserts
-                something the passages do not support.
+            ValueError: If a citation was invented, or none was given.
         """
         references = [
             reference for item in result.questions for reference in item.references
         ]
+        if not references:
+            # verify_references treats an empty citation list as trivially
+            # valid, so without this a question set that cites nothing at all
+            # passes grounding. Every prompt here says "every question must
+            # contain at least one grounding reference"; this is what makes
+            # that true rather than merely requested.
+            raise ValueError(
+                "The generated questions cite no sources, so they cannot be "
+                "verified against the retrieved content."
+            )
+
         verification = verify_references(references, context)
         if not verification.valid:
             raise ValueError(
@@ -417,8 +478,17 @@ class QuestionAgentBase:
             )
 
         support = validate_support(extract_claim_text(result), context)
-        if not support.supported:
-            raise ValueError(
-                "The generated questions contain unsupported claims: "
-                f"{support.unsupported_claims}"
-            )
+        if support.supported:
+            return []
+
+        logger.info(
+            "%s: %d claim(s) not matched to the retrieved passages; flagged for "
+            "review rather than rejected.",
+            self.output_schema.__name__,
+            len(support.unsupported_claims),
+        )
+        return [
+            "Could not match this statement to the retrieved passages: "
+            f"{claim}"
+            for claim in support.unsupported_claims
+        ]

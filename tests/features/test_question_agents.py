@@ -28,6 +28,12 @@ from pydantic import ValidationError
 
 from src.agents.question_bank_agent import QuestionBankAgent
 from src.agents.test_help_agent import TestHelpAgent
+from src.retrieval.models import (
+    Chunk,
+    GroundedContext,
+    RetrievalScope,
+    RetrievedChunk,
+)
 from src.validation.review_schema import OutputStatus, RunStatus
 from src.validation.schemas import QuestionBankOutput, TestHelpOutput
 from src.validation.store import PlatformStore
@@ -253,13 +259,19 @@ def test_an_error_shaped_success_is_a_legible_error(agent_class, schema) -> None
     Orchestrator.transient_errors, so raising it is what makes a saturated
     provider retryable instead of being recorded as a permanent failure.
     """
-    agent = agent_class(
-        client=FakeLLMClient(Reply(error={"message": "provider saturated"})),
-        model="test-model",
+    # Two, because generate() now retries: a provider that recovers on the
+    # second call is the case retry exists for, so staying saturated is what
+    # this test is actually about.
+    client = FakeLLMClient(
+        Reply(error={"message": "provider saturated"}),
+        Reply(error={"message": "provider saturated"}),
     )
+    agent = agent_class(client=client, model="test-model")
 
     with pytest.raises(UpstreamResponseError, match="no choices"):
         agent.generate(SOURCE, "mcq", "beginner", 1)
+
+    assert len(client.calls) == 2, "a saturated provider was not retried"
 
 
 # Closes BUG-10: no fence stripping, so a fenced reply failed to parse.
@@ -603,3 +615,169 @@ def test_the_two_agents_are_recorded_under_different_names(
 def test_question_bank_and_test_help_do_not_collide() -> None:
     assert QuestionBankAgent.agent_name != TestHelpAgent.agent_name
     assert QuestionBankAgent.output_type != TestHelpAgent.output_type
+
+
+# --------------------------------------------------------------------------- #
+# Grounding: exact checks block, the fuzzy one informs
+#
+# Mentor and concept made this split in #39 after measuring it: validate_support
+# is a 0.6 token-overlap heuristic that rejected 5 of 20 *correct* live
+# generations. These two agents kept raising on it, because nothing called them
+# with a context - they had no UI until #41. The moment they got one, they
+# inherited the failure that fix existed to prevent.
+# --------------------------------------------------------------------------- #
+
+
+SOURCE_CHUNK_ID = "doc-1-c0000"
+
+
+def a_context(chunk_id: str = SOURCE_CHUNK_ID) -> GroundedContext:
+    chunk = Chunk(chunk_id=chunk_id, document_id="doc-1", ordinal=0, text=SOURCE)
+    return GroundedContext(
+        query="loops",
+        scope=RetrievalScope(document_id="doc-1"),
+        chunks=[RetrievedChunk(chunk=chunk, score=1.0, rank=1)],
+    )
+
+
+def grounded_question(**overrides) -> dict:
+    """A question citing the chunk the context actually retrieved."""
+    return question(references=[{"segment_id": SOURCE_CHUNK_ID, "text": SOURCE}], **overrides)
+
+
+@pytest.mark.parametrize("agent_class,schema", AGENTS)
+def test_an_unsupported_claim_is_flagged_not_withheld(agent_class, schema) -> None:
+    """The measured failure: one correct answer in four withheld from the learner.
+
+    The rationale here cites a real retrieved chunk but says something the
+    passage does not support, which is what the overlap heuristic catches - and
+    what it catches wrongly a quarter of the time on genuine output.
+    """
+    agent = agent_with(
+        agent_class,
+        reply([grounded_question(
+            rationale="Quantum entanglement lets the interpreter skip the loop entirely."
+        )]),
+    )
+
+    result = agent.generate(SOURCE, "mcq", "beginner", 1, context=a_context())
+
+    assert result.questions, "the output was withheld instead of flagged"
+    assert agent._grounding_warnings, "an unsupported claim produced no warning"
+    assert any(
+        "Could not match this statement" in warning
+        for warning in agent._grounding_warnings
+    )
+
+
+@pytest.mark.parametrize("agent_class,schema", AGENTS)
+def test_a_supported_answer_is_not_flagged(agent_class, schema) -> None:
+    """The other half: a check that flags everything would satisfy the test above."""
+    agent = agent_with(agent_class, reply([grounded_question()]))
+
+    agent.generate(SOURCE, "mcq", "beginner", 1, context=a_context())
+
+    assert agent._grounding_warnings == []
+
+
+@pytest.mark.parametrize("agent_class,schema", AGENTS)
+def test_an_invented_citation_is_still_refused(agent_class, schema) -> None:
+    """The exact check keeps blocking. Zero false positives across 20 live runs."""
+    agent = agent_with(
+        agent_class,
+        reply([question(references=[{"segment_id": "doc-1-c9999", "text": "never retrieved"}])]),
+    )
+
+    with pytest.raises(ValueError, match="not grounded"):
+        agent.generate(SOURCE, "mcq", "beginner", 1, context=a_context())
+
+
+@pytest.mark.parametrize("agent_class,schema", AGENTS)
+def test_a_question_set_that_cites_nothing_is_refused(agent_class, schema) -> None:
+    """verify_references treats an empty list as trivially valid.
+
+    So without an explicit guard, a set where every question cites nothing at
+    all passes grounding untouched - while every prompt in src/prompts/ says
+    "every question must contain at least one grounding reference".
+    """
+    agent = agent_with(agent_class, reply([question(references=[])]))
+
+    with pytest.raises(ValueError, match="cite no sources"):
+        agent.generate(SOURCE, "mcq", "beginner", 1, context=a_context())
+
+
+@pytest.mark.parametrize("agent_class,schema", AGENTS)
+def test_the_warnings_reach_the_review_record(agent_class, schema, tmp_path) -> None:
+    """A flag nobody sees is the same as no flag.
+
+    The whole point of downgrading the hard reject is that the signal lands in
+    front of the reviewer instead of the learner.
+    """
+    store = PlatformStore(db_path=str(tmp_path / "platform.db"))
+    agent = agent_with(
+        agent_class,
+        reply([grounded_question(
+            rationale="Quantum entanglement lets the interpreter skip the loop entirely."
+        )]),
+    )
+
+    output = agent.generate_reviewable(
+        SOURCE,
+        question_type="mcq",
+        difficulty="beginner",
+        num_questions=1,
+        context=a_context(),
+        store=store,
+    )
+
+    warnings = (output.validation_report or {}).get("grounding_warnings", [])
+    assert warnings, "the reviewer gets no sign the claim was unmatched"
+    assert output.status is OutputStatus.PENDING
+
+
+# --------------------------------------------------------------------------- #
+# Retry belongs to whoever owns the path, and only to one of them
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("agent_class,schema", AGENTS)
+def test_a_transient_failure_is_retried_on_the_page_path(agent_class, schema) -> None:
+    """The study lane retried from the start; these four never did.
+
+    The orchestrator has retry, but every Streamlit page calls the agent
+    directly and never touches the orchestrator - so a free-tier gateway
+    returning one error payload failed the page outright, when a second call
+    would have served it.
+    """
+    client = FakeLLMClient(
+        Reply(error={"message": "provider saturated"}),
+        Reply(reply([question()])),
+    )
+    agent = agent_class(client=client, model="test-model")
+
+    result = agent.generate(SOURCE, "mcq", "beginner", 1)
+
+    assert len(result.questions) == 1
+    assert len(client.calls) == 2, "the transient failure was not retried"
+
+
+@pytest.mark.parametrize("agent_class,schema", AGENTS)
+def test_the_orchestrator_path_does_not_retry_twice_over(agent_class, schema) -> None:
+    """Two retry layers multiply, and that is worse than none.
+
+    ``RegistryAgentAdapter.run_raw`` calls ``_call_llm`` directly and runs its
+    own retry with backoff. Retrying inside the client as well turned an
+    orchestrator configured for two retries into six calls against a provider
+    that had just said it was saturated - the exact harm the narrow
+    ``response_format`` fallback exists to avoid.
+    """
+    client = FakeLLMClient(*[Reply(error={"message": "saturated"})] * 4)
+    agent = agent_class(client=client, model="test-model")
+
+    with pytest.raises(UpstreamResponseError):
+        agent._call_llm("a prompt")
+
+    assert len(client.calls) == 1, (
+        "_call_llm retried on its own; the orchestrator's max_retries would "
+        "then be a multiplier rather than a limit"
+    )
