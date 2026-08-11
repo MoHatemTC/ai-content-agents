@@ -47,6 +47,10 @@ topic allow-list instead, which is a real constraint but a weaker one. Recorded
 in [study-lane-sprint3.md](study-lane-sprint3.md); closing it is a schema change
 plus a prompt change, not a parity fix.
 
+**Chapter-shaped questions cannot be answered** - chunks carry no chapter or
+section metadata, so retrieval cannot serve them and the agents correctly refuse.
+Recorded in [retrieval-lane.md](retrieval-lane.md).
+
 **The explanation agents use a flat output cap** where the other two lanes size
 it to the request. One explanation is one explanation, so a flat cap is
 defensible — unlike a request for 20 flashcards, which is what `output_budget`

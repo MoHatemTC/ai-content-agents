@@ -48,13 +48,22 @@ from src.llm_gateway import (
 from src.models.batch import BatchGenerationFailure, BatchGenerationResult
 from src.retrieval.grounding import verify_references
 from src.retrieval.models import GroundedContext
-from src.study.llm_client import max_tokens_default
 from src.validation.review_schema import GeneratedOutput
 from src.validation.reviewable import persist_reviewable_run
 from src.validation.schemas import validate_difficulty
 from src.validation.support_validator import extract_claim_text, validate_support
 
 logger = logging.getLogger(__name__)
+
+# Output allowance for one explanation.
+#
+# Flat, not sized per item like the question agents: one explanation is one
+# explanation, however much material went in. 2000 was not binding while these
+# agents answered in two sentences - measured across a session, replies used
+# about 15% of it - but the prompts now ask for depth, and a detailed
+# explanation plus key points, next steps and citations passes 2000 easily.
+# Raising it after the prompt change would be finding this out from a user.
+EXPLANATION_TOKENS = 4000
 
 # Module-level so a test can point it at a tmp dir. The prompt-loading tests
 # used to write ":::: invalid yaml ::::" over the real src/prompts/mentor.yaml
@@ -204,7 +213,7 @@ class ExplanationAgentBase:
             self.client,
             self.model,
             prompt,
-            max_tokens=max_tokens_default(),
+            max_tokens=EXPLANATION_TOKENS,
             attempts=attempts,
         )
 
