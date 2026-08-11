@@ -18,6 +18,7 @@ instructions:
   - Include the correct answer.
   - Include a rationale explaining why the answer is correct.
   - Include grounding references using stable identifiers such as segment_id.
+  - Keep each reference excerpt short - a sentence or two, at most 300 characters.
   - Mark every generated output as requiring human review.
   - If the provided content is insufficient, clearly indicate that instead of guessing.
 
@@ -35,7 +36,7 @@ output_schema:
       type: "mcq"
       references:
         - segment_id: "seg1"
-          text: "Relevant content excerpt"
+          text: "Short excerpt, at most 300 characters"
 
   requires_human_review: true
 
@@ -83,6 +84,9 @@ prompt_template: |
       - type
       - references
   - Every question must contain at least one grounding reference.
+  - Each reference's text must be a SHORT excerpt - a sentence or two,
+    at most 300 characters. Quote only the part that supports the
+    question; do not copy the whole passage back.
   - Set requires_human_review to true.
   - If the content is insufficient, explain that instead of guessing.
 
@@ -105,7 +109,7 @@ prompt_template: |
         "references": [
           {{
             "segment_id": "seg1",
-            "text": "Relevant content excerpt"
+            "text": "Short excerpt, at most 300 characters"
           }}
         ]
       }}
