@@ -10,8 +10,10 @@ import json
 import logging
 import sqlite3
 from datetime import datetime, timezone
+from typing import Any
 from uuid import uuid4
 
+from backend.errors import ApiError
 from backend.chat.schemas import (
     ChatCitation,
     ChatSummary,
@@ -135,6 +137,32 @@ def list_chats_service(
     return GetChatsResponse(chats=chats)
 
 
+def _generate_or_422(agent: Any, **kwargs: Any) -> Any:
+    """Call an explanation agent, turning a grounding refusal into a 422.
+
+    PREVIEW ADAPTATION. These two call sites passed ``strict=False``, which
+    existed on the separate MentorAgent and ConceptAgent this branch was
+    written against. PR #39 merged those into one ExplanationAgentBase and
+    dropped the flag, because it split the checks by kind instead: the fuzzy
+    support heuristic became advisory for every caller - which is most of what
+    strict=False bought - while the exact checks still refuse. So the toggle is
+    gone rather than renamed.
+
+    What still raises is an invented citation, or a reply that cites nothing.
+    A chat answer is not a good reason to relax either, so the call is adapted
+    rather than the guarantee. A 422 naming the problem beats the 500 the
+    catch-all handler would otherwise return.
+    """
+    try:
+        return agent.generate(**kwargs)
+    except ValueError as exc:
+        raise ApiError(
+            status_code=422,
+            code="ungrounded_reply",
+            message=f"The model's reply could not be grounded in this workspace: {exc}",
+        ) from exc
+
+
 def send_chat_message_service(
     request: MentorChatRequest,
     *,
@@ -196,22 +224,22 @@ def send_chat_message_service(
 
     if kind == "concept":
         agent = ConceptAgent(client=client, model=_resolve_model(request.model))
-        output = agent.generate(
+        output = _generate_or_422(
+            agent,
             content=grounded,
             user_question=request.message,
             difficulty="intermediate",
             context=grounded,
-            strict=False,
         )
         reply_text = f"{output.definition}\n\n{output.explanation}"
     else:
         agent = MentorAgent(client=client, model=_resolve_model(request.model))
-        output = agent.generate(
+        output = _generate_or_422(
+            agent,
             content=grounded,
             user_question=request.message,
             difficulty="intermediate",
             context=grounded,
-            strict=False,
         )
         reply_text = output.explanation
 
