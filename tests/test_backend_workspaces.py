@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from backend.config import Settings
 from backend.main import create_app
 from tests.supabase_test_helpers import make_settings, make_token
 
@@ -151,12 +150,15 @@ def test_patch_updates_name_and_subject(tmp_path) -> None:
     with _client(tmp_path) as client:
         token = _token(client, STUDENT)
         workspace = _create(client, token)
+        # The flat patch object, which is what the frontend actually sends:
+        # workspace.api.ts does `http.patch(detail(id), patch)`. The nested
+        # {id, patch} form is updateWorkspace's TypeScript argument, not the
+        # request body - and PatchWorkspace ignored the unknown keys, so
+        # exclude_none produced {} and the route returned 204 having changed
+        # nothing.
         patch = client.patch(
             f"/workspaces/{workspace['id']}",
-            json={
-                "id": workspace["id"],
-                "patch": {"name": "Botany", "subject": "Life science"},
-            },
+            json={"name": "Botany", "subject": "Life science"},
             headers=_auth(token),
         )
         fetched = client.get(f"/workspaces/{workspace['id']}", headers=_auth(token))
@@ -172,7 +174,7 @@ def test_patch_unknown_workspace_returns_404(tmp_path) -> None:
         token = _token(client, STUDENT)
         response = client.patch(
             "/workspaces/nope",
-            json={"id": "nope", "patch": {"name": "X"}},
+            json={"name": "X"},
             headers=_auth(token),
         )
 

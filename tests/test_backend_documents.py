@@ -5,7 +5,6 @@ from __future__ import annotations
 import fitz
 from fastapi.testclient import TestClient
 
-from backend.config import Settings
 from backend.main import create_app
 from tests.supabase_test_helpers import make_settings, make_token
 
@@ -300,7 +299,13 @@ def test_delete_document_removes_it(tmp_path) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_full_pipeline_on_txt(tmp_path) -> None:
+def test_full_pipeline_on_txt(tmp_path, monkeypatch) -> None:
+    # Pinned rather than inherited. backend/main.py calls load_dotenv at import,
+    # so a developer's RETRIEVAL_EMBEDDER=onnx leaks in and this assertion fails
+    # on their machine while passing in CI, which has no .env. Asserting on the
+    # embedder means choosing it - the same hermeticity PR #28 gave the main
+    # suite. hashing also keeps the test offline: onnx downloads ~80 MB.
+    monkeypatch.setenv("RETRIEVAL_EMBEDDER", "hashing")
     with _client(tmp_path) as client:
         token = _token(client, STUDENT)
         workspace = _create_workspace(client, token)
