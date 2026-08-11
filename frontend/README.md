@@ -68,13 +68,13 @@ npm run dev        # http://localhost:8080 (mock mode on by default)
 By default (`VITE_ENABLE_MOCK=true`) the app runs **fully offline** from
 `src/mock` — every feature works without a backend.
 
-### Demo accounts (mock mode)
+### Demo accounts
 
 | Role     | Email                | Password   |
 | -------- | -------------------- | ---------- |
-| Student  | `student@sensei.ai`  | `student`  |
-| Reviewer | `reviewer@sensei.ai` | `reviewer` |
-| Admin    | `admin@sensei.ai`    | `admin`    |
+| Student  | `student@sensei.ai`  | `student@sensei.ai`  |
+| Reviewer | `reviewer@sensei.ai` | `reviewer@sensei.ai` |
+| Admin    | `admin@sensei.ai`    | `admin@sensei.ai`    |
 
 ## Running the full app (backend + frontend)
 
