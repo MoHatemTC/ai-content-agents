@@ -89,7 +89,15 @@ OUTPUT_OVERHEAD_TOKENS = 400
 
 # Upper bound whatever is requested, so a slider set to its maximum cannot ask
 # the gateway for more than it will fund. It refuses on the *requested* ceiling.
-MAX_OUTPUT_TOKENS = 8000
+#
+# 8000 was low enough to clip the thing it was protecting. A full Question Bank
+# request - 20 items at QUESTION_ITEM_TOKENS - asks for 8400, so the cap
+# silently trimmed it back to 8000 and the reply was truncated: the bug this
+# guard exists to prevent, caused by the guard. Probed against the live
+# gateway, requests were accepted at 8000, 12000, 16000, 32000 and 65536, so
+# 12000 funds every slider in the app with room to spare and stays far below
+# anything the gateway objected to.
+MAX_OUTPUT_TOKENS = 12000
 
 
 def max_tokens_default() -> int:

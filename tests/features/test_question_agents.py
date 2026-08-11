@@ -26,6 +26,10 @@ import json
 import pytest
 from pydantic import ValidationError
 
+from src.agents.question_agent_base import (
+    QUESTION_ITEM_TOKENS,
+    QuestionCountError,
+)
 from src.agents.question_bank_agent import QuestionBankAgent
 from src.agents.test_help_agent import TestHelpAgent
 from src.retrieval.models import (
@@ -38,6 +42,12 @@ from src.validation.review_schema import OutputStatus, RunStatus
 from src.validation.schemas import QuestionBankOutput, TestHelpOutput
 from src.validation.store import PlatformStore
 from src.llm_gateway import UpstreamResponseError
+from src.study.llm_client import (
+    MAX_OUTPUT_TOKENS,
+    OUTPUT_OVERHEAD_TOKENS,
+    max_tokens_default,
+    output_budget,
+)
 from tests.conftest import FakeLLMClient, Reply
 
 # Both agents are near-identical copies of each other, so every check runs
@@ -98,10 +108,16 @@ def test_the_requested_question_count_is_enforced(agent_class, schema) -> None:
     over- or under-delivers is normal; silently passing that through to the
     learner is not.
     """
-    agent = agent_with(agent_class, reply([question()] * 3))
+    # Two replies, because a wrong count is retried once now. A model that
+    # stays non-compliant is what this test is about; one that complies on the
+    # second attempt is covered separately.
+    client = FakeLLMClient(reply([question()] * 3), reply([question()] * 3))
+    agent = agent_class(client=client, model="test-model")
 
-    with pytest.raises(ValueError, match="exactly 1"):
+    with pytest.raises(QuestionCountError, match="exactly 1"):
         agent.generate(SOURCE, "mcq", "beginner", 1)
+
+    assert len(client.calls) == 2, "the wrong count was not retried"
 
 
 # Closes BUG-02: the reply's type was never compared with the request.
@@ -781,3 +797,144 @@ def test_the_orchestrator_path_does_not_retry_twice_over(agent_class, schema) ->
         "_call_llm retried on its own; the orchestrator's max_retries would "
         "then be a multiplier rather than a limit"
     )
+
+
+# --------------------------------------------------------------------------- #
+# The output budget has to fund the question the UI can ask for
+#
+# Five advanced MCQs from a real 861-chunk textbook came back truncated
+# mid-JSON. output_budget's per-item allowance is 200, measured on flashcards -
+# a front and a back. A question item is a stem, four options, a rationale and
+# a references[].text quoting a retrieved passage, so it costs 2-3x that, and
+# for any count of 8 or fewer the scaled value fell below the flat floor and
+# the sizing never engaged at all.
+# --------------------------------------------------------------------------- #
+
+
+def a_chunk(chars: int) -> str:
+    """A passage the size real ingestion produces (this corpus averages 766)."""
+    return ("The column space of A is the span of its columns, a subspace of "
+            "R^m whose dimension is the rank of A. " * 40)[:chars]
+
+
+def a_cited_question(quote_chars: int) -> dict:
+    """An advanced MCQ citing a realistically-sized excerpt."""
+    return question(
+        difficulty="advanced",
+        rationale="The transformation is onto exactly when Col A spans R^m, so "
+                  "failing to be onto means the rank is strictly less than m.",
+        references=[{"segment_id": "doc-1-c0123", "text": a_chunk(quote_chars)}],
+    )
+
+
+@pytest.mark.parametrize("agent_class,schema", AGENTS)
+@pytest.mark.parametrize("count", [1, 5, 15, 20], ids=["one", "five", "fifteen", "max"])
+def test_the_agent_sends_a_budget_sized_to_the_question(
+    agent_class, schema, count
+) -> None:
+    """Assert on what reached the gateway, not on the helper.
+
+    output_budget always took a per_item override; the defect was that this
+    call site never passed one. A test of the helper alone would have passed
+    throughout the bug.
+    """
+    client = FakeLLMClient(reply([question()] * count))
+    agent = agent_class(client=client, model="test-model")
+
+    try:
+        agent.generate(SOURCE, "mcq", "beginner", count)
+    except ValueError:
+        pass  # the reply's content is not what this test is about
+
+    sent = client.calls[0]["max_tokens"]
+    assert sent >= OUTPUT_OVERHEAD_TOKENS + count * QUESTION_ITEM_TOKENS or (
+        sent == max_tokens_default()
+    ), f"asked for {count} questions with only {sent} output tokens"
+
+
+def test_the_full_slider_is_not_clipped_by_the_cap() -> None:
+    """20 is what the UI offers; MAX_OUTPUT_TOKENS must not trim the request.
+
+    At the old cap of 8000 a 20-question request asked for 8400 and was
+    silently trimmed back - reproducing the truncation this fixes, at the top
+    of the range, caused by the guard meant to prevent it.
+    """
+    budget = output_budget(20, per_item=QUESTION_ITEM_TOKENS)
+
+    assert budget == OUTPUT_OVERHEAD_TOKENS + 20 * QUESTION_ITEM_TOKENS
+    assert budget <= MAX_OUTPUT_TOKENS
+
+
+@pytest.mark.parametrize("count", [5, 20], ids=["five", "max"])
+def test_a_full_set_of_cited_questions_fits_the_budget(count: int) -> None:
+    """The measurement that started this, as a test.
+
+    A realistic advanced MCQ citing a 766-char excerpt - the mean chunk size of
+    the document that failed - must fit, at both ends of the slider.
+    """
+    payload = json.dumps(
+        {"questions": [a_cited_question(766)] * count, "requires_human_review": True}
+    )
+    estimated_tokens = len(payload) / 4  # the usual English approximation
+
+    assert estimated_tokens < output_budget(count, per_item=QUESTION_ITEM_TOKENS), (
+        f"{count} cited questions need ~{estimated_tokens:.0f} tokens but the "
+        f"agent asks for {output_budget(count, per_item=QUESTION_ITEM_TOKENS)}"
+    )
+
+
+def test_the_flashcard_budget_is_untouched() -> None:
+    """The study lane's allowance is right for the items it was measured on."""
+    assert output_budget(25) == OUTPUT_OVERHEAD_TOKENS + 25 * 200
+
+
+# --------------------------------------------------------------------------- #
+# A short set is retried once, not discarded
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("agent_class,schema", AGENTS)
+def test_a_short_reply_is_retried_and_accepted(agent_class, schema) -> None:
+    """Asking for 20 and getting 19 should not throw away the 19."""
+    client = FakeLLMClient(
+        reply([question()] * 19),   # short
+        reply([question()] * 20),   # complies
+    )
+    agent = agent_class(client=client, model="test-model")
+
+    result = agent.generate(SOURCE, "mcq", "beginner", 20)
+
+    assert len(result.questions) == 20
+    assert len(client.calls) == 2
+
+
+@pytest.mark.parametrize("agent_class,schema", AGENTS)
+def test_a_grounding_failure_is_not_retried(agent_class, schema) -> None:
+    """Only the count is retried.
+
+    A model that invents a citation invents it again, so a second call spends
+    money to reprint the same error.
+    """
+    client = FakeLLMClient(
+        *[reply([question(references=[
+            {"segment_id": "doc-1-c9999", "text": "never retrieved"}
+        ])])] * 3
+    )
+    agent = agent_class(client=client, model="test-model")
+
+    with pytest.raises(ValueError, match="not grounded"):
+        agent.generate(SOURCE, "mcq", "beginner", 1, context=a_context())
+
+    assert len(client.calls) == 1, "a grounding failure was retried"
+
+
+@pytest.mark.parametrize("agent_class,schema", AGENTS)
+def test_a_schema_failure_is_not_retried(agent_class, schema) -> None:
+    """Same reasoning: a malformed reply fails the same way twice."""
+    client = FakeLLMClient(*['{"questions": [{"question": "no other fields"}]}'] * 3)
+    agent = agent_class(client=client, model="test-model")
+
+    with pytest.raises(ValueError, match="schema"):
+        agent.generate(SOURCE, "mcq", "beginner", 1)
+
+    assert len(client.calls) == 1, "a schema failure was retried"

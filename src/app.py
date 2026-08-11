@@ -219,7 +219,7 @@ def _render_question_page(agent, *, title: str, caption: str, form_key: str) -> 
             num_questions = st.slider(
                 "Number of questions",
                 min_value=1,
-                max_value=15,
+                max_value=20,
                 value=5,
                 key=f"{form_key}_count",
             )
