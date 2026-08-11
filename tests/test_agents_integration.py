@@ -11,23 +11,12 @@ def test_all_question_agents():
 
     qbank = QuestionBankAgent(client=CompliantAgentsClient())
 
-    result1 = qbank.generate(
-        content,
-        "mcq",
-        "beginner",
-        1
-    )
+    result1 = qbank.generate(content, "mcq", "beginner", 1)
 
     assert len(result1.questions) == 1
 
-
     help_agent = TestHelpAgent(client=CompliantAgentsClient())
 
-    result2 = help_agent.generate(
-        content,
-        "mcq",
-        "beginner",
-        1
-    )
+    result2 = help_agent.generate(content, "mcq", "beginner", 1)
 
     assert len(result2.questions) == 1

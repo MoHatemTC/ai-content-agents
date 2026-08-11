@@ -29,8 +29,8 @@ from __future__ import annotations
 import logging
 
 from src.retrieval import (
-    ChunkIndex,
     ChromaRetriever,
+    ChunkIndex,
     GroundedContext,
     RetrievalScope,
     build_grounded_context,
@@ -182,9 +182,7 @@ def grounded_content(
     query = build_query(focus, topics)
     scope = RetrievalScope(document_id=document_id)
 
-    context = build_grounded_context(
-        query, scope, ChromaRetriever(index), top_k=top_k
-    )
+    context = build_grounded_context(query, scope, ChromaRetriever(index), top_k=top_k)
 
     if not context.is_sufficient:
         raise NoGroundingError(

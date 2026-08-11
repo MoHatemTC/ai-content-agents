@@ -54,13 +54,16 @@ chunks with provenance:**
 
 ```python
 from src.retrieval import (
-    ChunkIndex, ChromaRetriever, RetrievalScope, build_grounded_context,
+    ChunkIndex,
+    ChromaRetriever,
+    RetrievalScope,
+    build_grounded_context,
 )
 
 retriever = ChromaRetriever(index)
 context = build_grounded_context(
     "What is Newton's second law?",
-    RetrievalScope(session_id="session-1"),   # and/or document_id=...
+    RetrievalScope(session_id="session-1"),  # and/or document_id=...
     retriever,
 )
 ```

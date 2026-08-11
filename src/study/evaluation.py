@@ -25,6 +25,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from src.schemas import FlashcardSet
 from src.study.batch import (
     BatchFlashcardResult,
     BatchPlanResult,
@@ -33,7 +34,6 @@ from src.study.batch import (
     DemoDatasetItem,
     default_demo_dataset,
 )
-from src.schemas import FlashcardSet
 from src.study.flashcard_agent import FlashcardAgent
 from src.study.schemas import RevisionSession, StudyPlan
 
@@ -129,7 +129,9 @@ class BenchmarkReport:
         data: dict[str, Any] = {}
         data["flashcards"] = asdict(self.flashcards)
         data["flashcards"]["grounded_rate"] = round(self.flashcards.grounded_rate, 3)
-        data["flashcards"]["overall_quality"] = round(self.flashcards.overall_quality, 3)
+        data["flashcards"]["overall_quality"] = round(
+            self.flashcards.overall_quality, 3
+        )
         data["plans"] = asdict(self.plans)
         data["plans"]["grounded_rate"] = round(self.plans.grounded_rate, 3)
         data["plans"]["overall_quality"] = round(self.plans.overall_quality, 3)
@@ -141,7 +143,8 @@ class BenchmarkReport:
                 self.flashcards.overall_quality
                 + self.plans.overall_quality
                 + self.revisions.overall_quality
-            ) / 3,
+            )
+            / 3,
             3,
         )
         return data
@@ -172,7 +175,9 @@ def _evaluate_flashcards(
             q.gate_flag_set += 1
         if item is not None:
             allowed = set(FlashcardAgent.extract_topics(item.content))
-            topics_in_cards = {card.source_topic for card in cs.cards if card.source_topic}
+            topics_in_cards = {
+                card.source_topic for card in cs.cards if card.source_topic
+            }
             if topics_in_cards.issubset(allowed):
                 q.grounded += 1
         if len(cs.cards) == expected_count:

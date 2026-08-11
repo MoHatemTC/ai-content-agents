@@ -14,6 +14,7 @@ is not a distributed cache sized for huge corpora. :func:`Timer` is a small
 stopwatch helper used by :mod:`src.retrieval.benchmark` to measure the
 latency this cache is meant to improve.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -39,7 +40,7 @@ class CachingEmbeddingFunction(EmbeddingFunction[Documents]):
     """
 
     def __init__(
-        self, inner: "EmbeddingFunction[Documents]", *, max_entries: int = 5000
+        self, inner: EmbeddingFunction[Documents], *, max_entries: int = 5000
     ) -> None:
         """Create the caching wrapper.
 
@@ -77,7 +78,7 @@ class CachingEmbeddingFunction(EmbeddingFunction[Documents]):
         }
 
     @staticmethod
-    def build_from_config(config: dict[str, Any]) -> "CachingEmbeddingFunction":
+    def build_from_config(config: dict[str, Any]) -> CachingEmbeddingFunction:
         """Rebuild the wrapper, and the embedder it wraps, from :meth:`get_config`.
 
         Args:
@@ -105,7 +106,7 @@ class CachingEmbeddingFunction(EmbeddingFunction[Documents]):
             inner, max_entries=int(config.get("max_entries", 5000))
         )
 
-    def __call__(self, input: Documents) -> Embeddings:  # noqa: A002 - Chroma's interface name
+    def __call__(self, input: Documents) -> Embeddings:
         """Embed a batch of texts, serving repeats from cache.
 
         Args:
@@ -170,7 +171,7 @@ class Timer:
         self.elapsed_seconds: float = 0.0
         self._start: float = 0.0
 
-    def __enter__(self) -> "Timer":
+    def __enter__(self) -> Timer:
         """Start the stopwatch."""
         self._start = time.perf_counter()
         return self

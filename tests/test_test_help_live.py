@@ -1,9 +1,9 @@
 import os
+
 import pytest
 
 from src.agents.test_help_agent import TestHelpAgent
 from src.validation.schemas import TestHelpOutput
-
 
 pytestmark = pytest.mark.skipif(
     os.getenv("RUN_LIVE_TESTS", "").lower() != "true",

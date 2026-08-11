@@ -13,9 +13,9 @@ size ceiling that stops the failure recurring however retrieval behaves.
 
 from __future__ import annotations
 
-import pytest
-
 from uuid import uuid4
+
+import pytest
 
 from src.retrieval import ChunkIndex, HashingEmbeddingFunction, RetrievalConfig
 from src.study.grounding import (
@@ -76,11 +76,13 @@ PASSAGES = [
 
 
 def test_a_typed_focus_is_the_query() -> None:
-    assert build_query("thermal conduction", ["energy", "force"]) == "thermal conduction"
+    assert (
+        build_query("thermal conduction", ["energy", "force"]) == "thermal conduction"
+    )
 
 
 def test_a_blank_focus_falls_back_to_the_topics() -> None:
-    """"Make 25 flashcards" is not a query, so the document's own topics stand in.
+    """ "Make 25 flashcards" is not a query, so the document's own topics stand in.
 
     Degrading to the document's main topics is defensible; degrading to its
     first N characters would silently confine every card to chapter one.
@@ -124,7 +126,11 @@ def test_content_is_capped_even_if_retrieval_returns_a_lot() -> None:
     """The bug was an unbounded prompt, so the fix must not trust retrieval."""
     huge = ["conduction " * 400 for _ in range(40)]
     content, _cited, _ctx = grounded_content(
-        index=_index_with(huge), document_id=DOC, focus="conduction", topics=[], top_k=40
+        index=_index_with(huge),
+        document_id=DOC,
+        focus="conduction",
+        topics=[],
+        top_k=40,
     )
 
     assert len(content) <= MAX_CONTENT_CHARS
@@ -134,7 +140,11 @@ def test_trimming_never_leaves_half_a_passage() -> None:
     """A card citing a truncated passage would misrepresent its source."""
     huge = [f"passage{i} " + "conduction " * 400 for i in range(40)]
     content, _cited, context = grounded_content(
-        index=_index_with(huge), document_id=DOC, focus="conduction", topics=[], top_k=40
+        index=_index_with(huge),
+        document_id=DOC,
+        focus="conduction",
+        topics=[],
+        top_k=40,
     )
 
     # Every passage that survived the trim must be byte-identical to one the
@@ -164,9 +174,19 @@ def test_retrieval_stays_inside_the_document() -> None:
     index_chunks(
         index,
         "other-doc",
-        [type("C", (), {"id": "other-doc-c0000", "document_id": "other-doc",
-                        "text": "Conduction in another document entirely.",
-                        "ordinal": 0, "session_id": None})()],
+        [
+            type(
+                "C",
+                (),
+                {
+                    "id": "other-doc-c0000",
+                    "document_id": "other-doc",
+                    "text": "Conduction in another document entirely.",
+                    "ordinal": 0,
+                    "session_id": None,
+                },
+            )()
+        ],
     )
 
     _content, cited, _ctx = grounded_content(
@@ -202,7 +222,9 @@ def test_indexing_splits_batches_chroma_would_reject(monkeypatch) -> None:
 
     monkeypatch.setattr(index._collection, "upsert", counting_upsert)
 
-    n = index_chunks(index, DOC, [_IngestionChunk(i, f"passage {i}") for i in range(35)])
+    n = index_chunks(
+        index, DOC, [_IngestionChunk(i, f"passage {i}") for i in range(35)]
+    )
 
     assert n == 35
     assert len(calls) == 4, f"expected 4 batches of <=10, got {calls}"

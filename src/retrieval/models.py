@@ -83,38 +83,54 @@ class Chunk(BaseModel):
 
 
 class RetrievalScope(BaseModel):
-    """The document/session selection a retrieval is confined to.
+    """The document/session/workspace selection a retrieval is confined to.
 
-    At least one of ``document_id`` / ``session_id`` must be set — an
-    unscoped retrieval is a :class:`pydantic.ValidationError`, which makes
-    out-of-scope leakage structurally impossible rather than a convention.
+    At least one of ``document_id`` / ``session_id`` / ``workspace_id`` must
+    be set — an unscoped retrieval is a :class:`pydantic.ValidationError`,
+    which makes out-of-scope leakage structurally impossible rather than a
+    convention.
+
+    ``workspace_id`` selects the whole workspace. Because the index keeps one
+    Chroma collection per workspace (the M3 backend contract), a
+    workspace-wide retrieval maps to querying that collection with no
+    metadata filter — ``to_where()`` returns ``None``, which Chroma treats
+    as "match everything".
     """
 
     document_id: str | None = None
     session_id: str | None = None
+    workspace_id: str | None = None
 
     @model_validator(mode="after")
     def _require_some_scope(self) -> RetrievalScope:
-        """Reject a scope with neither document nor session selected."""
-        if self.document_id is None and self.session_id is None:
+        """Reject a scope with neither a document, session nor workspace."""
+        if (
+            self.document_id is None
+            and self.session_id is None
+            and self.workspace_id is None
+        ):
             raise ValueError(
-                "RetrievalScope requires document_id and/or session_id; "
-                "unscoped retrieval is not allowed"
+                "RetrievalScope requires document_id, session_id and/or "
+                "workspace_id; unscoped retrieval is not allowed"
             )
         return self
 
-    def to_where(self) -> dict[str, object]:
+    def to_where(self) -> dict[str, object] | None:
         """Build the Chroma ``where`` filter enforcing this scope.
 
         Returns:
-            A metadata filter: a single equality clause when one field is
-            set, or an ``$and`` of both clauses when both are set.
+            ``None`` for a workspace-only scope (the collection is the whole
+            workspace, so no metadata filter applies), a single equality
+            clause when one of ``document_id``/``session_id`` is set, or an
+            ``$and`` of both clauses when both are set.
         """
         clauses: list[dict[str, object]] = []
         if self.document_id is not None:
             clauses.append({"document_id": self.document_id})
         if self.session_id is not None:
             clauses.append({"session_id": self.session_id})
+        if not clauses:
+            return None
         if len(clauses) == 1:
             return clauses[0]
         return {"$and": clauses}
@@ -171,7 +187,9 @@ class GroundedContext(BaseModel):
             ``segment_id`` set to the chunk id.
         """
         return [
-            ContentReference(segment_id=retrieved.chunk.chunk_id, text=retrieved.chunk.text)
+            ContentReference(
+                segment_id=retrieved.chunk.chunk_id, text=retrieved.chunk.text
+            )
             for retrieved in self.chunks
         ]
 
@@ -195,5 +213,6 @@ class GroundedContext(BaseModel):
                 "refusing to build an ungrounded prompt"
             )
         return "\n\n".join(
-            f"[{retrieved.chunk.chunk_id}]\n{retrieved.chunk.text}" for retrieved in self.chunks
+            f"[{retrieved.chunk.chunk_id}]\n{retrieved.chunk.text}"
+            for retrieved in self.chunks
         )

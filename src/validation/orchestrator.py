@@ -325,12 +325,12 @@ class Orchestrator:
             run.source_chunk_ids = grounded_context.chunk_ids
 
         self.store.save_agent_run(run)
-        self.store.log_event(
-            RUN_STARTED, f"{agent_name} run started", run_id=run.id
-        )
+        self.store.log_event(RUN_STARTED, f"{agent_name} run started", run_id=run.id)
 
         try:
-            raw_output = self._invoke_with_retry(agent, prompt_content, dict(params or {}))
+            raw_output = self._invoke_with_retry(
+                agent, prompt_content, dict(params or {})
+            )
         except Exception as exc:  # noqa: BLE001 - every failure is recorded
             return self._fail(run, f"{type(exc).__name__}: {exc}")
 
@@ -476,7 +476,9 @@ class Orchestrator:
     ) -> GeneratedOutput:
         """Store the output, keeping unparseable text visible to the reviewer."""
         payload: dict[str, Any] = (
-            model.model_dump(mode="json") if model is not None else {"raw_output": raw_output}
+            model.model_dump(mode="json")
+            if model is not None
+            else {"raw_output": raw_output}
         )
         output = build_generated_output(
             agent_run_id=run.id,

@@ -2,7 +2,6 @@
 
 import ast
 from pathlib import Path
-
 from unittest.mock import Mock
 
 import pytest
@@ -11,10 +10,8 @@ from src.services.mentor_concept import MentorConceptService
 from src.validation.review_schema import GeneratedOutput, OutputStatus
 from tests.conftest import CompliantAgentsClient
 
-
-APP_LAYER_FILES = (
-    (Path(__file__).parents[1] / "src" / "app.py",)
-    + tuple((Path(__file__).parents[1] / "frontend").glob("*.py"))
+APP_LAYER_FILES = (Path(__file__).parents[1] / "src" / "app.py",) + tuple(
+    (Path(__file__).parents[1] / "frontend").glob("*.py")
 )
 
 

@@ -232,8 +232,7 @@ def parse_json(text: str, schema: type[ModelT]) -> ModelT:
         payload = json.loads(body)
     except json.JSONDecodeError as exc:
         raise ValueError(
-            f"The model did not return valid JSON ({exc}). Output began: "
-            f"{body[:200]!r}"
+            f"The model did not return valid JSON ({exc}). Output began: {body[:200]!r}"
         ) from exc
 
     # The review flag is a control over the system, not an output of it, and

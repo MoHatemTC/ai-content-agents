@@ -16,6 +16,7 @@ course material run with the live ONNX embedder (``RETRIEVAL_EMBEDDER=onnx``) is
 honest quality measurement referenced in the retrieval-lane handoff doc's
 Task 5.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -115,7 +116,7 @@ def grounding_confidence(top_score: float | None, *, has_hits: bool) -> float:
 
 
 def evaluate_case(
-    case: EvalCase, retriever: "Retriever", *, top_k: int | None = None
+    case: EvalCase, retriever: Retriever, *, top_k: int | None = None
 ) -> CaseResult:
     """Run one labelled case against a retriever and score it.
 
@@ -153,7 +154,7 @@ def evaluate_case(
 
 
 def evaluate_retriever(
-    cases: list[EvalCase], retriever: "Retriever", *, top_k: int | None = None
+    cases: list[EvalCase], retriever: Retriever, *, top_k: int | None = None
 ) -> EvaluationReport:
     """Evaluate a retriever against a labelled set of cases.
 
@@ -179,9 +180,12 @@ def evaluate_retriever(
 
     results = [evaluate_case(case, retriever, top_k=top_k) for case in cases]
     recall_at_k = sum(1 for result in results if result.hit_at_k) / len(results)
-    mean_reciprocal_rank = sum(result.reciprocal_rank for result in results) / len(results)
+    mean_reciprocal_rank = sum(result.reciprocal_rank for result in results) / len(
+        results
+    )
     mean_grounding_confidence = sum(
-        grounding_confidence(result.top_score, has_hits=result.hit_at_k) for result in results
+        grounding_confidence(result.top_score, has_hits=result.hit_at_k)
+        for result in results
     ) / len(results)
 
     return EvaluationReport(

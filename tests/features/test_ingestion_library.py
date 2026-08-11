@@ -10,8 +10,8 @@ from __future__ import annotations
 import os
 import tempfile
 
-from src.ingestion.loader import ContentLoader
 from src.ingestion.library import ContentLibrary
+from src.ingestion.loader import ContentLoader
 
 
 def test_list_documents():

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from src.agents.concept_agent import ConceptAgent
 from src.agents.mentor_agent import MentorAgent
@@ -27,7 +27,7 @@ class MentorConceptService:
     def generate_mentor_reviewable(
         self,
         content: str,
-        user_question: Optional[str] = None,
+        user_question: str | None = None,
         difficulty: str = "beginner",
         context: GroundedContext | None = None,
         store: Any | None = None,
@@ -44,7 +44,7 @@ class MentorConceptService:
     def generate_concept_reviewable(
         self,
         content: str,
-        user_question: Optional[str] = None,
+        user_question: str | None = None,
         difficulty: str = "beginner",
         context: GroundedContext | None = None,
         store: Any | None = None,

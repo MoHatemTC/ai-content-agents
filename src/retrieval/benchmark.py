@@ -11,6 +11,7 @@ it can run in CI like the rest of the test suite. Pass a real embedder via
 embedder is not semantic and will understate real-world recall (see the
 retrieval-lane handoff doc's Task 5 for that gap).
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -20,7 +21,11 @@ from pydantic import BaseModel
 from src.ingestion.demo_data import DemoDataLoader
 from src.retrieval.config import RetrievalConfig
 from src.retrieval.evaluation import EvalCase, EvaluationReport, evaluate_retriever
-from src.retrieval.index import ChunkIndex, HashingEmbeddingFunction, split_text_into_chunks
+from src.retrieval.index import (
+    ChunkIndex,
+    HashingEmbeddingFunction,
+    split_text_into_chunks,
+)
 from src.retrieval.models import Chunk, RetrievalScope
 from src.retrieval.performance import CachingEmbeddingFunction, Timer
 from src.retrieval.retriever import ChromaRetriever
@@ -150,7 +155,9 @@ def load_demo_corpus(
         # Session scope evaluation
         EvalCase(
             query="relational tables database SQL",
-            scope=RetrievalScope(session_id=session_id) if session_id else RetrievalScope(document_id="Database-Fundamentals"),
+            scope=RetrievalScope(session_id=session_id)
+            if session_id
+            else RetrievalScope(document_id="Database-Fundamentals"),
             expected_chunk_ids=["Database-Fundamentals-c0000"],
         ),
     ]

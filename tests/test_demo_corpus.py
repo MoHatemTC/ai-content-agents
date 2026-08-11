@@ -12,6 +12,7 @@ Three things are checked:
    recall_at_k, mean_reciprocal_rank, and per-case retrieved_chunk_ids so
    that a human can eyeball the quality before committing.
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -25,10 +26,10 @@ from src.retrieval.config import RetrievalConfig
 from src.retrieval.index import ChunkIndex, split_text_into_chunks
 from src.retrieval.retriever import ChromaRetriever
 
-
 # ---------------------------------------------------------------------------
 # Helper
 # ---------------------------------------------------------------------------
+
 
 def _text_len(raw_text: str) -> int:
     """Character length of the stripped document body."""
@@ -39,15 +40,14 @@ def _text_len(raw_text: str) -> int:
 # 1. Single-chunk-per-document assumption
 # ---------------------------------------------------------------------------
 
+
 class TestDemoDocumentSizes:
     """Assert every demo document body fits in one default-sized chunk."""
 
     def test_all_documents_fit_in_one_chunk(self) -> None:
         config = RetrievalConfig()  # chunk_size=800 by default
         for title, content in DemoDataLoader.DEMO_DOCUMENTS:
-            chunks = split_text_into_chunks(
-                content, document_id=title, config=config
-            )
+            chunks = split_text_into_chunks(content, document_id=title, config=config)
             char_len = _text_len(content)
             assert len(chunks) == 1, (
                 f"Document '{title}' produced {len(chunks)} chunks "
@@ -87,6 +87,7 @@ class TestDemoDocumentSizes:
 # 2. Index membership – every expected_chunk_id is retrievable
 # ---------------------------------------------------------------------------
 
+
 class TestEvalCaseChunkIdsExistInIndex:
     """Guard against EvalCase IDs that refer to non-existent chunks."""
 
@@ -97,7 +98,7 @@ class TestEvalCaseChunkIdsExistInIndex:
         col_name = f"demo_corpus_verify_{uuid.uuid4().hex[:8]}"
         index = ChunkIndex(
             RetrievalConfig(collection_name=col_name),
-            embedding_function=None,   # defaults to HashingEmbeddingFunction
+            embedding_function=None,  # defaults to HashingEmbeddingFunction
         )
         index.add_chunks(chunks)
 
@@ -120,10 +121,13 @@ class TestEvalCaseChunkIdsExistInIndex:
 # 3. End-to-end benchmark smoke test (prints quality metrics)
 # ---------------------------------------------------------------------------
 
+
 class TestDemoBenchmarkEndToEnd:
     """Run the full benchmark over the real demo corpus and report metrics."""
 
-    def test_benchmark_runs_and_prints_metrics(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_benchmark_runs_and_prints_metrics(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         col_name = f"demo_e2e_{uuid.uuid4().hex[:8]}"
         report = run_benchmark(collection_name=col_name, use_cache=True)
 
@@ -141,7 +145,9 @@ class TestDemoBenchmarkEndToEnd:
         print("=" * 60)
         print(f"  recall_at_k          : {report.quality.recall_at_k:.4f}")
         print(f"  mean_reciprocal_rank : {report.quality.mean_reciprocal_rank:.4f}")
-        print(f"  mean_grounding_conf  : {report.quality.mean_grounding_confidence:.4f}")
+        print(
+            f"  mean_grounding_conf  : {report.quality.mean_grounding_confidence:.4f}"
+        )
         print(f"  eval cases           : {len(cases)}")
         print(f"  corpus chunks        : {len(chunks)}")
         print("-" * 60)

@@ -72,7 +72,7 @@ class PlatformGroundingRule(GroundingVerificationRule):
             list(retrieved_chunk_ids) if retrieved_chunk_ids is not None else None
         )
 
-    def for_context(self, grounded_context: GroundedContext) -> "PlatformGroundingRule":
+    def for_context(self, grounded_context: GroundedContext) -> PlatformGroundingRule:
         """Return a copy bound to a :class:`GroundedContext`.
 
         Args:
@@ -83,7 +83,7 @@ class PlatformGroundingRule(GroundingVerificationRule):
         """
         return PlatformGroundingRule(grounded_context=grounded_context)
 
-    def for_chunk_ids(self, chunk_ids: list[str]) -> "PlatformGroundingRule":
+    def for_chunk_ids(self, chunk_ids: list[str]) -> PlatformGroundingRule:
         """Return a copy bound to chunk ids alone.
 
         Used when re-validating a reviewer's edit, where the original

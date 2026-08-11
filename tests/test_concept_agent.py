@@ -1,5 +1,5 @@
 from src.agents.concept_agent import ConceptAgent
-from src.retrieval.models import Chunk, GroundedContext, RetrievedChunk, RetrievalScope
+from src.retrieval.models import Chunk, GroundedContext, RetrievalScope, RetrievedChunk
 from src.validation.schemas import ConceptOutput
 from tests.conftest import CompliantAgentsClient
 
@@ -45,9 +45,7 @@ def test_concept_agent_generation_with_grounded_context():
                     chunk_id="chunk_001",
                     document_id="document-1",
                     ordinal=0,
-                    text=(
-                        "Python provides two main loop types: for and while."
-                    ),
+                    text=("Python provides two main loop types: for and while."),
                 ),
                 score=1.0,
                 rank=1,

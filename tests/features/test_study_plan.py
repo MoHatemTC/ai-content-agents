@@ -6,7 +6,11 @@ from datetime import date, timedelta
 
 import pytest
 
-from src.study.batch import default_demo_dataset, run_revision_batch, run_study_plan_batch
+from src.study.batch import (
+    default_demo_dataset,
+    run_revision_batch,
+    run_study_plan_batch,
+)
 from src.study.flashcard_agent import FlashcardAgent
 from src.study.formatters import (
     format_revision_session,

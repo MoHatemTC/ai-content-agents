@@ -13,6 +13,7 @@ by context" check the validation lane needs during hallucination
 verification: the check itself lives here (next to the contract it
 verifies), the validation lane only has to wire it in as a guardrail.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -59,7 +60,7 @@ class GroundingVerificationRule(GuardrailRule):
 
     name = "grounding_verification"
 
-    def __init__(self, grounded_context: "GroundedContext | None" = None) -> None:
+    def __init__(self, grounded_context: GroundedContext | None = None) -> None:
         """Create the rule, optionally pre-bound to a :class:`GroundedContext`.
 
         Args:
@@ -69,7 +70,9 @@ class GroundingVerificationRule(GuardrailRule):
         """
         self._grounded_context = grounded_context
 
-    def for_context(self, grounded_context: "GroundedContext") -> "GroundingVerificationRule":
+    def for_context(
+        self, grounded_context: GroundedContext
+    ) -> GroundingVerificationRule:
         """Return a copy of this rule bound to a specific :class:`GroundedContext`.
 
         A fresh instance is returned rather than mutating ``self`` so one

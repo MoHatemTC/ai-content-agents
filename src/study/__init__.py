@@ -19,19 +19,19 @@ Supporting pieces:
 from __future__ import annotations
 
 from src.study.flashcard_agent import FlashcardAgent
-from src.study.study_plan_agent import StudyPlanAgent
-from src.study.revision_agent import RevisionAgent
 from src.study.formatters import (
     format_flashcard_set,
-    format_study_plan,
     format_revision_session,
+    format_study_plan,
 )
+from src.study.revision_agent import RevisionAgent
+from src.study.study_plan_agent import StudyPlanAgent
 
 __all__ = [
     "FlashcardAgent",
-    "StudyPlanAgent",
     "RevisionAgent",
+    "StudyPlanAgent",
     "format_flashcard_set",
-    "format_study_plan",
     "format_revision_session",
+    "format_study_plan",
 ]

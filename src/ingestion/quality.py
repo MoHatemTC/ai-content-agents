@@ -15,8 +15,8 @@ Validation currently includes:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import re
+from dataclasses import dataclass, field
 
 
 @dataclass(slots=True)
@@ -193,7 +193,9 @@ class QualityChecker:
             return
 
         window = self.REPETITION_WINDOW_WORDS
-        windows = [words[start : start + window] for start in range(0, len(words), window)]
+        windows = [
+            words[start : start + window] for start in range(0, len(words), window)
+        ]
 
         # A short trailing window would score near 1.0 whatever the document says
         # - three words are almost always three distinct words - and would drag

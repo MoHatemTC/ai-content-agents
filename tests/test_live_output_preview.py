@@ -16,7 +16,6 @@ from src.validation.schemas import (
     TestHelpOutput,
 )
 
-
 pytestmark = pytest.mark.skipif(
     os.getenv("RUN_LIVE_TESTS", "").lower() != "true",
     reason="Set RUN_LIVE_TESTS=true to run live API tests.",

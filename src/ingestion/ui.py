@@ -49,13 +49,15 @@ def render_upload_page():
     library = get_library()
     demo = get_demo()
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "📁 Upload File", 
-        "📝 Paste Text",
-        "📂 Batch Upload",
-        "📚 Content Library",
-        "🎓 Demo Dataset"
-    ])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+        [
+            "📁 Upload File",
+            "📝 Paste Text",
+            "📂 Batch Upload",
+            "📚 Content Library",
+            "🎓 Demo Dataset",
+        ]
+    )
 
     with tab1:
         uploaded_file = st.file_uploader(
@@ -86,24 +88,26 @@ def render_upload_page():
                 st.write(f"Number of chunks: {len(chunks)}")
 
                 with st.expander("View Document Content"):
-                     st.text(document.content[:2000] + "..." if len(document.content) > 2000 else document.content)
+                    st.text(
+                        document.content[:2000] + "..."
+                        if len(document.content) > 2000
+                        else document.content
+                    )
             except ValueError as e:
                 st.error(str(e))
 
             except Exception as e:
-                st.error(f"Unexpected error: {str(e)}")
+                st.error(f"Unexpected error: {e!s}")
 
     with tab2:
         title = st.text_input("Title (optional)", "Pasted Text")
         pasted_text = st.text_area("Paste your text here", height=200)
 
-        if st.button("Process Text",
-                     key="process_text_button"
-                     ):
+        if st.button("Process Text", key="process_text_button"):
             if not pasted_text.strip():
                 st.warning("Please enter some text.")
 
-            else:    
+            else:
                 try:
                     with st.spinner("Processing text..."):
                         document = loader.load_text(pasted_text, title)
@@ -116,34 +120,34 @@ def render_upload_page():
                         st.write(f"Number of chunks: {len(chunks)}")
 
                         with st.expander("View Document Content"):
-                            st.text(document.content[:2000] + "..." if len(document.content) > 2000 else document.content)
+                            st.text(
+                                document.content[:2000] + "..."
+                                if len(document.content) > 2000
+                                else document.content
+                            )
                 except ValueError as e:
                     st.error(str(e))
 
                 except Exception as e:
-                    st.error(f"Unexpected error: {str(e)}")
-
+                    st.error(f"Unexpected error: {e!s}")
 
     with tab3:
         uploaded_files = st.file_uploader(
             "Choose multiple files",
             type=["txt", "pdf", "docx", "md"],
             accept_multiple_files=True,
-            key="batch_file_upload"
-        )  
+            key="batch_file_upload",
+        )
 
-        if st.button("Upload Files",
-                      key="upload_files_button",
-                     ):
-
+        if st.button(
+            "Upload Files",
+            key="upload_files_button",
+        ):
             if not uploaded_files:
                 st.warning("Please select one or more files.")
 
-            else:    
-                files = [
-                    (file.name, file.read())
-                    for file in uploaded_files
-                ]
+            else:
+                files = [(file.name, file.read()) for file in uploaded_files]
 
                 progress = st.progress(0, text="Preparing batch upload...")
 
@@ -155,10 +159,12 @@ def render_upload_page():
 
                 if result.documents:
                     st.session_state.current_doc = result.documents[0]
-                    st.session_state.current_chunks = loader.store.get_chunks_by_document_id(result.documents[0].id)
+                    st.session_state.current_chunks = (
+                        loader.store.get_chunks_by_document_id(result.documents[0].id)
+                    )
                     st.success(
                         f"Successfully uploaded {len(result.documents)} file(s). Set '{result.documents[0].title}' as active content."
-                    )   
+                    )
 
                 if result.failed_files:
                     st.warning(
@@ -166,12 +172,9 @@ def render_upload_page():
                     )
 
                     for failed in result.failed_files:
-                       st.error(f"{failed.filename}: {failed.error}") 
-
-
+                        st.error(f"{failed.filename}: {failed.error}")
 
     with tab4:
-
         st.subheader("Content Library")
 
         # Optional refresh button
@@ -189,32 +192,28 @@ def render_upload_page():
                 col1, col2 = st.columns([4, 2])
 
                 with col1:
-                     active_badge = " 🟢 **[ACTIVE]**" if current_id == doc.id else ""
-                     st.markdown(f"### {doc.title}{active_badge}")
-                     st.write(f"**Source:** {doc.source_type}")
-                     st.write(f"**Type:** {doc.file_type}")
-                     st.write(f"**Size:** {doc.size}")
-                     st.write(f"**Chunks:** {doc.chunk_count}")
-                     st.write(
+                    active_badge = " 🟢 **[ACTIVE]**" if current_id == doc.id else ""
+                    st.markdown(f"### {doc.title}{active_badge}")
+                    st.write(f"**Source:** {doc.source_type}")
+                    st.write(f"**Type:** {doc.file_type}")
+                    st.write(f"**Size:** {doc.size}")
+                    st.write(f"**Chunks:** {doc.chunk_count}")
+                    st.write(
                         f"**Created:** {doc.created_at.strftime('%Y-%m-%d %H:%M')}"
                     )
 
                 with col2:
-                    if st.button(
-                        "📌 Select Active",
-                        key=f"select_{doc.id}"
-                    ):
+                    if st.button("📌 Select Active", key=f"select_{doc.id}"):
                         loaded_doc = library.get_document(doc.id)
                         if loaded_doc:
                             chunks = loader.store.get_chunks_by_document_id(doc.id)
                             st.session_state.current_doc = loaded_doc
                             st.session_state.current_chunks = chunks
-                            st.success(f"Selected '{loaded_doc.title}' as active content!")
+                            st.success(
+                                f"Selected '{loaded_doc.title}' as active content!"
+                            )
                             st.rerun()
-                    if st.button(
-                        "🗑️ Delete",
-                        key=f"delete_{doc.id}"
-                    ):
+                    if st.button("🗑️ Delete", key=f"delete_{doc.id}"):
                         if library.delete_document(doc.id):
                             if current_id == doc.id:
                                 st.session_state.current_doc = None
@@ -226,19 +225,12 @@ def render_upload_page():
 
                 st.divider()
 
-
     with tab5:
-
         st.subheader("Demo Dataset")
 
-        st.write(
-            "Load a sample educational dataset into the content library."
-        )
+        st.write("Load a sample educational dataset into the content library.")
 
-        if st.button("Load Demo Dataset",
-                     key="load_demo_button"
-                     ):
-
+        if st.button("Load Demo Dataset", key="load_demo_button"):
             try:
                 progress = st.progress(0, text="Loading demo dataset...")
 
@@ -255,16 +247,15 @@ def render_upload_page():
                 progress.progress(100, text="Demo dataset loaded!")
                 progress.empty()
 
-                st.success(
-                       f"Successfully loaded {count} demo document(s)."
-                )
+                st.success(f"Successfully loaded {count} demo document(s).")
 
                 st.rerun()
             except ValueError as e:
                 st.error(str(e))
 
             except Exception as e:
-                st.error(f"Failed to load demo dataset: {str(e)}")
+                st.error(f"Failed to load demo dataset: {e!s}")
+
 
 if __name__ == "__main__":
     render_upload_page()

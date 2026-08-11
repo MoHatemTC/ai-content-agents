@@ -197,10 +197,10 @@ class EvaluationHarness:
                 self._score_output(metrics, output)
 
         overall = self._aggregate(per_agent.values())
-        logger.info(
-            "evaluated %d run(s) across %d agent(s)", len(runs), len(per_agent)
+        logger.info("evaluated %d run(s) across %d agent(s)", len(runs), len(per_agent))
+        return EvaluationReport(
+            overall=overall, per_agent=dict(sorted(per_agent.items()))
         )
-        return EvaluationReport(overall=overall, per_agent=dict(sorted(per_agent.items())))
 
     def _score_output(self, metrics: AgentMetrics, output: GeneratedOutput) -> None:
         """Fold one output's verdict and review history into an agent's metrics."""

@@ -19,7 +19,11 @@ import yaml
 
 from src.retrieval.config import RetrievalConfig
 from src.retrieval.grounding import build_grounded_context, verify_references
-from src.retrieval.index import ChunkIndex, HashingEmbeddingFunction, split_text_into_chunks
+from src.retrieval.index import (
+    ChunkIndex,
+    HashingEmbeddingFunction,
+    split_text_into_chunks,
+)
 from src.retrieval.models import InsufficientGroundingError, RetrievalScope
 from src.retrieval.retriever import ChromaRetriever
 from src.validation.guardrails import GuardrailContext, ReferencesPresentRule
@@ -45,7 +49,9 @@ def pipeline() -> tuple[ChunkIndex, ChromaRetriever]:
     physics_chunks = split_text_into_chunks(
         PHYSICS_TEXT, document_id="physics-notes", session_id="session-1"
     )
-    git_chunks = split_text_into_chunks(GIT_TEXT, document_id="git-notes", session_id="session-2")
+    git_chunks = split_text_into_chunks(
+        GIT_TEXT, document_id="git-notes", session_id="session-2"
+    )
     index.add_document("physics-notes", physics_chunks)
     index.add_document("git-notes", git_chunks)
     return index, ChromaRetriever(index)
@@ -53,7 +59,9 @@ def pipeline() -> tuple[ChunkIndex, ChromaRetriever]:
 
 def load_mentor_template() -> str:
     """Load the real mentor prompt template shipped by the agents lane."""
-    prompt_path = Path(__file__).resolve().parent.parent / "src" / "prompts" / "mentor.yaml"
+    prompt_path = (
+        Path(__file__).resolve().parent.parent / "src" / "prompts" / "mentor.yaml"
+    )
     data = yaml.safe_load(prompt_path.read_text(encoding="utf-8"))
     return str(data["prompt_template"])
 
@@ -64,10 +72,14 @@ class TestGroundedPipeline:
     ) -> None:
         _, retriever = pipeline
         context = build_grounded_context(
-            "newton force acceleration", RetrievalScope(session_id="session-1"), retriever
+            "newton force acceleration",
+            RetrievalScope(session_id="session-1"),
+            retriever,
         )
         assert context.is_sufficient
-        assert all(chunk_id.startswith("physics-notes") for chunk_id in context.chunk_ids)
+        assert all(
+            chunk_id.startswith("physics-notes") for chunk_id in context.chunk_ids
+        )
         # The other session's content is never part of the payload.
         assert not any("git" in chunk_id for chunk_id in context.chunk_ids)
 
@@ -76,7 +88,9 @@ class TestGroundedPipeline:
     ) -> None:
         _, retriever = pipeline
         context = build_grounded_context(
-            "newton force mass acceleration", RetrievalScope(document_id="physics-notes"), retriever
+            "newton force mass acceleration",
+            RetrievalScope(document_id="physics-notes"),
+            retriever,
         )
         template = load_mentor_template()
         prompt = template.format(
@@ -144,7 +158,9 @@ class TestGroundedPipeline:
         _, retriever = pipeline
         # git vocabulary, but scoped to the physics session: no grounding.
         context = build_grounded_context(
-            "git branches pointers commits", RetrievalScope(session_id="session-1"), retriever
+            "git branches pointers commits",
+            RetrievalScope(session_id="session-1"),
+            retriever,
         )
         assert context.is_sufficient is False
         with pytest.raises(InsufficientGroundingError):
@@ -155,7 +171,9 @@ class TestGroundedPipeline:
     ) -> None:
         index, retriever = pipeline
         before = build_grounded_context(
-            "chlorophyll photosynthesis", RetrievalScope(session_id="session-1"), retriever
+            "chlorophyll photosynthesis",
+            RetrievalScope(session_id="session-1"),
+            retriever,
         )
         assert before.is_sufficient is False
 
@@ -167,7 +185,9 @@ class TestGroundedPipeline:
         index.add_document("bio-notes", new_chunks)
 
         after = build_grounded_context(
-            "chlorophyll photosynthesis", RetrievalScope(session_id="session-1"), retriever
+            "chlorophyll photosynthesis",
+            RetrievalScope(session_id="session-1"),
+            retriever,
         )
         assert after.is_sufficient
         assert after.chunk_ids == ["bio-notes-c0000"]

@@ -107,7 +107,10 @@ def ocr_availability() -> tuple[bool, str]:
     try:
         import pytesseract
     except ImportError:
-        return False, "the pytesseract package is not installed (pip install pytesseract)"
+        return (
+            False,
+            "the pytesseract package is not installed (pip install pytesseract)",
+        )
 
     binary = find_tesseract()
     if binary is None:
@@ -146,17 +149,171 @@ _FURNITURE = re.compile("|".join(_FURNITURE_PATTERNS), re.IGNORECASE | re.MULTIL
 # words at all. Deliberately not a full dictionary: the question is "is this
 # language or is it noise", and noise scores zero against any word list.
 _COMMON_WORDS = frozenset(
-    """the be to of and a in that have it for not on with he as you do at this but his by
-    from they we say her she or an will my one all would there their what so up out if
-    about who get which go me when make can like time no just him know take people into
-    year your good some could them see other than then now look only come its over think
-    also back after use two how our work first well way even new want because any these
-    give day most us is are was were been has had did does said made where much before
-    through between under both each many such own same those while during against per via
-    value values result results example examples figure table chapter section problem
-    problems equation equations force energy mass velocity motion system point line
-    surface field temperature heat water object body speed direction distance change rate
-    constant""".split()
+    [
+        "the",
+        "be",
+        "to",
+        "of",
+        "and",
+        "a",
+        "in",
+        "that",
+        "have",
+        "it",
+        "for",
+        "not",
+        "on",
+        "with",
+        "he",
+        "as",
+        "you",
+        "do",
+        "at",
+        "this",
+        "but",
+        "his",
+        "by",
+        "from",
+        "they",
+        "we",
+        "say",
+        "her",
+        "she",
+        "or",
+        "an",
+        "will",
+        "my",
+        "one",
+        "all",
+        "would",
+        "there",
+        "their",
+        "what",
+        "so",
+        "up",
+        "out",
+        "if",
+        "about",
+        "who",
+        "get",
+        "which",
+        "go",
+        "me",
+        "when",
+        "make",
+        "can",
+        "like",
+        "time",
+        "no",
+        "just",
+        "him",
+        "know",
+        "take",
+        "people",
+        "into",
+        "year",
+        "your",
+        "good",
+        "some",
+        "could",
+        "them",
+        "see",
+        "other",
+        "than",
+        "then",
+        "now",
+        "look",
+        "only",
+        "come",
+        "its",
+        "over",
+        "think",
+        "also",
+        "back",
+        "after",
+        "use",
+        "two",
+        "how",
+        "our",
+        "work",
+        "first",
+        "well",
+        "way",
+        "even",
+        "new",
+        "want",
+        "because",
+        "any",
+        "these",
+        "give",
+        "day",
+        "most",
+        "us",
+        "is",
+        "are",
+        "was",
+        "were",
+        "been",
+        "has",
+        "had",
+        "did",
+        "does",
+        "said",
+        "made",
+        "where",
+        "much",
+        "before",
+        "through",
+        "between",
+        "under",
+        "both",
+        "each",
+        "many",
+        "such",
+        "own",
+        "same",
+        "those",
+        "while",
+        "during",
+        "against",
+        "per",
+        "via",
+        "value",
+        "values",
+        "result",
+        "results",
+        "example",
+        "examples",
+        "figure",
+        "table",
+        "chapter",
+        "section",
+        "problem",
+        "problems",
+        "equation",
+        "equations",
+        "force",
+        "energy",
+        "mass",
+        "velocity",
+        "motion",
+        "system",
+        "point",
+        "line",
+        "surface",
+        "field",
+        "temperature",
+        "heat",
+        "water",
+        "object",
+        "body",
+        "speed",
+        "direction",
+        "distance",
+        "change",
+        "rate",
+        "constant",
+    ]
 )
 
 # Below this share of recognisable words, the text is noise rather than content.
@@ -199,7 +356,9 @@ def lexicality(text: str) -> float:
     Returns:
         A ratio in ``[0.0, 1.0]``; ``0.0`` when there are no word-like tokens.
     """
-    tokens = [token for token in re.findall(r"[A-Za-z]+", text.lower()) if len(token) > 2]
+    tokens = [
+        token for token in re.findall(r"[A-Za-z]+", text.lower()) if len(token) > 2
+    ]
     if not tokens:
         return 0.0
     return sum(token in _COMMON_WORDS for token in tokens) / len(tokens)
@@ -279,7 +438,9 @@ def last_mean_confidence() -> float:
     return _LAST_MEAN_CONFIDENCE[-1] if _LAST_MEAN_CONFIDENCE else 0.0
 
 
-def ocr_looks_readable(text: str, mean_confidence: float | None = None) -> tuple[bool, str]:
+def ocr_looks_readable(
+    text: str, mean_confidence: float | None = None
+) -> tuple[bool, str]:
     """Judge whether OCR actually read the document, or merely produced characters.
 
     Tesseract recognises printed text; it cannot read handwriting, and on a

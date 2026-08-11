@@ -58,7 +58,9 @@ def build_grounded_context(
     chunks = retriever.retrieve(query, scope, top_k=top_k)
     context = GroundedContext(query=query, scope=scope, chunks=chunks)
     if not context.is_sufficient:
-        logger.info("No grounded content for query %r in scope %s", query, scope.to_where())
+        logger.info(
+            "No grounded content for query %r in scope %s", query, scope.to_where()
+        )
     return context
 
 

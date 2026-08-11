@@ -46,7 +46,9 @@ class ChromaRetriever:
     ``top_k``.
     """
 
-    def __init__(self, index: ChunkIndex, config: RetrievalConfig | None = None) -> None:
+    def __init__(
+        self, index: ChunkIndex, config: RetrievalConfig | None = None
+    ) -> None:
         """Create the retriever.
 
         Args:
@@ -91,7 +93,9 @@ class ChromaRetriever:
         distances: list[float] = raw["distances"][0]
 
         scored: list[tuple[float, Chunk]] = []
-        for chunk_id, text, metadata, distance in zip(chunk_ids, documents, metadatas, distances):
+        for chunk_id, text, metadata, distance in zip(
+            chunk_ids, documents, metadatas, distances
+        ):
             score = 1.0 - float(distance)
             if score <= self._config.min_score:
                 continue

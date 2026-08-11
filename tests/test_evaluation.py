@@ -1,7 +1,7 @@
 """Offline tests for deterministic Mentor and Concept output evaluation."""
 
 from src.evaluation import evaluate_output
-from src.retrieval.models import Chunk, GroundedContext, RetrievedChunk, RetrievalScope
+from src.retrieval.models import Chunk, GroundedContext, RetrievalScope, RetrievedChunk
 from src.validation.schemas import ConceptOutput, ContentReference, MentorOutput
 
 

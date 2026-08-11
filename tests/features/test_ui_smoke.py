@@ -153,7 +153,9 @@ def _submit_button(at: AppTest, label: str):
     for button in at.button:
         if label in str(button.label):
             return button
-    raise AssertionError(f"no button labelled {label!r}; saw {[b.label for b in at.button]}")
+    raise AssertionError(
+        f"no button labelled {label!r}; saw {[b.label for b in at.button]}"
+    )
 
 
 def _button_with_key(at: AppTest, key: str):
@@ -329,7 +331,7 @@ def test_chunk_ids_reduces_records_to_their_ids() -> None:
 
 
 def test_library_select_active_sets_the_current_document(tmp_path, monkeypatch) -> None:
-    """"📌 Select Active" is what makes a library document reachable downstream.
+    """ "📌 Select Active" is what makes a library document reachable downstream.
 
     Importing through the library never touched session state, so a user could
     pick a document, move to a generation page, and be told to upload something.

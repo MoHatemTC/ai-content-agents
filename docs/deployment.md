@@ -50,6 +50,7 @@ To discover which models a gateway actually serves:
 
 ```python
 from openai import OpenAI
+
 client = OpenAI(api_key=..., base_url=...)
 print([m.id for m in client.models.list().data])
 ```

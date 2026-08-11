@@ -2,14 +2,13 @@
 
 import json
 
-from tests.conftest import CompliantAgentsClient
-
 from src.evaluation.demo_benchmark import (
     format_benchmark_summary,
     load_demo_inputs,
     run_demo_benchmark,
     save_benchmark_reports,
 )
+from tests.conftest import CompliantAgentsClient
 
 
 def test_demo_benchmark_runs_both_agents_and_formats_reports(tmp_path):

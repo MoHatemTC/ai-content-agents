@@ -1,12 +1,11 @@
-
 from __future__ import annotations
 
-from typing import List, Optional
-import uuid
 import sqlite3
+import uuid
 from datetime import datetime
-from .schema import Document, Chunk
+
 from .dedupe import Deduplicator
+from .schema import Chunk, Document
 
 
 class SQLiteStore:
@@ -14,6 +13,7 @@ class SQLiteStore:
     SQLite-based persistence layer for storing and retrieving
     ingested documents and their corresponding chunks.
     """
+
     def __init__(self, db_path: str = "ingestion.db"):
         self.db_path = db_path
         self._init_db()
@@ -22,7 +22,7 @@ class SQLiteStore:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        cursor.execute('''
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS documents (
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
@@ -32,9 +32,9 @@ class SQLiteStore:
                 created_at TEXT NOT NULL,
                 content_hash TEXT UNIQUE NOT NULL
             )
-        ''')
+        """)
 
-        cursor.execute('''
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS chunks (
                 id TEXT PRIMARY KEY,
                 document_id TEXT NOT NULL,
@@ -45,7 +45,7 @@ class SQLiteStore:
                 session_id TEXT,
                 FOREIGN KEY (document_id) REFERENCES documents (id)
             )
-        ''')
+        """)
 
         conn.commit()
         conn.close()
@@ -63,28 +63,33 @@ class SQLiteStore:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        cursor.execute('''
+        cursor.execute(
+            """
             INSERT INTO documents (id, title, content, source_type, file_type, created_at, content_hash)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            document.id,
-            document.title,
-            document.content,
-            document.source_type,
-            document.file_type,
-            document.created_at.isoformat(),
-            document.content_hash
-        ))
+        """,
+            (
+                document.id,
+                document.title,
+                document.content,
+                document.source_type,
+                document.file_type,
+                document.created_at.isoformat(),
+                document.content_hash,
+            ),
+        )
 
         conn.commit()
         conn.close()
         return document
 
-    def get_document_by_hash(self, content_hash: str) -> Optional[Document]:
+    def get_document_by_hash(self, content_hash: str) -> Document | None:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        cursor.execute('SELECT * FROM documents WHERE content_hash = ?', (content_hash,))
+        cursor.execute(
+            "SELECT * FROM documents WHERE content_hash = ?", (content_hash,)
+        )
         row = cursor.fetchone()
         conn.close()
 
@@ -96,58 +101,63 @@ class SQLiteStore:
                 source_type=row[3],
                 file_type=row[4],
                 created_at=datetime.fromisoformat(row[5]),
-                content_hash=row[6]
+                content_hash=row[6],
             )
         return None
 
-    def add_chunks(self, chunks: List[Chunk], replace: bool = True) -> List[Chunk]:
+    def add_chunks(self, chunks: list[Chunk], replace: bool = True) -> list[Chunk]:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
         if replace and chunks:
             document_id = chunks[0].document_id
-            cursor.execute('DELETE FROM chunks WHERE document_id = ?', (document_id,))
+            cursor.execute("DELETE FROM chunks WHERE document_id = ?", (document_id,))
 
         for chunk in chunks:
-            cursor.execute('''
+            cursor.execute(
+                """
                 INSERT INTO chunks (id, document_id, text, ordinal, start_char, end_char, session_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                chunk.id,
-                chunk.document_id,
-                chunk.text,
-                chunk.ordinal,
-                chunk.start_char,
-                chunk.end_char,
-                chunk.session_id
-            ))
+            """,
+                (
+                    chunk.id,
+                    chunk.document_id,
+                    chunk.text,
+                    chunk.ordinal,
+                    chunk.start_char,
+                    chunk.end_char,
+                    chunk.session_id,
+                ),
+            )
 
         conn.commit()
         conn.close()
         return chunks
 
-    def get_chunks_by_document_id(self, document_id: str) -> List[Chunk]:
+    def get_chunks_by_document_id(self, document_id: str) -> list[Chunk]:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        cursor.execute('SELECT * FROM chunks WHERE document_id = ?', (document_id,))
+        cursor.execute("SELECT * FROM chunks WHERE document_id = ?", (document_id,))
         rows = cursor.fetchall()
         conn.close()
 
         chunks = []
         for row in rows:
-            chunks.append(Chunk(
-                id=row[0],
-                document_id=row[1],
-                text=row[2],
-                ordinal=row[3],
-                start_char=row[4],
-                end_char=row[5],
-                session_id=row[6]
-            ))
+            chunks.append(
+                Chunk(
+                    id=row[0],
+                    document_id=row[1],
+                    text=row[2],
+                    ordinal=row[3],
+                    start_char=row[4],
+                    end_char=row[5],
+                    session_id=row[6],
+                )
+            )
         return chunks
-    
-    def get_all_documents(self) -> List[Document]:
+
+    def get_all_documents(self) -> list[Document]:
         """
         Retrieve all stored documents ordered by creation date.
 
@@ -180,9 +190,9 @@ class SQLiteStore:
             for row in rows
         ]
 
-        return documents    
+        return documents
 
-    def get_document_by_id(self, document_id: str) -> Optional[Document]:
+    def get_document_by_id(self, document_id: str) -> Document | None:
         """
         Retrieve a document by its unique identifier.
 
@@ -196,12 +206,15 @@ class SQLiteStore:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT id, title, content, source_type,
                    file_type, created_at, content_hash
             FROM documents
             WHERE id = ?
-        """, (document_id,))
+        """,
+            (document_id,),
+        )
 
         row = cursor.fetchone()
         conn.close()
@@ -233,12 +246,15 @@ class SQLiteStore:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT COUNT(*)
             FROM chunks
             WHERE document_id = ?
-        """, (document_id,))
-  
+        """,
+            (document_id,),
+        )
+
         result = cursor.fetchone()
         count = result[0] if result else 0
 
@@ -261,15 +277,9 @@ class SQLiteStore:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        cursor.execute(
-            "DELETE FROM chunks WHERE document_id = ?",
-            (document_id,)
-        )
+        cursor.execute("DELETE FROM chunks WHERE document_id = ?", (document_id,))
 
-        cursor.execute(
-            "DELETE FROM documents WHERE id = ?",
-            (document_id,)
-        )
+        cursor.execute("DELETE FROM documents WHERE id = ?", (document_id,))
 
         deleted = cursor.rowcount > 0
 

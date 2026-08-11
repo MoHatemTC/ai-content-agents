@@ -99,7 +99,14 @@ def main() -> int:
     print(f"n_chunks       {len(chunks):,}")
     print(f"n_retrieved    {len(cited)}  ({len(content):,} chars of prompt)")
     print()
-    for label in ("parse_ms", "clean_ms", "quality_ms", "chunk_ms", "embed_ms", "retrieve_ms"):
+    for label in (
+        "parse_ms",
+        "clean_ms",
+        "quality_ms",
+        "chunk_ms",
+        "embed_ms",
+        "retrieve_ms",
+    ):
         print(f"  {label:<14}{timings[label]:>12,.1f} ms")
     print(f"  {'total':<14}{sum(timings.values()) / 1000:>12,.1f} s")
 

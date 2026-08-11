@@ -133,17 +133,16 @@ _EXPORTS: dict[str, str] = {
 # Spelled out rather than derived from _EXPORTS so static analysers can see the
 # re-exports. `test_public_api_lists_agree` keeps the two in step.
 __all__ = [
+    "DEFAULT_RULES",
+    "EVENT_TYPES",
     "AgentMetrics",
     "AgentRun",
     "AgentSpec",
-    "DEFAULT_RULES",
-    "EVENT_TYPES",
     "EvaluationHarness",
     "EvaluationReport",
     "ExportBlockedError",
     "ExportFormat",
     "GeneratedOutput",
-    "PlatformGroundingRule",
     "GuardrailContext",
     "GuardrailRule",
     "GuardrailViolation",
@@ -155,6 +154,7 @@ __all__ = [
     "OutputStatus",
     "Pipeline",
     "PipelineResult",
+    "PlatformGroundingRule",
     "PlatformStore",
     "ReferencesPresentRule",
     "Review",

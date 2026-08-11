@@ -54,9 +54,13 @@ def flashcards_invented_topic_should_raise() -> None:
     try:
         agent.generate(item.content, card_format="term-definition", card_count=3)
     except GroundingError as exc:
-        _print_result("Flashcards invented topic blocked", True, str(exc).splitlines()[0])
+        _print_result(
+            "Flashcards invented topic blocked", True, str(exc).splitlines()[0]
+        )
         return
-    _print_result("Flashcards invented topic blocked", False, "No GroundingError raised")
+    _print_result(
+        "Flashcards invented topic blocked", False, "No GroundingError raised"
+    )
 
 
 def plan_invented_topic_should_raise() -> None:
@@ -105,22 +109,32 @@ def plan_invented_topic_should_raise() -> None:
             hours_per_week=5.0,
         )
     except PlanGroundingError as exc:
-        _print_result("Study plan invented topic blocked", True, str(exc).splitlines()[0])
+        _print_result(
+            "Study plan invented topic blocked", True, str(exc).splitlines()[0]
+        )
         return
-    _print_result("Study plan invented topic blocked", False, "No PlanGroundingError raised")
+    _print_result(
+        "Study plan invented topic blocked", False, "No PlanGroundingError raised"
+    )
 
 
 def revision_invalid_selected_topic_should_raise() -> None:
     item = default_demo_dataset()[0]
     agent = RevisionAgent(mock_mode=True)
     try:
-        agent.generate(item.content, selected_topics=["INVENTED_TOPIC"], session_date=date.today())
+        agent.generate(
+            item.content, selected_topics=["INVENTED_TOPIC"], session_date=date.today()
+        )
     except RevisionGroundingError as exc:
         _print_result(
             "Revision invalid selected topic blocked", True, str(exc).splitlines()[0]
         )
         return
-    _print_result("Revision invalid selected topic blocked", False, "No RevisionGroundingError raised")
+    _print_result(
+        "Revision invalid selected topic blocked",
+        False,
+        "No RevisionGroundingError raised",
+    )
 
 
 def main() -> None:

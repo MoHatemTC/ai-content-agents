@@ -30,9 +30,9 @@ import numpy as np  # ships with chromadb (a hard dependency of it)
 from chromadb.api.types import Documents, EmbeddingFunction, Embeddings, Metadata
 from chromadb.config import Settings
 
+from src.ingestion.chunker import TextChunker
 from src.retrieval.config import RetrievalConfig
 from src.retrieval.models import Chunk
-from src.ingestion.chunker import TextChunker
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -63,7 +63,6 @@ def sanitize_document_id(document_id: str) -> str:
     must stay free of whitespace and punctuation.
     """
     return _ID_SANITIZE_RE.sub("-", document_id)
-
 
 
 def split_text_into_chunks(
@@ -143,7 +142,7 @@ class HashingEmbeddingFunction(EmbeddingFunction[Documents]):
         """Rebuild the embedder from :meth:`get_config` output."""
         return HashingEmbeddingFunction(dim=int(config.get("dim", 256)))
 
-    def __call__(self, input: Documents) -> Embeddings:  # noqa: A002 - Chroma's interface name
+    def __call__(self, input: Documents) -> Embeddings:
         """Embed a batch of texts.
 
         Args:
@@ -232,7 +231,9 @@ class IndexEmbedderMismatchError(RuntimeError):
     """
 
 
-def _embedder_fingerprint(embedding_function: EmbeddingFunction[Documents] | None) -> str:
+def _embedder_fingerprint(
+    embedding_function: EmbeddingFunction[Documents] | None,
+) -> str:
     """Identify the model behind an embedder, seeing through the caching wrapper.
 
     ``CachingEmbeddingFunction.name()`` is ``"caching-embedding-function"``
@@ -398,7 +399,9 @@ class ChunkIndex:
                 documents=[chunk.text for chunk in batch],
                 metadatas=metadatas[start : start + _MAX_UPSERT_BATCH],
             )
-        logger.debug("Upserted %d chunk(s); index now holds %d", len(chunk_list), len(self))
+        logger.debug(
+            "Upserted %d chunk(s); index now holds %d", len(chunk_list), len(self)
+        )
         return len(chunk_list)
 
     def add_document(self, document_id: str, chunks: Sequence[Chunk]) -> int:
@@ -426,7 +429,9 @@ class ChunkIndex:
                 )
         removed = self.remove_document(document_id)
         if removed:
-            logger.debug("Replaced %d stale chunk(s) of document %r", removed, document_id)
+            logger.debug(
+                "Replaced %d stale chunk(s) of document %r", removed, document_id
+            )
         return self.add_chunks(chunks)
 
     def document_chunk_count(self, document_id: str) -> int:
@@ -471,7 +476,9 @@ class ChunkIndex:
         Returns:
             The reconstructed :class:`Chunk`, or ``None`` if not indexed.
         """
-        result = self._collection.get(ids=[chunk_id], include=["documents", "metadatas"])
+        result = self._collection.get(
+            ids=[chunk_id], include=["documents", "metadatas"]
+        )
         if not result["ids"]:
             return None
         metadata = (result["metadatas"] or [{}])[0]
@@ -480,7 +487,9 @@ class ChunkIndex:
             chunk_id=chunk_id,
             document_id=str(metadata["document_id"]),
             session_id=(
-                str(metadata["session_id"]) if metadata.get("session_id") is not None else None
+                str(metadata["session_id"])
+                if metadata.get("session_id") is not None
+                else None
             ),
             ordinal=int(metadata["ordinal"]),  # type: ignore[arg-type]
             text=text,
@@ -514,7 +523,12 @@ class ChunkIndex:
         """
         clamped = min(n_results, len(self))
         if clamped < 1:
-            return {"ids": [[]], "documents": [[]], "metadatas": [[]], "distances": [[]]}
+            return {
+                "ids": [[]],
+                "documents": [[]],
+                "metadatas": [[]],
+                "distances": [[]],
+            }
         return dict(
             self._collection.query(
                 query_texts=[text],

@@ -198,7 +198,9 @@ class Pipeline:
             retriever=ChromaRetriever(chunk_index),
             orchestrator=Orchestrator(
                 platform_store,
-                agents=agents if agents is not None else build_default_agents(client=client),
+                agents=agents
+                if agents is not None
+                else build_default_agents(client=client),
                 **orchestrator_options,
             ),
             platform_store=platform_store,

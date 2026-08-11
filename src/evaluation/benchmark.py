@@ -117,9 +117,7 @@ def run_benchmark(
             )
 
     evaluations = [
-        result.evaluation
-        for result in item_results
-        if result.evaluation is not None
+        result.evaluation for result in item_results if result.evaluation is not None
     ]
     scores = [
         evaluation.groundedness_score

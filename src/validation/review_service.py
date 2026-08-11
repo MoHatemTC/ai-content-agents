@@ -328,7 +328,10 @@ class ReviewService:
                 output.id,
                 output.schema_name,
             )
-            output.validation_report = {**output.validation_report, "revalidated": False}
+            output.validation_report = {
+                **output.validation_report,
+                "revalidated": False,
+            }
             return
 
         context = GuardrailContext(

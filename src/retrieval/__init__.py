@@ -32,9 +32,9 @@ from src.retrieval.models import (
 from src.retrieval.retriever import ChromaRetriever, Retriever
 
 __all__ = [
+    "ChromaRetriever",
     "Chunk",
     "ChunkIndex",
-    "ChromaRetriever",
     "GroundedContext",
     "GroundingVerification",
     "HashingEmbeddingFunction",

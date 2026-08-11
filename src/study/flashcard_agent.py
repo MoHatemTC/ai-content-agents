@@ -60,19 +60,168 @@ logger = logging.getLogger(__name__)
 # let "between", "each", "same", "which" and "use" through into the allow-list
 # of a physics textbook.
 _STOPWORDS = frozenset(
-    """
-    a an the and or but if then than that this these those there here of in on
-    at to from by for with without within into onto up out over under above
-    below between among across through during before after while since until
-    about against is are was were be been being am do does did done has have
-    had having can could may might must shall should will would it its he she
-    they them their his her our your my we you us me him what when where which
-    who whom whose why how all any both each every few more most other some
-    such no nor not only own same so too very one two three four five six seven
-    eight nine ten first second next last also just now new old way get let see
-    make made use used using take taken give given call called note noted
-    following right left top bottom thing things
-    """.split()
+    [
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "but",
+        "if",
+        "then",
+        "than",
+        "that",
+        "this",
+        "these",
+        "those",
+        "there",
+        "here",
+        "of",
+        "in",
+        "on",
+        "at",
+        "to",
+        "from",
+        "by",
+        "for",
+        "with",
+        "without",
+        "within",
+        "into",
+        "onto",
+        "up",
+        "out",
+        "over",
+        "under",
+        "above",
+        "below",
+        "between",
+        "among",
+        "across",
+        "through",
+        "during",
+        "before",
+        "after",
+        "while",
+        "since",
+        "until",
+        "about",
+        "against",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "am",
+        "do",
+        "does",
+        "did",
+        "done",
+        "has",
+        "have",
+        "had",
+        "having",
+        "can",
+        "could",
+        "may",
+        "might",
+        "must",
+        "shall",
+        "should",
+        "will",
+        "would",
+        "it",
+        "its",
+        "he",
+        "she",
+        "they",
+        "them",
+        "their",
+        "his",
+        "her",
+        "our",
+        "your",
+        "my",
+        "we",
+        "you",
+        "us",
+        "me",
+        "him",
+        "what",
+        "when",
+        "where",
+        "which",
+        "who",
+        "whom",
+        "whose",
+        "why",
+        "how",
+        "all",
+        "any",
+        "both",
+        "each",
+        "every",
+        "few",
+        "more",
+        "most",
+        "other",
+        "some",
+        "such",
+        "no",
+        "nor",
+        "not",
+        "only",
+        "own",
+        "same",
+        "so",
+        "too",
+        "very",
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six",
+        "seven",
+        "eight",
+        "nine",
+        "ten",
+        "first",
+        "second",
+        "next",
+        "last",
+        "also",
+        "just",
+        "now",
+        "new",
+        "old",
+        "way",
+        "get",
+        "let",
+        "see",
+        "make",
+        "made",
+        "use",
+        "used",
+        "using",
+        "take",
+        "taken",
+        "give",
+        "given",
+        "call",
+        "called",
+        "note",
+        "noted",
+        "following",
+        "right",
+        "left",
+        "top",
+        "bottom",
+        "thing",
+        "things",
+    ]
 )
 
 # How a book refers to itself. Kept apart from the stopwords because it is a
@@ -81,15 +230,63 @@ _STOPWORDS = frozenset(
 # times - the 13th most frequent token, ahead of "mass", "speed" and "charge" -
 # so frequency ranking put the typesetting at the top of the syllabus.
 _DOCUMENT_FURNITURE = frozenset(
-    """
-    fig figs figure figures table tables chart charts diagram diagrams
-    chapter chapters section sections subsection appendix appendices
-    example examples exercise exercises problem problems question questions
-    solution solutions answer answers summary review test quiz
-    page pages part parts unit units lesson lessons
-    equation equations eq formula formulas
-    shown show see refer reference references note notes caption
-    """.split()
+    [
+        "fig",
+        "figs",
+        "figure",
+        "figures",
+        "table",
+        "tables",
+        "chart",
+        "charts",
+        "diagram",
+        "diagrams",
+        "chapter",
+        "chapters",
+        "section",
+        "sections",
+        "subsection",
+        "appendix",
+        "appendices",
+        "example",
+        "examples",
+        "exercise",
+        "exercises",
+        "problem",
+        "problems",
+        "question",
+        "questions",
+        "solution",
+        "solutions",
+        "answer",
+        "answers",
+        "summary",
+        "review",
+        "test",
+        "quiz",
+        "page",
+        "pages",
+        "part",
+        "parts",
+        "unit",
+        "units",
+        "lesson",
+        "lessons",
+        "equation",
+        "equations",
+        "eq",
+        "formula",
+        "formulas",
+        "shown",
+        "show",
+        "see",
+        "refer",
+        "reference",
+        "references",
+        "note",
+        "notes",
+        "caption",
+    ]
 )
 
 # The smallest number of times a two-word phrase must occur before it counts as
@@ -138,9 +335,7 @@ class FlashcardAgent:
             FileNotFoundError: If the YAML is missing.
             ValueError: If the YAML is empty, invalid, or not a dict.
         """
-        prompt_path = (
-            Path(__file__).resolve().parent / "prompts" / "flashcards.yaml"
-        )
+        prompt_path = Path(__file__).resolve().parent / "prompts" / "flashcards.yaml"
         if not prompt_path.exists():
             raise FileNotFoundError(f"Prompt file missing: {prompt_path}")
         try:
@@ -332,9 +527,7 @@ class FlashcardAgent:
         Raises:
             UpstreamResponseError: If the gateway returned no usable choice.
         """
-        return call_llm(
-            self.client, self.model, prompt, max_tokens=max_tokens
-        )
+        return call_llm(self.client, self.model, prompt, max_tokens=max_tokens)
 
     # ------------------------------------------------------------------
     # Validation + review gate wrapper

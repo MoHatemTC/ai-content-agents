@@ -14,7 +14,6 @@ from src.validation.schemas import (
 from src.validation.support_validator import extract_claim_text, validate_support
 from src.validation.validator_base import ValidatorBase
 
-
 EvaluatedOutput = MentorOutput | ConceptOutput
 
 
@@ -53,8 +52,7 @@ def _quality_score(output: EvaluatedOutput) -> float:
             return bool(value.strip())
         if isinstance(value, list):
             return bool(value) and all(
-                not isinstance(item, str) or bool(item.strip())
-                for item in value
+                not isinstance(item, str) or bool(item.strip()) for item in value
             )
         return bool(value)
 
@@ -82,8 +80,7 @@ def evaluate_output(
     )
     notes = list(validation_result.schema_errors)
     notes.extend(
-        violation.message
-        for violation in validation_result.guardrail_violations
+        violation.message for violation in validation_result.guardrail_violations
     )
     quality_score = _quality_score(output)
     claims = extract_claim_text(output)
@@ -110,36 +107,27 @@ def evaluate_output(
     supported = support_result.supported
     unsupported_claims = len(support_result.unsupported_claims)
     groundedness_ratio = (
-        (len(claims) - unsupported_claims) / len(claims)
-        if claims
-        else None
+        (len(claims) - unsupported_claims) / len(claims) if claims else None
     )
 
     if reference_result.unknown_segment_ids:
         notes.append(
-            "Unknown reference ids: "
-            + ", ".join(reference_result.unknown_segment_ids)
+            "Unknown reference ids: " + ", ".join(reference_result.unknown_segment_ids)
         )
     if unsupported_claims:
         notes.append(f"Unsupported claims detected: {unsupported_claims}.")
         notes.extend(
-            f"Unsupported claim: {claim}"
-            for claim in support_result.unsupported_claims
+            f"Unsupported claim: {claim}" for claim in support_result.unsupported_claims
         )
 
     groundedness_score = 0.0
     if validation_result.passed:
-        groundedness_score = (
-            (0.5 if references_valid else 0.0)
-            + (0.5 if supported else 0.0)
+        groundedness_score = (0.5 if references_valid else 0.0) + (
+            0.5 if supported else 0.0
         )
 
     return EvaluationResult(
-        grounded=(
-            validation_result.passed
-            and references_valid
-            and supported
-        ),
+        grounded=(validation_result.passed and references_valid and supported),
         references_valid=references_valid,
         supported=supported,
         validation_passed=validation_result.passed,

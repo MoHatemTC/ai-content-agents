@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import logging
@@ -237,10 +236,7 @@ class ContentLoader:
         result = self.quality.validate(cleaned_text)
 
         if not result.passed:
-            raise ValueError(
-                "Quality check failed:\n" +
-                "\n".join(result.issues)
-            )
+            raise ValueError("Quality check failed:\n" + "\n".join(result.issues))
 
         document = Document(
             title=filename,
@@ -281,10 +277,7 @@ class ContentLoader:
         result = self.quality.validate(cleaned_text)
 
         if not result.passed:
-            raise ValueError(
-                "Quality check failed:\n" +
-                "\n".join(result.issues)
-            )
+            raise ValueError("Quality check failed:\n" + "\n".join(result.issues))
 
         document = Document(
             title=title,
