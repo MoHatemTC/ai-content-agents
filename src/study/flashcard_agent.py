@@ -246,6 +246,33 @@ class FlashcardAgent:
         ranked = [topic for topic, _ in scores.most_common(max_topics)]
         return sorted({surface(topic) for topic in ranked})
 
+    @staticmethod
+    def canonical_topic(topic: str | None, allowed: list[str]) -> str | None:
+        """Return ``topic``'s allow-list spelling, or ``None`` if it is not one.
+
+        The allow-list keeps whichever casing the document uses most, so it
+        carries ``conduction`` while a model writing a plan entry or a card
+        front naturally capitalises it. Exact string equality then rejected
+        genuinely grounded output: a live study plan failed with
+        ``topics not in extraction allow-list: ['Conduction']`` while the list
+        it was checked against contained ``conduction``.
+
+        Matching case-insensitively and returning the *allow-list's* spelling
+        keeps the property that makes the list safe - a topic is always quoted
+        from the document, never invented - while not rejecting a model for
+        capitalising a sentence.
+
+        Args:
+            topic: What the model produced.
+            allowed: The allow-list.
+
+        Returns:
+            The canonical spelling, or ``None`` when the topic is not allowed.
+        """
+        if not topic:
+            return None
+        return {item.casefold(): item for item in allowed}.get(topic.casefold())
+
     def _build_prompt(
         self,
         content: str,
@@ -325,15 +352,21 @@ class FlashcardAgent:
         Raises:
             GroundingError: If any card references an out-of-list topic.
         """
-        allowed = set(extracted_topics)
         bad: list[tuple[int, str]] = []
         for idx, card in enumerate(card_set.cards):
-            if card.source_topic and card.source_topic not in allowed:
+            if not card.source_topic:
+                continue
+            canonical = self.canonical_topic(card.source_topic, extracted_topics)
+            if canonical is None:
                 bad.append((idx, card.source_topic))
+            else:
+                # Rewrite to the allow-list's spelling so the card, and the
+                # source_topics derived from it, quote the document exactly.
+                card.source_topic = canonical
         if bad:
             raise GroundingError(
                 "Card source_topics not in extracted allow-list: "
-                f"{bad!r}; allow-list={sorted(allowed)}"
+                f"{bad!r}; allow-list={sorted(extracted_topics)}"
             )
 
     def _wrap_for_review_gate(

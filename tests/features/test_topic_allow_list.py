@@ -171,3 +171,80 @@ def test_omitting_the_allow_list_still_derives_one() -> None:
     card_set = agent.generate(DOCUMENT, card_format="qa", card_count=2)
 
     assert card_set.cards
+
+
+# --------------------------------------------------------------------------- #
+# Casing is not a grounding failure
+#
+# The allow-list keeps whichever spelling the document uses most, so it carries
+# "conduction" - and a model writing a plan entry capitalises it. Exact string
+# equality then rejected genuinely grounded output. Live:
+#
+#   Plan schedules topics not in extraction allow-list: ['Conduction'];
+#   allowed=[... 'conduction' ...]
+# --------------------------------------------------------------------------- #
+
+
+def test_a_capitalised_topic_is_accepted_and_normalised() -> None:
+    """Matching is case-insensitive; the allow-list's spelling is what survives."""
+    assert FlashcardAgent.canonical_topic("Conduction", ["conduction"]) == "conduction"
+    assert FlashcardAgent.canonical_topic("CONVECTION", ["Convection"]) == "Convection"
+
+
+def test_a_topic_outside_the_list_is_still_refused() -> None:
+    """The guard is loosened on casing only, not on membership."""
+    assert FlashcardAgent.canonical_topic("Photosynthesis", ["conduction"]) is None
+    assert FlashcardAgent.canonical_topic("", ["conduction"]) is None
+    assert FlashcardAgent.canonical_topic(None, ["conduction"]) is None
+
+
+def test_the_plan_accepts_a_capitalised_topic_end_to_end() -> None:
+    """The live failure, at the level it actually happened."""
+
+    class _Capitalises:
+        """A model that title-cases the topic it was given, as they do."""
+
+        def __init__(self) -> None:
+            self.chat = self
+            self.completions = self
+
+        def create(self, **kwargs):
+            body = json.dumps(
+                {
+                    "goal": "Understand heat transfer",
+                    "start_date": "2026-01-01",
+                    "end_date": "2026-01-28",
+                    "overall_difficulty": "medium",
+                    "available_hours_per_week": 10.0,
+                    "topic_schedule": [
+                        {
+                            "topic": "Conduction",
+                            "start_date": "2026-01-01",
+                            "end_date": "2026-01-07",
+                            "duration_hours": 4.0,
+                            "difficulty": "medium",
+                            "resources": [],
+                        }
+                    ],
+                    "source_topics": ["Conduction"],
+                    "needs_human_review": True,
+                }
+            )
+            message = type("M", (), {"content": body})
+            choice = type("C", (), {"message": message, "finish_reason": "stop"})
+            return type("R", (), {"choices": [choice], "error": None})
+
+    agent = StudyPlanAgent(client=_Capitalises(), model="test-model")
+
+    plan = agent.generate(
+        DOCUMENT,
+        learner_goal="Understand heat transfer",
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 1, 28),
+        extracted_topics=["conduction"],
+    )
+
+    assert [entry.topic for entry in plan.topic_schedule] == ["conduction"], (
+        "the topic was not normalised to the allow-list spelling"
+    )
+    assert plan.source_topics == ["conduction"]

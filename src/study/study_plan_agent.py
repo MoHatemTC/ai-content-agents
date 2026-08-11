@@ -134,14 +134,17 @@ class StudyPlanAgent:
             PlanGroundingError: If any scheduled topic is not in the allow-list.
             ValueError: If any structural rule (dates, difficulty) is broken.
         """
-        allowed = set(extracted_topics)
-        bad_topics = [
-            s.topic for s in plan.topic_schedule if s.topic not in allowed
-        ]
+        bad_topics: list[str] = []
+        for entry in plan.topic_schedule:
+            canonical = FlashcardAgent.canonical_topic(entry.topic, extracted_topics)
+            if canonical is None:
+                bad_topics.append(entry.topic)
+            else:
+                entry.topic = canonical
         if bad_topics:
             raise PlanGroundingError(
                 "Plan schedules topics not in extraction allow-list: "
-                f"{bad_topics!r}; allowed={sorted(allowed)}"
+                f"{bad_topics!r}; allowed={sorted(extracted_topics)}"
             )
 
         if plan.start_date > plan.end_date:

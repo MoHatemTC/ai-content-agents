@@ -231,9 +231,14 @@ class RevisionAgent:
         # Fall back if heuristic yielded nothing for very short content
         extracted_topics = extracted_topics or list(dict.fromkeys(selected_topics))
 
-        invalid_selected = [
-            t for t in selected_topics if t not in set(extracted_topics)
-        ]
+        canonical_selected: list[str] = []
+        invalid_selected: list[str] = []
+        for topic in selected_topics:
+            canonical = FlashcardAgent.canonical_topic(topic, extracted_topics)
+            if canonical is None:
+                invalid_selected.append(topic)
+            else:
+                canonical_selected.append(canonical)
         if invalid_selected:
             raise RevisionGroundingError(
                 "selected_topics reference content topics that were not "
@@ -241,6 +246,7 @@ class RevisionAgent:
                 f"Extracted allow-list: {sorted(extracted_topics)}"
             )
 
+        selected_topics = canonical_selected
         prompt = self._build_prompt(extracted_topics, selected_topics, sdate)
         try:
             text = self._call_llm(prompt, output_budget(len(selected_topics)))
