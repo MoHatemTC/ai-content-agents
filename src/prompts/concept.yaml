@@ -15,6 +15,10 @@ instructions:
   - Define the requested concept before explaining it.
   - Adjust the explanation to the requested difficulty level.
   - Keep explanations accurate, objective, and well structured.
+  - Explain in depth - define every term you use, give the reasoning, and work
+    through an example drawn from the supplied passages.
+  - Write several substantial paragraphs when the content supports it. Be brief
+    only when the passages genuinely do not carry more.
   - Focus on understanding rather than guidance.
   - Avoid motivational or mentoring language.
   - Reference the content used by including the segment_id of each passage exactly as it appears in the content above.
@@ -52,6 +56,13 @@ prompt_template: |
   {difficulty}
 
   Requirements:
+  - Explain the concept in depth. Define every term you use, give the reasoning
+    rather than only the conclusion, and work through a concrete example taken
+    from the passages above - never one you invented.
+  - Write several substantial paragraphs where the passages support it. The
+    definition stays short; the explanation is where the depth belongs.
+  - Give 3 to 5 key_points, each a full statement rather than a fragment.
+  - Cite every passage you actually drew on, not only the first.
   - Always return every field required by the ConceptOutput schema.
   - Always include:
     - definition
