@@ -25,23 +25,27 @@ Each engineer owns a vertical slice ("lane"); the docs describe the contracts:
 
 ```text
 content-agents/
-  frontend/          # Streamlit UI (per-lane pages)
-  backend/           # FastAPI integration entrypoint
+  backend/           # Reserved for the FastAPI layer (see PR #36)
   docs/              # Lane and architecture docs
   tests/             # Test suite (pytest)
   src/
-    app.py           # Combined study-assistant Streamlit app
-    agents/          # Agent implementations (mentor, concept, ...)
-    generation/      # Study-agents generation lane
+    app.py           # Combined Streamlit app — every agent has a page here
+    agents/          # Mentor, Concept, Question Bank, Test Help
+    study/           # Flashcards, Study Plan, Revision (+ their prompts)
     ingestion/       # Content ingestion & processing lane
-    prompts/         # Prompt templates (YAML)
-    registry/        # Study-agents registry
+    prompts/         # Prompt templates for src/agents (YAML)
     retrieval/       # Retrieval / grounding lane
-    schemas/         # Study-agents output schemas
+    schemas/         # Flashcard output schemas
     services/        # Shared services
     validation/      # Review, validation, orchestration & export platform
     exports/         # Approved-output exporters (JSON / CSV / Markdown / PDF)
 ```
+
+All seven agents are reachable from `src/app.py`, and every one of them routes
+its output through the review gate before it can be exported. The prompts come
+in one shape — `name` / `description` / `role` / `instructions` /
+`output_schema` / `notes` / `prompt_template` — whether they live in
+`src/prompts/` or `src/study/prompts/`.
 
 The `validation/` package is the platform layer that connects the other lanes:
 `orchestrator` runs agents, `integration` chains ingest → retrieve → generate →

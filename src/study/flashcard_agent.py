@@ -260,24 +260,22 @@ class FlashcardAgent:
         if card_count < 1:
             raise ValueError("card_count must be >= 1")
 
-        template = self.prompt_cfg.get("system_prompt")
+        template = self.prompt_cfg.get("prompt_template")
         if not template:
-            raise KeyError("'system_prompt' missing in flashcards.yaml")
+            raise KeyError("'prompt_template' missing in flashcards.yaml")
 
-        topics_json = json.dumps(extracted_topics, ensure_ascii=False)
-        prompt_block = (
-            f"{template}\n\n"
-            f"--- CONTENT START ---\n{content}\n--- CONTENT END ---\n\n"
-            f"extracted_topics (pick FROM THIS LIST ONLY): {topics_json}\n"
-            f"card_format: {card_format}\n"
-            f"card_count: {card_count}\n"
-            # The YAML's `output_schema: FlashcardSet` is a label, never sent to
-            # the model. Without the actual shape it guessed `{"cards": [...]}`,
-            # omitted the required `title`, and every live call failed to
-            # validate.
-            f"{schema_block(FlashcardSet)}"
+        rendered = template.format(
+            content=content,
+            extracted_topics=json.dumps(extracted_topics, ensure_ascii=False),
+            card_format=card_format,
+            card_count=card_count,
         )
-        return prompt_block
+        # The literal example in the YAML shows the shape; this appends the
+        # generated JSON schema as well. Both exist for the same reason - the
+        # YAML used to name `FlashcardSet` and never send it, so the model
+        # guessed `{"cards": [...]}`, omitted the required `title`, and every
+        # live call failed to validate. Belt and braces, deliberately.
+        return f"{rendered}{schema_block(FlashcardSet)}"
 
     # ------------------------------------------------------------------
     # LLM

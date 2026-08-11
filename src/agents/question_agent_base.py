@@ -37,6 +37,8 @@ from pydantic import BaseModel, ValidationError
 from src.llm_gateway import build_client, chat_json, default_model
 from src.retrieval.grounding import verify_references
 from src.retrieval.models import GroundedContext
+from src.validation.review_schema import GeneratedOutput
+from src.validation.reviewable import persist_reviewable_run
 from src.validation.schemas import (
     validate_difficulty,
     validate_question_type,
@@ -55,10 +57,14 @@ class QuestionAgentBase:
     Attributes:
         prompt_file: YAML template filename under ``src/prompts/``.
         output_schema: The Pydantic model the reply must conform to.
+        agent_name: Name recorded on the :class:`AgentRun`.
+        output_type: Label recorded on the :class:`GeneratedOutput`.
     """
 
     prompt_file: ClassVar[str]
     output_schema: ClassVar[type[BaseModel]]
+    agent_name: ClassVar[str]
+    output_type: ClassVar[str]
 
     def __init__(self, *, client: Any | None = None, model: str | None = None) -> None:
         """Create the agent.
@@ -324,6 +330,71 @@ class QuestionAgentBase:
                 f"Questions {wrong_difficulty} are not of the requested "
                 f"difficulty {difficulty!r}."
             )
+
+    # ------------------------------------------------------------------
+    # Review record
+    # ------------------------------------------------------------------
+
+    def generate_reviewable(
+        self,
+        content: str | GroundedContext,
+        question_type: str,
+        difficulty: str,
+        num_questions: int,
+        context: GroundedContext | None = None,
+        store: Any | None = None,
+    ) -> GeneratedOutput:
+        """Generate questions and queue them for human review.
+
+        Mentor and concept gained this in #39, the study agents in #40; these
+        two never had it, because nothing called them - they had no UI at all.
+        Giving them a page without a gate would have re-introduced exactly the
+        defect both of those fixed: a screen saying "pending review" over an
+        output that reaches no queue and can therefore never be approved or
+        exported.
+
+        Args:
+            content: Educational content, or the retrieved passages.
+            question_type: ``mcq``, ``true_false`` or ``short_answer``.
+            difficulty: ``beginner``, ``intermediate`` or ``advanced``.
+            num_questions: Exactly how many questions to return.
+            context: Retrieved passages. When supplied, citations are verified
+                and rationales checked for support.
+            store: Where to persist. Defaults to the shared
+                :class:`~src.validation.store.PlatformStore`; tests inject one.
+
+        Returns:
+            The persisted :class:`GeneratedOutput`, pending review.
+        """
+        # The record has to describe what the model actually saw, and a
+        # GroundedContext is not a str - storing the object would both fail
+        # validation and assert an input nobody sent.
+        resolved = (
+            context.as_prompt_content()
+            if context is not None
+            else (
+                content.as_prompt_content()
+                if isinstance(content, GroundedContext)
+                else content
+            )
+        )
+
+        return persist_reviewable_run(
+            store=store,
+            agent_name=self.agent_name,
+            output_type=self.output_type,
+            output_schema=self.output_schema,
+            model=self.model,
+            input_context=resolved,
+            source_chunk_ids=context.chunk_ids if context is not None else [],
+            generate=lambda: self.generate(
+                content=content,
+                question_type=question_type,
+                difficulty=difficulty,
+                num_questions=num_questions,
+                context=context,
+            ),
+        )
 
     def _enforce_grounding(self, result: Any, context: GroundedContext) -> None:
         """Check citations and rationales against the retrieved passages.

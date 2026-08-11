@@ -28,7 +28,9 @@ from pydantic import ValidationError
 
 from src.agents.question_bank_agent import QuestionBankAgent
 from src.agents.test_help_agent import TestHelpAgent
+from src.validation.review_schema import OutputStatus, RunStatus
 from src.validation.schemas import QuestionBankOutput, TestHelpOutput
+from src.validation.store import PlatformStore
 from src.llm_gateway import UpstreamResponseError
 from tests.conftest import FakeLLMClient, Reply
 
@@ -504,3 +506,100 @@ def test_every_question_type_reaches_the_model(agent_class, schema) -> None:
         )
         assert result.questions[0].type.value == question_type
         assert question_type in client.prompt
+
+
+# --------------------------------------------------------------------------- #
+# The review gate
+#
+# Mentor and concept got a persisted gate in #39, the three study agents in
+# #40. These two never had one, and nobody noticed because nothing called them
+# - they had no interface at all until the Question Bank and Test Help pages
+# were added. Shipping a page that prints "PENDING HUMAN REVIEW" over an output
+# no reviewer can see is the same defect both of those PRs existed to fix.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("agent_class,schema", AGENTS)
+def test_the_output_reaches_the_review_queue(agent_class, schema, tmp_path) -> None:
+    """The generated questions must be findable by a reviewer, not just flagged."""
+    store = PlatformStore(db_path=str(tmp_path / "platform.db"))
+    agent = agent_with(agent_class, reply([question()]))
+
+    output = agent.generate_reviewable(
+        SOURCE,
+        question_type="mcq",
+        difficulty="beginner",
+        num_questions=1,
+        store=store,
+    )
+
+    queued = store.list_outputs(status=OutputStatus.PENDING)
+    assert [item.id for item in queued] == [output.id], (
+        "the output never reached the queue"
+    )
+    assert output.output_type == agent_class.output_type
+
+
+@pytest.mark.parametrize("agent_class,schema", AGENTS)
+def test_the_run_is_recorded_with_what_the_model_saw(
+    agent_class, schema, tmp_path
+) -> None:
+    """A review record that misstates its input is worse than none."""
+    store = PlatformStore(db_path=str(tmp_path / "platform.db"))
+    agent = agent_with(agent_class, reply([question()]))
+
+    agent.generate_reviewable(
+        SOURCE,
+        question_type="mcq",
+        difficulty="beginner",
+        num_questions=1,
+        store=store,
+    )
+
+    runs = store.list_agent_runs()
+    assert len(runs) == 1
+    assert runs[0].agent_name == agent_class.agent_name
+    assert runs[0].input_context == SOURCE
+    assert runs[0].status is RunStatus.SUCCESS
+
+
+@pytest.mark.parametrize("agent_class,schema", AGENTS)
+def test_a_failed_run_is_recorded_not_lost(agent_class, schema, tmp_path) -> None:
+    """Without this, History shows a failed run hanging in SUCCESS forever."""
+    store = PlatformStore(db_path=str(tmp_path / "platform.db"))
+    agent = agent_with(agent_class, "not json at all")
+
+    with pytest.raises(ValueError):
+        agent.generate_reviewable(
+            SOURCE,
+            question_type="mcq",
+            difficulty="beginner",
+            num_questions=1,
+            store=store,
+        )
+
+    runs = store.list_agent_runs()
+    assert len(runs) == 1
+    assert runs[0].status is RunStatus.FAILURE
+    assert runs[0].error
+    assert not store.list_outputs(status=OutputStatus.PENDING), (
+        "a failed generation should queue nothing for review"
+    )
+
+
+@pytest.mark.parametrize("agent_class,schema", AGENTS)
+def test_the_two_agents_are_recorded_under_different_names(
+    agent_class, schema
+) -> None:
+    """Question Bank and Test Help must be distinguishable in the queue.
+
+    They share one base class and one output shape; if they also shared an
+    agent_name a reviewer could not tell which one produced what.
+    """
+    assert agent_class.agent_name
+    assert agent_class.output_type
+
+
+def test_question_bank_and_test_help_do_not_collide() -> None:
+    assert QuestionBankAgent.agent_name != TestHelpAgent.agent_name
+    assert QuestionBankAgent.output_type != TestHelpAgent.output_type

@@ -41,3 +41,5 @@ class TestHelpAgent(QuestionAgentBase):
 
     prompt_file = "test_help.yaml"
     output_schema = TestHelpOutput
+    agent_name = "test_help_agent"
+    output_type = "test_help"

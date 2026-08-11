@@ -12,25 +12,21 @@ Adds content ingestion, multi‑format parsing, cleaning, chunking, deduplicatio
 ```
 .
 ├── pyproject.toml
-├── test_suite.py
 ├── src/
 │   ├── __init__.py
-│   ├── generation/
-│   │   ├── __init__.py
-│   │   ├── base_generator.py
-│   │   └── mock_generator.py
-│   ├── prompts/
-│   │   ├── flashcards_prompt.yaml
-│   │   ├── revision_prompt.yaml
-│   │   └── study_plan_prompt.yaml
-│   ├── registry/
-│   │   ├── __init__.py
-│   │   └── agent_registry.py
+│   ├── study/
+│   │   ├── flashcard_agent.py
+│   │   ├── study_plan_agent.py
+│   │   ├── revision_agent.py
+│   │   ├── schemas.py
+│   │   ├── ui.py
+│   │   └── prompts/
+│   │       ├── flashcards.yaml
+│   │       ├── study_plan.yaml
+│   │       └── revision.yaml
 │   ├── schemas/
 │   │   ├── __init__.py
-│   │   ├── flashcards.py
-│   │   ├── revision.py
-│   │   └── study_plan.py
+│   │   └── flashcards.py
 │   └── features/
 │       └── ingestion/
 │           ├── README.md
@@ -63,10 +59,9 @@ pip install pydantic pyyaml streamlit pymupdf python-docx markdown
 
 ## Usage
 
-### Sprint 1: Test Suite
-Run the test suite to verify everything works:
+### Test suite
 ```bash
-python test_suite.py
+python -m pytest tests/
 ```
 
 ### Sprint 2: Combined UI (Recommended!)

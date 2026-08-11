@@ -18,9 +18,9 @@ from src.study.evaluation import benchmark_quality
 from src.ingestion.loader import ContentLoader
 from src.ingestion.batch import BatchIngestion
 from src.ingestion.library import ContentLibrary
+from src.agents.question_bank_agent import QuestionBankAgent
+from src.agents.test_help_agent import TestHelpAgent
 from src.ingestion.demo_data import DemoDataLoader
-from src.registry import AgentRegistry
-from src.generation import MockGenerator
 from src.llm_gateway import gateway_availability
 from src.study.flashcard_agent import FlashcardAgent
 from src.study.formatters import (
@@ -59,14 +59,6 @@ def get_demo():
     return DemoDataLoader()
 
 @st.cache_resource
-def get_registry():
-    return AgentRegistry()
-
-@st.cache_resource
-def get_generator():
-    return MockGenerator(get_registry())
-
-@st.cache_resource
 def get_flashcard_agent():
     return FlashcardAgent()
 
@@ -77,6 +69,16 @@ def get_study_plan_agent():
 @st.cache_resource
 def get_revision_agent():
     return RevisionAgent()
+
+
+@st.cache_resource
+def get_question_bank_agent():
+    return QuestionBankAgent()
+
+
+@st.cache_resource
+def get_test_help_agent():
+    return TestHelpAgent()
 
 
 @st.cache_resource
@@ -173,6 +175,125 @@ def ground(focus: str, topics: list[str]):
 
 
 # ---------------------------------------------------------------------------
+# Shared page renderer: Question Bank + Test Help
+#
+# Both agents were built, tested and documented in Sprint 4 and then had no
+# interface anywhere: no page here, and `frontend/qbank_ui.py` was
+# `def render(): pass`. The only way to run either was a pytest file.
+#
+# The two pages differ in one line of copy and which agent they call, so one
+# renderer serves both. Two hand-maintained copies of the same page is how the
+# agents behind them drifted apart in the first place (BUG-08/09).
+# ---------------------------------------------------------------------------
+def _render_question_page(agent, *, title: str, caption: str, form_key: str) -> None:
+    """Render a grounded question-generation page for human review.
+
+    Args:
+        agent: A :class:`~src.agents.question_agent_base.QuestionAgentBase`.
+        title: Page heading.
+        caption: One-line description under the heading.
+        form_key: Unique Streamlit form key.
+    """
+    st.title(title)
+    st.caption(caption)
+    doc, chunks, is_loaded = render_current_content_status()
+
+    if not is_loaded:
+        return
+
+    content = doc.content
+    with st.form(form_key):
+        col1, col2 = st.columns(2)
+        with col1:
+            question_type = st.selectbox(
+                "Question type",
+                ["mcq", "true_false", "short_answer"],
+                key=f"{form_key}_type",
+            )
+            difficulty = st.selectbox(
+                "Difficulty",
+                ["beginner", "intermediate", "advanced"],
+                key=f"{form_key}_difficulty",
+            )
+        with col2:
+            num_questions = st.slider(
+                "Number of questions",
+                min_value=1,
+                max_value=15,
+                value=5,
+                key=f"{form_key}_count",
+            )
+            focus = st.text_input(
+                "What should these cover?",
+                placeholder="e.g. thermal conduction",
+                help=(
+                    "Used to retrieve the relevant passages. Leave blank to "
+                    "draw on the document's main topics."
+                ),
+                key=f"{form_key}_focus",
+            )
+        submitted = st.form_submit_button("Generate Questions")
+
+    if not submitted:
+        return
+
+    require_generation()
+    try:
+        # Same wiring as the mentor and concept pages: the focus is the
+        # retrieval query, the allow-list is the fallback when it is blank.
+        allow_list = FlashcardAgent.extract_topics(content, max_topics=30)
+        grounded, cited, context = ground(focus, allow_list)
+        with st.spinner("Generating questions..."):
+            # generate_reviewable, not generate: a page that prints PENDING
+            # HUMAN REVIEW over an output no reviewer can see is the defect
+            # #39 and #40 existed to fix. These two agents had no gate at all
+            # because, until now, nothing called them.
+            reviewable = agent.generate_reviewable(
+                grounded,
+                question_type=question_type,
+                difficulty=difficulty,
+                num_questions=num_questions,
+                context=context,
+            )
+        payload = reviewable.payload
+    except NoGroundingError as exc:
+        st.error(str(exc))
+    except ValueError as exc:
+        # The agent holds the reply to what was asked for and verifies every
+        # citation. A rejection here is a quality gate doing its job - the
+        # model returned the wrong count, the wrong type, or cited something
+        # that does not exist - and it must not read as a crash.
+        st.warning(f"**Output withheld by the quality checks.** {exc}")
+        st.caption(
+            "Try a smaller number of questions, or a topic the uploaded "
+            "document covers in more depth."
+        )
+    except Exception as error:
+        st.error(f"Error generating questions: {error}")
+    else:
+        st.success(f"Generated {len(payload.get('questions', []))} questions")
+        st.markdown(PENDING_BADGE)
+        st.write(f"Review status: **{reviewable.status.value.upper()}**")
+        for index, item in enumerate(payload.get("questions", []), start=1):
+            with st.expander(f"{index}. {item.get('question', '')}"):
+                options = item.get("options")
+                if options:
+                    for option in options:
+                        marker = "✅" if option == item.get("correct_answer") else "•"
+                        st.markdown(f"{marker} {option}")
+                else:
+                    st.markdown(f"**Answer:** {item.get('correct_answer', '')}")
+                st.caption(f"Why: {item.get('rationale', '')}")
+                st.caption(
+                    f"Type: {item.get('type', '')}  ·  "
+                    f"Difficulty: {item.get('difficulty', '')}"
+                )
+                render_provenance(item.get("references", []), cited, title=doc.title)
+        with st.expander("JSON payload (for export gate)"):
+            st.json(payload)
+
+
+# ---------------------------------------------------------------------------
 # Page config + sidebar nav
 # ---------------------------------------------------------------------------
 def get_mentor_concept_service():
@@ -193,6 +314,8 @@ page = st.sidebar.radio(
         "📦 Batch & Benchmark",
         "🧭 Mentor",
         "💡 Concept Explanation",
+        "📝 Question Bank",
+        "🎯 Test Help",
     ]
 )
 
@@ -200,10 +323,6 @@ loader = get_loader()
 batch = get_batch()
 library = get_library()
 demo = get_demo()
-# `registry` and `generator` used to be built here and then never read. Since
-# AgentRegistry constructs all four content agents, that alone was enough to
-# take the whole page down when the gateway is unconfigured. The factories stay
-# for whoever needs them; nothing calls them at import.
 
 # Say whether generation can actually happen. The app spent weeks serving
 # placeholder cards - "See the source text for a fuller treatment" - because
@@ -218,11 +337,14 @@ demo = get_demo()
 _gateway_ready, _gateway_reason = gateway_availability()
 
 fc_agent = sp_agent = rv_agent = mentor_concept_service = None
+qbank_agent = test_help_agent = None
 if _gateway_ready:
     fc_agent = get_flashcard_agent()
     sp_agent = get_study_plan_agent()
     rv_agent = get_revision_agent()
     mentor_concept_service = get_mentor_concept_service()
+    qbank_agent = get_question_bank_agent()
+    test_help_agent = get_test_help_agent()
     st.sidebar.caption(f"🟢 Live · `{fc_agent.model}`")
 else:
     st.sidebar.error(
@@ -863,3 +985,19 @@ elif page == "💡 Concept Explanation":
                 )
             except Exception as error:
                 st.error(f"Error generating concept explanation: {error}")
+
+elif page == "📝 Question Bank":
+    _render_question_page(
+        qbank_agent,
+        title="📝 Question Bank",
+        caption="Generate grounded assessment questions for human review.",
+        form_key="qbank_form",
+    )
+
+elif page == "🎯 Test Help":
+    _render_question_page(
+        test_help_agent,
+        title="🎯 Test Help",
+        caption="Generate grounded exam-practice questions for human review.",
+        form_key="test_help_form",
+    )

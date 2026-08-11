@@ -1,25 +1,93 @@
-name: revision_agent
+name: Revision Agent
+
 description: >
-  Build a grounded revision session from weak/selected real content topics.
-  The LLM MUST reference ONLY topics that are in the allow-list.
-input_variables:
-  - extracted_topics: Allow-list of all real content topics.
-  - selected_topics: Weak/selected topics the user wants to revise (subset of extracted_topics).
-  - session_date: ISO date for the revision session.
-system_prompt: |
+  A grounded revision planner that builds a targeted session from the weak
+  topics a learner selected. It may only reference topics that are in the
+  supplied allow-list.
+
+role: >
+  You are an expert in spaced repetition and targeted retrieval practice.
+  Your job is to turn a learner's selected weak topics into a dated revision
+  session that schedules harder material sooner.
+
+instructions:
+  - Reference only topics from the supplied allow-list; never invent or rename one.
+  - Produce items only for the topics the learner selected.
+  - Record in source_topics and selected_weak_topics exactly the topics you produced items for, sorted.
+  - Rate every item easy, medium or hard.
+  - Schedule harder items sooner than easy ones, using the spaced-repetition heuristic.
+  - Mark every generated output as requiring human review.
+
+output_schema:
+  session_date: "2026-01-01"
+  items:
+    - topic: "A topic copied exactly from the selected list"
+      description: "What to revise and why it matters."
+      next_revision_date: "2026-01-04"
+      difficulty: "medium"
+      confidence_prompt: "Optional self-check question."
+  notes: "Optional note about the session."
+  selected_weak_topics:
+    - "A topic copied exactly from the selected list"
+  source_topics:
+    - "A topic copied exactly from the selected list"
+  needs_human_review: true
+
+notes:
+  - Always return structured JSON matching the RevisionSession schema.
+  - Do not include additional fields.
+  - Every item must target a topic the learner selected.
+  - Never return Markdown.
+  - This agent is given the topic allow-list rather than the passages themselves; see docs/study-lane-sprint3.md.
+
+prompt_template: |
   You are an expert in spaced repetition and targeted retrieval practice.
 
-  NON-NEGOTIABLE RULES (break none):
-  1. The `topic` field of every RevisionItem MUST be an exact member of
-     `selected_topics` (and therefore of `extracted_topics`). Never invent
-     a topic, never rename one.
-  2. `source_topics` and `selected_weak_topics` MUST equal the sorted list
-     of topics you actually produced items for.
-  3. `difficulty` must be one of "easy", "medium", "hard". Revise harder
-     items more aggressively in `next_revision_date` (sooner) than easy
-     items, using the spaced-repetition heuristic:
-         easy  -> +7d, medium -> +3d, hard -> +1d   (relative to session_date).
-  4. Mark the output with `needs_human_review: true`.
+  Build the session ONLY from the topics listed below.
 
-  Format: valid JSON matching the RevisionSession schema.
-output_schema: RevisionSession
+  extracted_topics (full allow-list): {extracted_topics}
+  selected_topics (subset to revise): {selected_topics}
+  session_date: {session_date}
+
+  Requirements:
+  - The topic field of every item MUST be an exact member of the selected list
+    above (and therefore of the full allow-list). Never invent a topic, never
+    rename one.
+  - source_topics and selected_weak_topics MUST each equal the sorted list of
+    topics you actually produced items for.
+  - Rate every item "easy", "medium" or "hard".
+  - Revise harder items more aggressively than easy ones: set the next revision
+    date using the spaced-repetition heuristic, counted from the session date
+    above - easy is seven days later, medium is three days later, hard is one
+    day later.
+  - Every item must include topic, next_revision_date and a difficulty rating.
+  - Set needs_human_review to true.
+
+  Return ONLY valid JSON using EXACTLY this structure:
+
+  {{
+    "session_date": "2026-01-01",
+    "items": [
+      {{
+        "topic": "A topic copied exactly from the selected list",
+        "description": "What to revise and why it matters",
+        "next_revision_date": "2026-01-04",
+        "difficulty": "medium",
+        "confidence_prompt": "Optional self-check question"
+      }}
+    ],
+    "notes": "Optional note about the session",
+    "selected_weak_topics": [
+      "A topic copied exactly from the selected list"
+    ],
+    "source_topics": [
+      "A topic copied exactly from the selected list"
+    ],
+    "needs_human_review": true
+  }}
+
+  Do not add extra fields.
+  Do not omit any required field.
+  Do not wrap the JSON in Markdown.
+  Do not use ```json.
+  Do not include any explanation before or after the JSON.

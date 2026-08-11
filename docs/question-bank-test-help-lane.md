@@ -90,9 +90,6 @@ ai-content-agents/
 │   │   └── formatters.py
 │   └── registry.py
 │
-├── frontend/
-│   └── qbank_ui.py
-│
 ├── tests/
 │   ├── test_question_bank.py
 │   ├── test_test_help.py
@@ -181,8 +178,14 @@ Prepares Pydantic outputs into dictionary payloads for downstream consumption:
 }
 ```
 
-### UI Layer (`frontend/qbank_ui.py`)
-Currently serves as an architecture placeholder (`render() -> None`) reserved for upcoming Streamlit interface integrations.
+### UI Layer (`src/app.py`)
+Both agents have a page in the combined Streamlit app - "Question Bank" and
+"Test Help" - sharing one renderer, since they differ only in which agent they
+call. Each page retrieves its passages, holds the reply to the requested type,
+count and difficulty, verifies every citation, and routes the result through
+`generate_reviewable` so it lands in the queue `src/validation/ui.py` serves.
+
+The placeholder `frontend/qbank_ui.py` (`def render(): pass`) is gone.
 
 ---
 

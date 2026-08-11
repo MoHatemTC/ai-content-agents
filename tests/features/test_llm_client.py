@@ -174,10 +174,12 @@ def test_invalid_json_quotes_what_arrived() -> None:
 
 
 def test_schema_block_names_the_required_keys() -> None:
-    """`output_schema: FlashcardSet` in the YAML is a label that is never sent.
+    """The reply's required shape has to reach the model, not just be named.
 
-    Without the shape the model guessed, omitted `title`, and every live
-    generation failed to validate.
+    The YAML used to carry `output_schema: FlashcardSet` - a label that was
+    never sent. Without the shape the model guessed, omitted `title`, and every
+    live generation failed to validate. The prompt now carries a literal
+    example and this block carries the generated schema; both go to the model.
     """
     block = schema_block(FlashcardSet)
 

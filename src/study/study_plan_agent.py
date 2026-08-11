@@ -94,23 +94,22 @@ class StudyPlanAgent:
         if start_date > end_date:
             raise ValueError("start_date must be <= end_date")
 
-        template = self.prompt_cfg.get("system_prompt")
+        template = self.prompt_cfg.get("prompt_template")
         if not template:
-            raise KeyError("'system_prompt' missing in study_plan.yaml")
+            raise KeyError("'prompt_template' missing in study_plan.yaml")
 
-        topics_json = json.dumps(extracted_topics, ensure_ascii=False)
-        return (
-            f"{template}\n\n"
-            f"extracted_topics (schedule ONLY from this list): {topics_json}\n"
-            f"learner_goal: {learner_goal}\n"
-            f"difficulty: {difficulty}\n"
-            f"start_date: {start_date.isoformat()}\n"
-            f"end_date: {end_date.isoformat()}\n"
-            f"hours_per_week: {hours_per_week if hours_per_week else 'unspecified'}\n"
-            # The YAML names the schema but never sends it; without the shape
-            # the model omits required keys and validation fails.
-            f"{schema_block(StudyPlan)}"
+        rendered = template.format(
+            extracted_topics=json.dumps(extracted_topics, ensure_ascii=False),
+            learner_goal=learner_goal,
+            difficulty=difficulty,
+            start_date=start_date.isoformat(),
+            end_date=end_date.isoformat(),
+            hours_per_week=hours_per_week if hours_per_week else "unspecified",
         )
+        # The literal example in the YAML shows the shape; this appends the
+        # generated JSON schema too. Without one or the other the model omits
+        # required keys and validation fails.
+        return f"{rendered}{schema_block(StudyPlan)}"
 
     # ------------------------------------------------------------------
     # LLM
