@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from .chunker import TextChunker
 from .cleaner import TextCleaner
@@ -18,6 +19,43 @@ from .schema import Document
 from .store import SQLiteStore
 
 logger = logging.getLogger(__name__)
+
+# Largest file the lane will ingest. A textbook is the biggest thing anyone
+# realistically uploads - the Linear Algebra PDF in use here is 861 chunks -
+# and 35 MB covers one comfortably while bounding what a single upload can
+# cost. Embedding dominates that cost and its rate cannot be tuned, so the
+# ceiling on file size is the only place the wait is bounded at all.
+#
+# Enforced here rather than only in the uploader widget because the lane has
+# four entry points - src/app.py, src/ingestion/ui.py, BatchIngestion and the
+# scripts - and a limit that lives in one page is not a limit.
+DEFAULT_MAX_UPLOAD_BYTES = 35 * 1024 * 1024
+
+
+class FileTooLargeError(ValueError):
+    """The uploaded file is larger than the lane will ingest.
+
+    A ValueError because that is what every caller of :meth:`load_file`
+    already handles; the pages render it as an error message.
+    """
+
+
+def max_upload_bytes() -> int:
+    """Return the upload ceiling, from ``MAX_UPLOAD_BYTES`` or the default.
+
+    Read at call time rather than import time so a deployment or a test can
+    change it without reimporting, matching ``LLM_MAX_TOKENS`` and ``CHROMA_DIR``.
+    """
+    raw = os.getenv("MAX_UPLOAD_BYTES", "").strip()
+    if not raw:
+        return DEFAULT_MAX_UPLOAD_BYTES
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        logger.warning(
+            "MAX_UPLOAD_BYTES=%r is not an integer; using the default", raw
+        )
+        return DEFAULT_MAX_UPLOAD_BYTES
 
 
 class ContentLoader:
@@ -166,7 +204,23 @@ class ContentLoader:
 
         Returns:
             Saved document.
+
+        Raises:
+            FileTooLargeError: If the file exceeds :func:`max_upload_bytes`.
+            ValueError: If the extracted text fails the quality check.
         """
+        # Checked before parsing: a 200 MB PDF costs minutes in PyMuPDF and
+        # then fails anyway, and the learner has watched a spinner for all of
+        # it. Refusing on the byte count is instant.
+        limit = max_upload_bytes()
+        if len(file_content) > limit:
+            raise FileTooLargeError(
+                f"{filename} is {len(file_content) / 1_048_576:.1f} MB, over the "
+                f"{limit / 1_048_576:.0f} MB limit. Split it into chapters, or "
+                "raise MAX_UPLOAD_BYTES in .env if this machine can afford the "
+                "embedding time."
+            )
+
         file_type = filename.split(".")[-1].lower() if "." in filename else None
 
         raw_text = TextParser.parse(file_content, file_type)

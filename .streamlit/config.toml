@@ -1,0 +1,16 @@
+# Streamlit configuration for every entry point in this repo.
+
+[server]
+# Largest file the uploader will accept, in MB. Matches
+# DEFAULT_MAX_UPLOAD_BYTES in src/ingestion/loader.py, which is the real
+# enforcement - this one exists so the widget says "Limit 35MB per file" and
+# refuses before the bytes are sent, rather than after a learner has waited
+# through the upload for a server-side rejection.
+#
+# Streamlit's default is 200. A textbook is the biggest thing anyone
+# realistically uploads and 35 covers one; past that, embedding time is the
+# real cost and it cannot be tuned.
+#
+# Change both if you change either. tests/features/test_upload_limit.py holds
+# them together.
+maxUploadSize = 35
