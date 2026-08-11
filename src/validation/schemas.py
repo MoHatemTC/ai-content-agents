@@ -64,6 +64,23 @@ class QuestionType(str, Enum):
     SHORT_ANSWER = "short_answer"
 
 
+# How the same three types get written by everything that is not this enum.
+# The UI labels them "MCQ", "True/False" and "Short Answer"; models answer with
+# "short answer", "multiple choice", "true-false" and every casing of each.
+# None of that is a caller asking for something unsupported - it is the same
+# three types, spelled the way a human would.
+_QUESTION_TYPE_ALIASES: dict[str, str] = {
+    "mcq": "mcq",
+    "multiple choice": "mcq",
+    "true false": "true_false",
+    "true or false": "true_false",
+    "tf": "true_false",
+    "boolean": "true_false",
+    "short answer": "short_answer",
+    "short": "short_answer",
+}
+
+
 def validate_question_type(value: str | QuestionType) -> QuestionType:
     """Validate and normalize a supported question type.
 
@@ -71,9 +88,24 @@ def validate_question_type(value: str | QuestionType) -> QuestionType:
     while nothing checked question types at all - so a caller could ask for
     ``"ESSAY_BANANA"`` and have it interpolated into the prompt verbatim
     (BUG-02).
+
+    **Spelling is normalised; membership is not relaxed.** BUG-02's guarantee
+    is that an unsupported type never reaches the prompt, and that still holds:
+    ``"ESSAY_BANANA"`` raises exactly as before. What changes is that ``"MCQ"``
+    no longer does. The FastAPI layer receives the UI's display labels - "MCQ",
+    "True/False", "Short Answer" - and a strict enum lookup turned every one of
+    them into a 500 on a request that was perfectly valid.
     """
+    if isinstance(value, QuestionType):
+        return value
+
+    collapsed = " ".join(
+        str(value).strip().lower().replace("_", " ").replace("-", " ").replace("/", " ").split()
+    )
+    canonical = _QUESTION_TYPE_ALIASES.get(collapsed, str(value))
+
     try:
-        return QuestionType(value)
+        return QuestionType(canonical)
     except ValueError as exc:
         allowed = ", ".join(kind.value for kind in QuestionType)
         raise ValueError(

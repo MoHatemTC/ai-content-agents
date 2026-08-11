@@ -11,7 +11,9 @@ from src.validation.schemas import (
     MentorOutput,
     QuestionBankOutput,
     QuestionItem,
+    QuestionType,
     TestHelpOutput,
+    validate_question_type,
 )
 
 A_CARD = {"front": "What is Python?", "back": "A programming language."}
@@ -209,3 +211,46 @@ def test_an_empty_study_output_is_refused(schema, payload, collection):
     """
     with pytest.raises(ValidationError, match="at least 1"):
         schema.model_validate({**payload, collection: []})
+
+
+# --------------------------------------------------------------------------- #
+# Question types arrive spelled the way humans and UIs write them
+#
+# The FastAPI layer passes the UI's display labels straight through - "MCQ",
+# "True/False", "Short Answer" - and a strict enum lookup turned each of them
+# into a 500 on a request that was entirely valid. Models do the same thing,
+# answering "short answer" where the schema says "short_answer".
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "written,expected",
+    [
+        ("MCQ", "mcq"),
+        ("mcq", "mcq"),
+        ("Multiple Choice", "mcq"),
+        ("True/False", "true_false"),
+        ("true-false", "true_false"),
+        ("TRUE_FALSE", "true_false"),
+        ("Short Answer", "short_answer"),
+        ("short-answer", "short_answer"),
+        ("short", "short_answer"),
+    ],
+)
+def test_a_question_type_is_recognised_however_it_is_spelled(written, expected):
+    assert validate_question_type(written).value == expected
+
+
+@pytest.mark.parametrize("nonsense", ["ESSAY_BANANA", "essay", "", "multiple choices"])
+def test_an_unsupported_question_type_is_still_refused(nonsense):
+    """BUG-02's guarantee. Spelling is normalised; membership is not relaxed.
+
+    Without this the alias table would be a way to smuggle anything through,
+    which is the defect the strict lookup was added to close.
+    """
+    with pytest.raises(ValueError, match="Invalid question type"):
+        validate_question_type(nonsense)
+
+
+def test_an_enum_member_passes_through_unchanged():
+    assert validate_question_type(QuestionType.MCQ) is QuestionType.MCQ
