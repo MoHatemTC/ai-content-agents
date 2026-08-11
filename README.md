@@ -26,6 +26,7 @@ Each engineer owns a vertical slice ("lane"); the docs describe the contracts:
 
 ```text
 content-agents/
+  frontend/          # React + TanStack UI, vendored from joo156/sensei-ai
   backend/           # Reserved for the FastAPI layer (see PR #36)
   docs/              # Lane and architecture docs
   tests/             # Test suite (pytest)
@@ -53,6 +54,45 @@ The `validation/` package is the platform layer that connects the other lanes:
 validate, `review_service` + `ui` are the human review gate, `store` persists
 `agent_runs` / `generated_outputs` / `reviews`, `automation` runs it in batch and
 `evaluation` measures the result.
+
+## Frontend
+
+`frontend/` is the React + TanStack UI, vendored from
+[joo156/sensei-ai](https://github.com/joo156/sensei-ai) with `git subtree` so
+the whole product is one clone on one branch.
+
+**It is a subtree, not a fork.** The upstream repo is still where the frontend
+is developed, so pull rather than diverge:
+
+```bash
+git subtree pull --prefix frontend https://github.com/joo156/sensei-ai main --squash
+```
+
+If a change is made here that belongs upstream, push it back rather than
+letting the two drift:
+
+```bash
+git subtree push --prefix frontend https://github.com/joo156/sensei-ai <branch>
+```
+
+Run it against the FastAPI layer:
+
+```bash
+cd frontend
+npm install
+cp .env.example .env.local     # then fill in
+npm run dev
+```
+
+`.env.local` needs `VITE_API_BASE_URL=http://localhost:8000`,
+`VITE_ENABLE_MOCK=false`, and `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`
+pointing at the **same** Supabase project as the backend's `SUPABASE_*`, or the
+JWT will not verify. Leaving `VITE_API_BASE_URL` at its `/api` default keeps the
+app in mock mode however `VITE_ENABLE_MOCK` is set, so it never calls the
+backend at all.
+
+CI lints and tests `src/`, `tests/` and `scripts/` only; the frontend has its
+own `npm run lint` and `npm run typecheck`.
 
 ## Setup
 

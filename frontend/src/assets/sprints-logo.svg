@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="180" height="44" viewBox="0 0 180 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="180" height="44" rx="10" fill="#0F1420" />
+  <circle cx="26" cy="22" r="12" fill="url(#s1)" />
+  <path
+    d="M18 26.5l5-9 3.4 6.2 2.6-4.7 5 7.5H18z"
+    fill="#fff"
+    fill-opacity="0.96"
+  />
+  <text
+    x="46"
+    y="24"
+    font-family="Plus Jakarta Sans, ui-sans-serif, system-ui, sans-serif"
+    font-size="16"
+    font-weight="700"
+    fill="#F5F7FF"
+    letter-spacing="0.5"
+  >
+    Sprints AI
+  </text>
+  <defs>
+    <linearGradient id="s1" x1="16" y1="12" x2="36" y2="32" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5B7CF9" />
+      <stop offset="1" stop-color="#7C6CF6" />
+    </linearGradient>
+  </defs>
+</svg>
+
