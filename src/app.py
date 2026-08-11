@@ -652,6 +652,9 @@ elif page == "🃏 Generate Flashcards":
                         card_format=card_format,
                         card_count=card_count,
                         source_chunk_ids=cited,
+                    # The list the widget above offered, so the agent
+                    # cannot reject a topic this page just showed.
+                        extracted_topics=allow_list,
                     )
                     card_set = FlashcardSet.model_validate(reviewable.payload)
             except NoGroundingError as exc:
@@ -718,6 +721,7 @@ elif page == "📅 Study Plan":
                     reviewable = sp_agent.generate_reviewable(
                         grounded,
                         source_chunk_ids=_cited,
+                        extracted_topics=allow_list,
                         learner_goal=goal,
                         difficulty=difficulty,
                         start_date=start_date,
@@ -791,6 +795,7 @@ elif page == "🔄 Revision Plan":
                         reviewable = rv_agent.generate_reviewable(
                             grounded,
                             source_chunk_ids=_cited,
+                            extracted_topics=allow_list,
                             selected_topics=list(selected),
                             session_date=session_date,
                         )

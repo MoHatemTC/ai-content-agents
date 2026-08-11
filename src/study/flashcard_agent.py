@@ -100,6 +100,10 @@ _MIN_BIGRAM_COUNT = 2
 # "potential difference" - so they outrank single words of the same frequency.
 _BIGRAM_WEIGHT = 4
 
+# A whole-line "[chunk_id]" marker as GroundedContext.as_prompt_content writes
+# them. Anchored per line so a bracketed aside inside a passage is left alone.
+_CHUNK_MARKER = re.compile(r"^\s*\[[^\]\n]+\]\s*$", re.MULTILINE)
+
 
 class GroundingError(ValueError):
     """Raised when a card references a topic not in the extraction allow-list."""
@@ -179,6 +183,14 @@ class FlashcardAgent:
         """
         if not content or not content.strip():
             return []
+
+        # Retrieved content arrives as "[chunk_id]\npassage" - the markers the
+        # prompts ask the model to cite. The token pattern below reads
+        # `heat-1-c0001` as the words `heat` and `c0001`, so a chunk id became
+        # a "topic" and the model could be asked to build a flashcard about
+        # c0001. Callers that pass their own allow-list avoid this entirely;
+        # this is for the ones that do not.
+        content = _CHUNK_MARKER.sub(" ", content)
 
         matches = list(re.finditer(r"\b[A-Za-z][A-Za-z0-9]{2,}\b", content))
         if not matches:
@@ -370,6 +382,7 @@ class FlashcardAgent:
         card_format: str = "term-definition",
         card_count: int = 10,
         source_chunk_ids: list[str] | None = None,
+        extracted_topics: list[str] | None = None,
     ) -> FlashcardSet:
         """Generate grounded flashcards from cleaned content.
 
@@ -379,6 +392,17 @@ class FlashcardAgent:
             card_count: Target number of cards (default 10).
             source_chunk_ids: Optional chunk ids from ingestion, passed
                 through for provenance.
+            extracted_topics: The allow-list the caller already showed the
+                learner. Defaults to deriving it from ``content``.
+
+                Passing it is what keeps the two ends honest. The pages build
+                their widgets from ``extract_topics(doc.content)`` and then
+                hand the agent the *retrieved* passages, so the agent derived a
+                different, smaller list and rejected topics its own page had
+                just offered. Live: picking "Radiation" raised
+                ``selected_topics reference content topics that were not
+                extracted``. One extraction, supplied by whoever owns the
+                widget, cannot disagree with itself.
 
         Returns:
             A validated :class:`FlashcardSet` with
@@ -394,7 +418,8 @@ class FlashcardAgent:
         if not content or not content.strip():
             raise ValueError("content is empty; cannot generate flashcards")
 
-        extracted_topics = self.extract_topics(content)
+        if extracted_topics is None:
+            extracted_topics = self.extract_topics(content)
         prompt = self._build_prompt(content, extracted_topics, card_format, card_count)
 
         try:
