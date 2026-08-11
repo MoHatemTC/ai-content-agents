@@ -434,11 +434,22 @@ class QuestionAgentBase:
             Human-readable warnings; empty when nothing was flagged.
 
         Raises:
-            ValueError: If a citation was invented.
+            ValueError: If a citation was invented, or none was given.
         """
         references = [
             reference for item in result.questions for reference in item.references
         ]
+        if not references:
+            # verify_references treats an empty citation list as trivially
+            # valid, so without this a question set that cites nothing at all
+            # passes grounding. Every prompt here says "every question must
+            # contain at least one grounding reference"; this is what makes
+            # that true rather than merely requested.
+            raise ValueError(
+                "The generated questions cite no sources, so they cannot be "
+                "verified against the retrieved content."
+            )
+
         verification = verify_references(references, context)
         if not verification.valid:
             raise ValueError(

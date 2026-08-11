@@ -687,6 +687,20 @@ def test_an_invented_citation_is_still_refused(agent_class, schema) -> None:
 
 
 @pytest.mark.parametrize("agent_class,schema", AGENTS)
+def test_a_question_set_that_cites_nothing_is_refused(agent_class, schema) -> None:
+    """verify_references treats an empty list as trivially valid.
+
+    So without an explicit guard, a set where every question cites nothing at
+    all passes grounding untouched - while every prompt in src/prompts/ says
+    "every question must contain at least one grounding reference".
+    """
+    agent = agent_with(agent_class, reply([question(references=[])]))
+
+    with pytest.raises(ValueError, match="cite no sources"):
+        agent.generate(SOURCE, "mcq", "beginner", 1, context=a_context())
+
+
+@pytest.mark.parametrize("agent_class,schema", AGENTS)
 def test_the_warnings_reach_the_review_record(agent_class, schema, tmp_path) -> None:
     """A flag nobody sees is the same as no flag.
 
