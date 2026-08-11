@@ -33,6 +33,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel
 
+from src.llm_gateway import UpstreamResponseError
 from src.retrieval.models import GroundedContext, InsufficientGroundingError
 from src.validation.guardrails import GuardrailContext
 from src.validation.history import (
@@ -50,24 +51,6 @@ from src.validation.validator_base import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-class UpstreamResponseError(RuntimeError):
-    """The gateway returned a success status carrying an error payload.
-
-    OpenAI-compatible gateways do not always signal upstream failure with an
-    HTTP error. OpenRouter, for instance, answers ``200`` with
-    ``{"choices": null, "error": {...}}`` when the backing provider is
-    saturated. The SDK sees a success and does not raise, so the agent's
-    ``response.choices[0]`` dereferences ``None`` and surfaces as
-    ``TypeError: 'NoneType' object is not subscriptable`` — an error that says
-    nothing about the real cause and is not recognisably retryable.
-
-    This translates that into something legible and retryable. The proper fix
-    belongs in the agents' ``_call_llm``, which should check for the error
-    payload; until then this keeps a transient provider limit from being
-    recorded as a permanent, inscrutable failure.
-    """
 
 
 def _default_transient_errors() -> tuple[type[BaseException], ...]:
@@ -166,11 +149,22 @@ class RegistryAgentAdapter:
         try:
             return self._agent._call_llm(prompt)
         except TypeError as exc:
-            # `_call_llm` indexes response.choices[0] unconditionally. When the
-            # gateway answers 200 with an error payload, choices is None and the
-            # dereference fails here rather than anywhere meaningful. Translate
-            # it so the run record says what happened and the retry policy can
-            # act on it. See UpstreamResponseError.
+            # A shim for an agent that indexes response.choices[0] unguarded.
+            # Every agent in this repo now uses src.llm_gateway.response_text,
+            # which raises UpstreamResponseError directly, so this fires for
+            # none of them - but AgentSpec is an open protocol and a third-party
+            # agent can still get here.
+            #
+            # Deliberately NOT widened to ValueError. That would make a
+            # deterministic bug after the gateway call - a bad int(), a failed
+            # parse - look like a saturated provider and be retried three times,
+            # each one a real billed call, while the run record asserted a
+            # diagnosis that was never true. BUG-09 is fixed by there being one
+            # UpstreamResponseError, not by classifying more types as transient.
+            #
+            # Note the scope: this try wraps the gateway call only.
+            # _build_prompt is deliberately outside it, so a control-validation
+            # ValueError from there cannot be misread as an upstream failure.
             raise UpstreamResponseError(
                 "The gateway returned a response without choices, which usually "
                 "means an error payload delivered with a success status "

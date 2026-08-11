@@ -15,11 +15,12 @@ import logging
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 import yaml
 from dotenv import load_dotenv
 
+from src.validation.review_schema import GeneratedOutput
+from src.validation.reviewable import persist_reviewable_run
 from src.llm_gateway import build_client, default_model
 from src.study.flashcard_agent import FlashcardAgent
 from src.study.llm_client import (
@@ -93,23 +94,22 @@ class StudyPlanAgent:
         if start_date > end_date:
             raise ValueError("start_date must be <= end_date")
 
-        template = self.prompt_cfg.get("system_prompt")
+        template = self.prompt_cfg.get("prompt_template")
         if not template:
-            raise KeyError("'system_prompt' missing in study_plan.yaml")
+            raise KeyError("'prompt_template' missing in study_plan.yaml")
 
-        topics_json = json.dumps(extracted_topics, ensure_ascii=False)
-        return (
-            f"{template}\n\n"
-            f"extracted_topics (schedule ONLY from this list): {topics_json}\n"
-            f"learner_goal: {learner_goal}\n"
-            f"difficulty: {difficulty}\n"
-            f"start_date: {start_date.isoformat()}\n"
-            f"end_date: {end_date.isoformat()}\n"
-            f"hours_per_week: {hours_per_week if hours_per_week else 'unspecified'}\n"
-            # The YAML names the schema but never sends it; without the shape
-            # the model omits required keys and validation fails.
-            f"{schema_block(StudyPlan)}"
+        rendered = template.format(
+            extracted_topics=json.dumps(extracted_topics, ensure_ascii=False),
+            learner_goal=learner_goal,
+            difficulty=difficulty,
+            start_date=start_date.isoformat(),
+            end_date=end_date.isoformat(),
+            hours_per_week=hours_per_week if hours_per_week else "unspecified",
         )
+        # The literal example in the YAML shows the shape; this appends the
+        # generated JSON schema too. Without one or the other the model omits
+        # required keys and validation fails.
+        return f"{rendered}{schema_block(StudyPlan)}"
 
     # ------------------------------------------------------------------
     # LLM
@@ -117,38 +117,51 @@ class StudyPlanAgent:
 
     def _call_llm(self, prompt: str, max_tokens: int | None = None) -> str:
         """Send the prompt to the gateway and return the reply body."""
-        return call_llm(self.client, self.model, prompt, max_tokens=max_tokens)
+        return call_llm(
+            self.client, self.model, prompt, max_tokens=max_tokens
+        )
 
     # ------------------------------------------------------------------
     # Validation
     # ------------------------------------------------------------------
 
-    def _validate_plan(self, plan: StudyPlan, extracted_topics: list[str]) -> None:
+    def _validate_plan(
+        self, plan: StudyPlan, extracted_topics: list[str]
+    ) -> None:
         """Validate topic membership, dates, and difficulty values.
 
         Raises:
             PlanGroundingError: If any scheduled topic is not in the allow-list.
             ValueError: If any structural rule (dates, difficulty) is broken.
         """
-        allowed = set(extracted_topics)
-        bad_topics = [s.topic for s in plan.topic_schedule if s.topic not in allowed]
+        bad_topics: list[str] = []
+        for entry in plan.topic_schedule:
+            canonical = FlashcardAgent.canonical_topic(entry.topic, extracted_topics)
+            if canonical is None:
+                bad_topics.append(entry.topic)
+            else:
+                entry.topic = canonical
         if bad_topics:
             raise PlanGroundingError(
                 "Plan schedules topics not in extraction allow-list: "
-                f"{bad_topics!r}; allowed={sorted(allowed)}"
+                f"{bad_topics!r}; allowed={sorted(extracted_topics)}"
             )
 
         if plan.start_date > plan.end_date:
             raise ValueError("Plan start_date must be <= end_date")
 
         if plan.overall_difficulty not in {"easy", "medium", "hard"}:
-            raise ValueError(f"overall_difficulty invalid: {plan.overall_difficulty!r}")
+            raise ValueError(
+                f"overall_difficulty invalid: {plan.overall_difficulty!r}"
+            )
 
         for s in plan.topic_schedule:
             if s.start_date > s.end_date:
                 raise ValueError(f"Topic schedule invalid dates: {s.topic}")
             if s.start_date < plan.start_date or s.end_date > plan.end_date:
-                raise ValueError(f"Topic schedule outside plan window: {s.topic}")
+                raise ValueError(
+                    f"Topic schedule outside plan window: {s.topic}"
+                )
             if s.difficulty not in {"easy", "medium", "hard"}:
                 raise ValueError(
                     f"Topic schedule difficulty invalid: {s.topic} -> {s.difficulty!r}"
@@ -158,7 +171,13 @@ class StudyPlanAgent:
                     f"Topic schedule duration_hours must be > 0: {s.topic}"
                 )
 
-    def _wrap_for_review_gate(self, plan: StudyPlan, *, run_id: str) -> StudyPlan:
+    def _wrap_for_review_gate(self, plan: StudyPlan) -> StudyPlan:
+        """Force the review-gate flags and normalise.
+
+        This took a ``run_id`` and never used it, so the plan agent had no audit
+        trail at all and the signature promised one. generate_reviewable records
+        the run properly.
+        """
         source_topics = sorted({s.topic for s in plan.topic_schedule})
         return StudyPlan(
             goal=plan.goal,
@@ -184,6 +203,7 @@ class StudyPlanAgent:
         start_date: date | str,
         end_date: date | str,
         hours_per_week: float | None = None,
+        extracted_topics: list[str] | None = None,
     ) -> StudyPlan:
         """Build a grounded study plan from real content topics + goals.
 
@@ -195,6 +215,17 @@ class StudyPlanAgent:
             end_date: Plan window end.
             hours_per_week: Optional weekly study budget; when provided,
                 the planner distributes topic hours within this budget.
+            extracted_topics: The allow-list the caller already showed the
+                learner. Defaults to deriving it from ``content``.
+
+                Passing it is what keeps the two ends honest. The pages build
+                their widgets from ``extract_topics(doc.content)`` and then
+                hand the agent the *retrieved* passages, so the agent derived a
+                different, smaller list and rejected topics its own page had
+                just offered. Live: picking "Radiation" raised
+                ``selected_topics reference content topics that were not
+                extracted``. One extraction, supplied by whoever owns the
+                widget, cannot disagree with itself.
 
         Returns:
             Validated :class:`StudyPlan` with ``needs_human_review=True``.
@@ -208,10 +239,12 @@ class StudyPlanAgent:
             raise ValueError("content is empty; cannot build plan")
         sd = self._parse_date(start_date)
         ed = self._parse_date(end_date)
-        run_id = f"sp-{uuid4().hex[:8]}"
-        extracted_topics = FlashcardAgent.extract_topics(content)
+        if extracted_topics is None:
+            extracted_topics = FlashcardAgent.extract_topics(content)
         if not extracted_topics:
-            extracted_topics = [learner_goal.strip() or "General learning content"]
+            extracted_topics = [
+                learner_goal.strip() or "General learning content"
+            ]
 
         prompt = self._build_prompt(
             extracted_topics, learner_goal, difficulty, sd, ed, hours_per_week
@@ -225,4 +258,46 @@ class StudyPlanAgent:
         raw = parse_json(text, StudyPlan)
 
         self._validate_plan(raw, extracted_topics)
-        return self._wrap_for_review_gate(raw, run_id=run_id)
+        return self._wrap_for_review_gate(raw)
+
+    def generate_reviewable(
+        self,
+        content: str,
+        *,
+        store: Any | None = None,
+        source_chunk_ids: list[str] | None = None,
+        **kwargs: Any,
+    ) -> GeneratedOutput:
+        """Generate and queue the result for human review.
+
+        **This lane persisted nothing.** Every study agent set
+        ``needs_human_review=True`` and its docstring told the caller to route
+        the result through :mod:`src.validation.review_schema` - and no caller
+        ever did, in app.py, in study/ui.py or in study/batch.py. The pages said
+        "pending review" while the reviewer's queue stayed empty, so a study plan
+        could never be approved, and never reached the export gate that
+        :func:`~src.validation.review_schema.assert_exportable` guards.
+
+        Args:
+            content: Cleaned study material.
+            store: Where to persist. Defaults to the shared
+                :class:`~src.validation.store.PlatformStore`; tests inject one.
+            source_chunk_ids: Provenance from ingestion, when the caller has it.
+            **kwargs: Passed through to :meth:`generate`.
+
+        Returns:
+            The persisted :class:`GeneratedOutput`, pending review.
+        """
+        return persist_reviewable_run(
+            store=store,
+            agent_name="study_plan_agent",
+            output_type="study_plan",
+            output_schema=StudyPlan,
+            model=self.model,
+            input_context=content,
+            source_chunk_ids=source_chunk_ids,
+            generate=lambda: self.generate(
+                content,
+                **kwargs,
+            ),
+        )

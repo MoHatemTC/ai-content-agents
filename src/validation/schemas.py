@@ -7,17 +7,27 @@ outputs follow a consistent format.
 """
 
 from enum import Enum
-from typing import Literal
+from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 __test__ = False
+
+# All four prompts end with "Do not add extra fields", and until now nothing
+# enforced it: pydantic's default is to ignore unknown keys silently. The danger
+# is not model creativity, it is a near-miss on an *optional* field - a reply
+# carrying "option" instead of "options" was dropped without a word and produced
+# a multiple-choice question with no choices, which then went to a learner.
+# Forbidding extras turns that into a visible, retryable generation error.
+_STRICT = ConfigDict(extra="forbid")
 
 
 class ContentReference(BaseModel):
     """
     Reference to a retrieved content segment used for grounding.
     """
+
+    model_config = _STRICT
 
     segment_id: str
     text: str
@@ -54,50 +64,27 @@ class QuestionType(str, Enum):
     SHORT_ANSWER = "short_answer"
 
 
-def normalize_question_type(raw: object) -> str:
-    """Map common LLM spellings of a question type to the canonical enum value.
+def validate_question_type(value: str | QuestionType) -> QuestionType:
+    """Validate and normalize a supported question type.
 
-    Real gateway responses are inconsistent ("short", "Short Answer",
-    "short-answer", "MCQ", "true/false", ...) while the schema enum only
-    accepts the canonical values. Normalising before validation turns a
-    cosmetic abbreviation into a 500 into a working request.
+    The sibling of :func:`validate_difficulty`, which existed for a long time
+    while nothing checked question types at all - so a caller could ask for
+    ``"ESSAY_BANANA"`` and have it interpolated into the prompt verbatim
+    (BUG-02).
     """
-    if isinstance(raw, QuestionType):
-        return raw.value
-    value = " ".join(
-        str(raw).strip().lower().replace("_", " ").replace("-", " ").replace("/", " ").split()
-    )
-    aliases: dict[str, str] = {
-        "mcq": "mcq",
-        "multiple choice": "mcq",
-        "multiplechoice": "mcq",
-        "true false": "true_false",
-        "true or false": "true_false",
-        "truefalse": "true_false",
-        "tf": "true_false",
-        "boolean": "true_false",
-        "short answer": "short_answer",
-        "shortanswer": "short_answer",
-        "short": "short_answer",
-    }
-    return aliases.get(value, str(raw))
+    try:
+        return QuestionType(value)
+    except ValueError as exc:
+        allowed = ", ".join(kind.value for kind in QuestionType)
+        raise ValueError(
+            f"Invalid question type {value!r}; expected one of: {allowed}."
+        ) from exc
 
 
-def normalize_question_payload(payload: dict) -> dict:
-    """Rewrite every ``questions[].type`` to its canonical enum value.
-
-    Returns a shallow-copied payload so the caller's dict is untouched.
-    """
-    questions = payload.get("questions")
-    if not isinstance(questions, list):
-        return payload
-    cleaned: list[dict] = []
-    for question in questions:
-        if not isinstance(question, dict):
-            cleaned.append(question)
-            continue
-        cleaned.append({**question, "type": normalize_question_type(question.get("type"))})
-    return {**payload, "questions": cleaned}
+# Types where a question without choices is unanswerable. short_answer is
+# deliberately absent: the prompts instruct the model to send null options for
+# it (src/prompts/test_help.yaml).
+_TYPES_REQUIRING_OPTIONS = frozenset({QuestionType.MCQ, QuestionType.TRUE_FALSE})
 
 
 class QuestionItem(BaseModel):
@@ -108,28 +95,71 @@ class QuestionItem(BaseModel):
     and Test Help agents.
     """
 
-    question: str = Field(..., description="The generated question.")
+    model_config = _STRICT
 
-    options: list[str] | None = Field(
+    question: str = Field(
+        ...,
+        description="The generated question."
+    )
+
+    options: Optional[List[str]] = Field(
         default=None,
-        description="Available answer choices for MCQ and True/False questions. Leave null for Short Answer questions.",
+        description="Available answer choices for MCQ and True/False questions. Leave null for Short Answer questions."
     )
 
     correct_answer: str = Field(
-        ..., description="Correct answer corresponding to the generated question."
+        ...,
+        description="Correct answer corresponding to the generated question."
     )
 
-    rationale: str = Field(..., description="Explanation of why the answer is correct.")
+    rationale: str = Field(
+        ...,
+        description="Explanation of why the answer is correct."
+    )
 
     difficulty: DifficultyLevel = Field(
-        ..., description="Difficulty level of the question."
+        ...,
+        description="Difficulty level of the question."
     )
 
-    type: QuestionType = Field(..., description="Type of the generated question.")
+    type: QuestionType = Field(
+        ...,
+        description="Type of the generated question."
+    )
 
     references: list[ContentReference] = Field(
-        ..., description="Grounding references used to generate the question."
+        ...,
+        description="Grounding references used to generate the question."
     )
+
+    @model_validator(mode="after")
+    def _check_answerable(self) -> "QuestionItem":
+        """Reject questions nobody could answer or score.
+
+        These live in the schema rather than in an agent because the
+        orchestrator validates through the schema and never calls the agents'
+        ``generate()`` - a check placed there would not run in production.
+
+        Raises:
+            ValueError: If a choice-based question has no options, or the
+                answer key is not one of the choices.
+        """
+        if self.type in _TYPES_REQUIRING_OPTIONS and not self.options:
+            # A multiple-choice question with nothing to choose from (BUG-05).
+            raise ValueError(
+                f"a {self.type.value} question needs options; got "
+                f"{self.options!r}"
+            )
+
+        if self.options and self.correct_answer not in self.options:
+            # Unanswerable, and any scorer comparing a selection against the
+            # key marks every attempt wrong (BUG-04).
+            raise ValueError(
+                f"correct_answer {self.correct_answer!r} is not one of the "
+                f"options {self.options!r}"
+            )
+
+        return self
 
 
 class QuestionBankOutput(BaseModel):
@@ -140,16 +170,26 @@ class QuestionBankOutput(BaseModel):
     questions that require human review before use.
     """
 
+    model_config = _STRICT
+
     questions: list[QuestionItem] = Field(
-        ..., description="List of generated questions."
+        ...,
+        min_length=1,
+        description="List of generated questions. At least one - a request for "
+                    "questions that produces none is a failure, not a success "
+                    "(BUG-06)."
     )
 
-    requires_human_review: bool = Field(
+    requires_human_review: Literal[True] = Field(
         default=True,
+        frozen=True,
         description=(
             "Indicates that the generated questions must be "
-            "reviewed by a human before being presented."
-        ),
+            "reviewed by a human before being presented. Literal and frozen, "
+            "matching MentorOutput and ConceptOutput: this is a control over "
+            "the system, so neither the model nor a later caller may switch it "
+            "off (BUG-07)."
+        )
     )
 
 
@@ -160,21 +200,28 @@ class TestHelpOutput(BaseModel):
     This agent generates grounded questions for assessment
     support. All outputs require human review.
     """
-
     __test__ = False
 
-    model_config = ConfigDict(protected_namespaces=())
+    model_config = ConfigDict(protected_namespaces=(), extra="forbid")
 
     questions: list[QuestionItem] = Field(
-        ..., description="List of generated questions."
+        ...,
+        min_length=1,
+        description="List of generated questions. At least one - a request for "
+                    "questions that produces none is a failure, not a success "
+                    "(BUG-06)."
     )
 
-    requires_human_review: bool = Field(
+    requires_human_review: Literal[True] = Field(
         default=True,
+        frozen=True,
         description=(
             "Indicates that the generated questions must be "
-            "reviewed by a human before being presented."
-        ),
+            "reviewed by a human before being presented. Literal and frozen, "
+            "matching MentorOutput and ConceptOutput: this is a control over "
+            "the system, so neither the model nor a later caller may switch it "
+            "off (BUG-07)."
+        )
     )
 
 
@@ -186,20 +233,26 @@ class MentorOutput(BaseModel):
     learners with key takeaways and suggested next learning steps.
     """
 
+    model_config = _STRICT
+
     explanation: str = Field(
-        ..., description="Detailed explanation of the educational content."
+        ...,
+        description="Detailed explanation of the educational content."
     )
 
     key_points: list[str] = Field(
-        ..., description="Important concepts or takeaways from the content."
+        ...,
+        description="Important concepts or takeaways from the content."
     )
 
     next_steps: list[str] = Field(
-        ..., description="Recommended actions or topics for the learner to study next."
+        ...,
+        description="Recommended actions or topics for the learner to study next."
     )
 
     references: list[ContentReference] = Field(
-        ..., description="Content chunks or references used to generate the response."
+        ...,
+        description="Content chunks or references used to generate the response."
     )
 
     requires_human_review: Literal[True] = Field(
@@ -217,19 +270,26 @@ class ConceptOutput(BaseModel):
     providing mentoring or study guidance.
     """
 
+    model_config = _STRICT
+
     definition: str = Field(
-        ..., description="Short definition of the requested concept."
+        ...,
+        description="Short definition of the requested concept."
     )
 
-    explanation: str = Field(..., description="Detailed explanation of the concept.")
+    explanation: str = Field(
+        ...,
+        description="Detailed explanation of the concept."
+    )
 
     key_points: list[str] = Field(
-        ..., description="Important points that summarize the concept."
+        ...,
+        description="Important points that summarize the concept."
     )
 
     references: list[ContentReference] = Field(
         ...,
-        description="Content chunks or references used to generate the explanation.",
+        description="Content chunks or references used to generate the explanation."
     )
 
     requires_human_review: Literal[True] = Field(
@@ -237,3 +297,4 @@ class ConceptOutput(BaseModel):
         frozen=True,
         description="Indicates that the explanation requires human review before use.",
     )
+    

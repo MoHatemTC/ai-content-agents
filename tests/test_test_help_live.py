@@ -17,7 +17,7 @@ def test_test_help_generation_live():
     a valid TestHelpOutput using the live LLM.
     """
 
-    agent = TestHelpAgent(mock_mode=False)
+    agent = TestHelpAgent()
 
     result = agent.generate(
         content="""

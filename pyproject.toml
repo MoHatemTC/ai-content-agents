@@ -40,6 +40,23 @@ dev = [
     "ruff>=0.6.0",
 ]
 
+# LLM-judged quality checks (deepeval). Deliberately NOT part of `dev`:
+# requirements.txt installs `.[ocr,dev]`, so CI never sees this group and stays
+# credential-free by construction rather than by a workflow edit someone could
+# undo.
+#
+# Two things to know before installing it. deepeval hard-depends on
+# pytest-asyncio, pytest-xdist, pytest-repeat and pytest-rerunfailures, and
+# pytest auto-loads plugins - so installing this changes how every local test
+# run behaves. And its telemetry defaults to ON; tests/support/deepeval_judge.py
+# opts out at import time rather than relying on anyone reading this comment.
+eval = [
+    "deepeval>=4.1.5,<5.0.0",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "deepeval: LLM-judged quality check. Needs `pip install -e '.[eval]'`, gateway credentials, and RUN_DEEPEVAL_TESTS=true. Never runs in CI - the scores are non-deterministic and cost money per run.",
+]

@@ -1,0 +1,87 @@
+==============================================================================
+Sprint-4 QA evidence: Question Bank / Test Help, LLM-judged
+==============================================================================
+generated at   : 2026-08-06T14:50:13+00:00
+agent model    : gemini/gemini-flash-lite-latest
+judge model    : gemini/gemini-flash-lite-latest
+threshold      : 0.7  (a floor, not a grade)
+repeats        : 3
+questions asked: 3
+
+Model ids ending in '-latest' float, so these numbers are tied to
+this date. Scores are LLM-judged and vary run to run; that is why
+the spread is reported rather than a single number.
+
+------------------------------------------------------------------------------
+NEGATIVE CONTROLS - a metric that cannot fail proves nothing
+------------------------------------------------------------------------------
+  [OK ] derivability  fabricated: GPU/CUDA claim absent from the passage score=0.00 -> fail (expected fail)
+  [OK ] derivability  true in general, absent from the passage         score=0.00 -> fail (expected fail)
+  [OK ] derivability  genuinely derived from the passage               score=1.00 -> pass (expected pass)
+  [OK ] answer_key    mis-keyed on purpose                             score=0.00 -> fail (expected fail)
+  [OK ] answer_key    correctly keyed                                  score=1.00 -> pass (expected pass)
+  [OK ] distractors   absurd distractors                               score=0.10 -> fail (expected fail)
+
+------------------------------------------------------------------------------
+AGENT SCORES
+------------------------------------------------------------------------------
+
+### question_bank
+  run 1: asked 3, got 3 question(s), requires_human_review=True
+    Q1: Which type of loop iterates over the items of a sequence, such as a list or a string?
+         marked='A for loop' options=['A while loop', 'A for loop', 'An infinite loop', 'A conditional loop'] type=mcq difficulty=beginner refs=1
+    Q2: What does the break statement do in Python?
+         marked='Exits the innermost enclosing loop immediately' options=['Skips the rest of the current pass and begins the next one', 'Repeats for as long as a condition remains true', 'Exits the innermost enclosing loop immediately', 'Evaluates a condition before each pass'] type=mcq difficulty=beginner refs=1
+    Q3: When does a while loop evaluate its condition?
+         marked='Before each pass' options=['After the loop finishes completely', 'Before each pass', 'Only when the sequence is exhausted', 'When the continue statement is called'] type=mcq difficulty=beginner refs=1
+  run 2: asked 3, got 3 question(s), requires_human_review=True
+    Q1: Which Python loop iterates over the items of a sequence, such as a list or a string?
+         marked='A for loop' options=['A while loop', 'A for loop', 'An infinite loop', 'A conditional loop'] type=mcq difficulty=beginner refs=1
+    Q2: What does a while loop do before each pass?
+         marked='It evaluates a condition' options=['It exhausts the sequence', 'It evaluates a condition', 'It executes a break statement', 'It skips the rest of the pass'] type=mcq difficulty=beginner refs=1
+    Q3: Which statement exits the innermost enclosing loop immediately?
+         marked='break' options=['continue', 'while', 'break', 'for'] type=mcq difficulty=beginner refs=1
+  run 3: asked 3, got 3 question(s), requires_human_review=True
+    Q1: What does a for loop in Python iterate over?
+         marked='The items of a sequence, such as a list or a string' options=['A single integer value', 'The items of a sequence, such as a list or a string', 'A condition that remains true indefinitely', 'The rest of the current pass only'] type=mcq difficulty=beginner refs=1
+    Q2: What does the break statement do in Python?
+         marked='Exits the innermost enclosing loop immediately' options=['Exits the innermost enclosing loop immediately', 'Skips the rest of the current pass and begins the next one', 'Evaluates a condition before each pass', 'Repeats for as long as a condition remains true'] type=mcq difficulty=beginner refs=1
+    Q3: When does a while loop evaluate its condition?
+         marked='Before each pass' options=['After the loop runs forever', 'Only when the sequence is exhausted', 'Before each pass', 'After the break statement is called'] type=mcq difficulty=beginner refs=1
+
+  count control: asked 3 each run, got [3, 3, 3]
+  faithfulness   min 1.00  median 1.00  max 1.00   (n=9)
+  derivability   min 1.00  median 1.00  max 1.00   (n=9)
+  distractors    min 0.90  median 1.00  max 1.00   (n=9)
+  answer_key     min 1.00  median 1.00  max 1.00   (n=9)
+
+### test_help
+  run 1: asked 3, got 3 question(s), requires_human_review=True
+    Q1: What does a Python for loop iterate over?
+         marked='The items of a sequence, such as a list or a string' options=['Only integers', 'The items of a sequence, such as a list or a string', 'Only conditions that evaluate to true', 'An infinite loop'] type=mcq difficulty=beginner refs=1
+    Q2: What happens in a while loop if its condition never becomes false?
+         marked='It runs forever.' options=['It stops immediately.', 'It skips the rest of the current pass.', 'It runs forever.', 'It exits the innermost enclosing loop.'] type=mcq difficulty=beginner refs=1
+    Q3: Which statement exits the innermost enclosing loop immediately?
+         marked='break' options=['continue', 'break', 'pass', 'while'] type=mcq difficulty=beginner refs=1
+  run 2: asked 3, got 3 question(s), requires_human_review=True
+    Q1: What does a for loop in Python iterate over?
+         marked='The items of a sequence, such as a list or a string' options=['Only integers', 'The items of a sequence, such as a list or a string', 'Conditions that evaluate to true or false', 'Only loops that run forever'] type=mcq difficulty=beginner refs=1
+    Q2: What happens if the condition of a while loop never becomes false?
+         marked='The loop runs forever' options=['The loop stops immediately', 'The loop runs forever', 'The loop skips the rest of the current pass', 'The loop converts into a for loop'] type=mcq difficulty=beginner refs=1
+    Q3: Which statement skips the rest of the current pass and begins the next one?
+         marked='continue' options=['break', 'continue', 'while', 'for'] type=mcq difficulty=beginner refs=1
+  run 3: asked 3, got 3 question(s), requires_human_review=True
+    Q1: What does a for loop in Python iterate over?
+         marked='The items of a sequence, such as a list or a string' options=['Only integers', 'The items of a sequence, such as a list or a string', 'Conditions that evaluate to true or false', 'Infinite loops'] type=mcq difficulty=beginner refs=1
+    Q2: Which statement exits the innermost enclosing loop immediately?
+         marked='break' options=['continue', 'while', 'break', 'pass'] type=mcq difficulty=beginner refs=1
+    Q3: What happens in a while loop if the condition never becomes false?
+         marked='The loop runs forever' options=['It stops immediately', 'It skips the current pass', 'The loop runs forever', 'It iterates over a list'] type=mcq difficulty=beginner refs=1
+
+  count control: asked 3 each run, got [3, 3, 3]
+  faithfulness   min 1.00  median 1.00  max 1.00   (n=9)
+  derivability   min 1.00  median 1.00  max 1.00   (n=9)
+  distractors    min 0.90  median 1.00  max 1.00   (n=9)
+  answer_key     min 1.00  median 1.00  max 1.00   (n=9)
+
+==============================================================================

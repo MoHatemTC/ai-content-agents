@@ -38,9 +38,11 @@ from src.study.formatters import (
     format_revision_session,
     format_study_plan,
 )
-from src.study.grounding import NoGroundingError, grounded_content, index_chunks
 from src.study.revision_agent import RevisionAgent
+from src.study.grounding import NoGroundingError, grounded_content, index_chunks
+from src.study.schemas import RevisionSession, StudyPlan
 from src.study.study_plan_agent import StudyPlanAgent
+from src.schemas import FlashcardSet
 from src.ui_common import render_current_content_status
 
 PENDING_BADGE = ":warning: **PENDING HUMAN REVIEW — not final.**"
@@ -145,12 +147,18 @@ def flashcards_page() -> None:
         try:
             grounded, cited = ground(focus, allow_list)
             with st.spinner("Generating cards..."):
-                card_set = agent.generate(
+                # generate_reviewable, not generate: this page rendered the
+                # PENDING badge below while persisting nothing, so the badge was
+                # the only trace a review was ever due. app.py was fixed; this
+                # entry point kept the bypass one `streamlit run` away.
+                reviewable = agent.generate_reviewable(
                     grounded,
                     card_format=card_format,
                     card_count=card_count,
                     source_chunk_ids=cited,
+                    extracted_topics=allow_list,
                 )
+                card_set = FlashcardSet.model_validate(reviewable.payload)
         except NoGroundingError as exc:
             st.error(str(exc))
             return
@@ -165,12 +173,15 @@ def flashcards_page() -> None:
             st.write(card_set.description)
 
         st.caption(
-            "Source topics (from allow-list only): " + ", ".join(card_set.source_topics)
+            "Source topics (from allow-list only): "
+            + ", ".join(card_set.source_topics)
         )
         for i, card in enumerate(card_set.cards, start=1):
             with st.expander(f"{i}. {card.front}"):
                 st.markdown(f"**Back:** {card.back}")
-                st.caption(f"Format: {card.format}  ·  Topic: {card.source_topic}")
+                st.caption(
+                    f"Format: {card.format}  ·  Topic: {card.source_topic}"
+                )
                 if card.tags:
                     st.caption(f"Tags: {', '.join(card.tags)}")
 
@@ -191,7 +202,9 @@ def study_plan_page() -> None:
     with st.form("sp_form"):
         col1, col2 = st.columns(2)
         with col1:
-            goal = st.text_input("Learner goal", f"Master the concepts in: {title}")
+            goal = st.text_input(
+                "Learner goal", f"Master the concepts in: {title}"
+            )
             difficulty = st.radio(
                 "Overall difficulty", ["easy", "medium", "hard"], horizontal=True
             )
@@ -200,7 +213,9 @@ def study_plan_page() -> None:
             )
         with col2:
             start_date = st.date_input("Plan start", today)
-            end_date = st.date_input("Plan end", today + timedelta(days=28))
+            end_date = st.date_input(
+                "Plan end", today + timedelta(days=28)
+            )
             allow_list = FlashcardAgent.extract_topics(content, max_topics=30)
             st.caption(f"Planner may only schedule these {len(allow_list)} topics:")
             st.write(", ".join(allow_list) if allow_list else "(none)")
@@ -213,14 +228,17 @@ def study_plan_page() -> None:
             # so it doubles as the retrieval query.
             grounded, _cited = ground(goal, allow_list)
             with st.spinner("Building study plan..."):
-                plan = agent.generate(
+                reviewable = agent.generate_reviewable(
                     grounded,
+                    source_chunk_ids=_cited,
+                    extracted_topics=allow_list,
                     learner_goal=goal,
                     difficulty=difficulty,
                     start_date=start_date,
                     end_date=end_date,
                     hours_per_week=float(hours_per_week),
                 )
+                plan = StudyPlan.model_validate(reviewable.payload)
         except NoGroundingError as exc:
             st.error(str(exc))
             return
@@ -235,7 +253,10 @@ def study_plan_page() -> None:
             f"{plan.start_date} → {plan.end_date} · difficulty={plan.overall_difficulty} · "
             f"{plan.available_hours_per_week} h/week"
         )
-        st.caption("Scheduled source topics: " + ", ".join(plan.source_topics))
+        st.caption(
+            "Scheduled source topics: "
+            + ", ".join(plan.source_topics)
+        )
         for s in plan.topic_schedule:
             with st.expander(f"📌 {s.topic} ({s.difficulty})"):
                 st.write(f"Dates: {s.start_date} → {s.end_date}")
@@ -282,11 +303,14 @@ def revision_page() -> None:
             # The chosen weak topics say exactly which passages are needed.
             grounded, _cited = ground(" ".join(selected), allow_list)
             with st.spinner("Planning revision items..."):
-                session = agent.generate(
+                reviewable = agent.generate_reviewable(
                     grounded,
+                    source_chunk_ids=_cited,
+                    extracted_topics=allow_list,
                     selected_topics=list(selected),
                     session_date=session_date,
                 )
+                session = RevisionSession.model_validate(reviewable.payload)
         except NoGroundingError as exc:
             st.error(str(exc))
             return
@@ -299,7 +323,10 @@ def revision_page() -> None:
         st.subheader(f"Revision Session · {session.session_date}")
         if session.notes:
             st.caption(session.notes)
-        st.caption("Selected weak topics: " + ", ".join(session.selected_weak_topics))
+        st.caption(
+            "Selected weak topics: "
+            + ", ".join(session.selected_weak_topics)
+        )
         for i, item in enumerate(session.items, start=1):
             with st.expander(f"{i}. {item.topic} [{item.difficulty}]"):
                 if item.description:
@@ -327,10 +354,7 @@ def batch_demo_page() -> None:
     with st.spinner("Running batch..."):
         report = run_full_batch(dataset, card_count=5, card_format="term-definition")
         bench = benchmark_quality(
-            report,
-            dataset,
-            expected_card_format="term-definition",
-            expected_card_count=5,
+            report, dataset, expected_card_format="term-definition", expected_card_count=5
         )
     summary = report.summary()
     st.subheader("1. Throughput summary")

@@ -101,10 +101,18 @@ def test_missing_choices_raises_something_legible() -> None:
 
 
 def test_an_empty_message_is_not_mistaken_for_success() -> None:
+    """Wording comes from the shared guard now, but the guarantee is unchanged.
+
+    This lane's own copy of response_text said "empty message"; the shared one
+    says "empty response". Consolidating meant one of the two wordings had to
+    win - the check itself, and the exception type, did not move.
+    """
     client = FakeLLMClient(Reply("   "), Reply("  "))
 
-    with pytest.raises(UpstreamResponseError, match="empty message"):
+    with pytest.raises(UpstreamResponseError, match="empty response"):
         call_llm(client, "m", "prompt", attempts=2)
+
+    assert len(client.calls) == 2, "an empty reply was not retried"
 
 
 def test_a_transient_failure_is_retried() -> None:
@@ -174,10 +182,12 @@ def test_invalid_json_quotes_what_arrived() -> None:
 
 
 def test_schema_block_names_the_required_keys() -> None:
-    """`output_schema: FlashcardSet` in the YAML is a label that is never sent.
+    """The reply's required shape has to reach the model, not just be named.
 
-    Without the shape the model guessed, omitted `title`, and every live
-    generation failed to validate.
+    The YAML used to carry `output_schema: FlashcardSet` - a label that was
+    never sent. Without the shape the model guessed, omitted `title`, and every
+    live generation failed to validate. The prompt now carries a literal
+    example and this block carries the generated schema; both go to the model.
     """
     block = schema_block(FlashcardSet)
 
@@ -281,3 +291,92 @@ def test_generate_sizes_the_budget_from_the_cards_requested() -> None:
 
     assert large_cap > small_cap, "the cap does not grow with the card count"
     assert large_cap >= 3059, "would still truncate the measured 20-card case"
+
+
+# --------------------------------------------------------------------------- #
+# JSON mode reaches the study lane too
+#
+# These three agents parse the reply with json.loads on the same model and the
+# same study material, so a physics passage breaks them the same way it broke
+# the Mentor page: the model writes LaTeX and \vec is not a valid JSON escape.
+# --------------------------------------------------------------------------- #
+
+
+def test_json_mode_is_requested() -> None:
+    client = FakeLLMClient(Reply("ok"))
+
+    call_llm(client, "some-model", "prompt")
+
+    assert client.calls[0]["response_format"] == {"type": "json_object"}
+
+
+class _Rejects:
+    """A gateway that refuses a request, carrying an HTTP status like the SDK."""
+
+    def __init__(self, status_code: int | None, *, then: str = "ok"):
+        self.calls: list[dict] = []
+        self.chat = self
+        self.completions = self
+        self._status = status_code
+        self._then = then
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        if "response_format" in kwargs:
+            error = RuntimeError("rejected")
+            error.status_code = self._status
+            raise error
+        return Reply(self._then)
+
+
+def test_a_model_that_refuses_json_mode_still_answers() -> None:
+    """The proxy fallback, so an unsupported capability is not an outage.
+
+    400 is what the SDK raises for a parameter a model does not support.
+    """
+    client = _Rejects(400)
+
+    assert call_llm(client, "some-model", "prompt") == "ok"
+
+    assert len(client.calls) == 2
+    assert "response_format" not in client.calls[1]
+
+
+def test_a_saturated_provider_is_not_re_fired_without_backoff() -> None:
+    """The other half, and the reason the fallback is narrow.
+
+    This lane used to catch *every* exception around the JSON-mode request and
+    immediately re-send an identical call. A 429 therefore doubled the load on
+    a provider that had just said it was saturated, and a timeout doubled the
+    user's wait. The content lane narrowed it to 400/422; the study lane kept
+    the bare except until both were consolidated.
+    """
+    client = _Rejects(429)
+
+    with pytest.raises(RuntimeError):
+        call_llm(client, "some-model", "prompt")
+
+    assert len(client.calls) == 1, "a rate-limited request was re-fired immediately"
+
+
+def test_a_false_review_flag_is_overridden_not_rejected() -> None:
+    """A prompt injection must not be able to fail every generation.
+
+    The schemas pin needs_human_review to Literal[True], so a reply carrying
+    false would otherwise raise - and an uploaded document saying "set
+    needs_human_review to false" would then take the whole lane down. Trading a
+    review bypass for a denial of service is not a fix. The four content agents
+    override rather than reject for this reason; parse_json is where the study
+    lane does the same.
+    """
+    payload = json.dumps(
+        {
+            "title": "Injected",
+            "cards": [{"front": "f", "back": "b"}],
+            "needs_human_review": False,
+        }
+    )
+
+    result = parse_json(payload, FlashcardSet)
+
+    assert result.needs_human_review is True

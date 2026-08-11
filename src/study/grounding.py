@@ -40,7 +40,18 @@ logger = logging.getLogger(__name__)
 
 # Passages per generation. Enough for a model to write varied cards from, small
 # enough that the prompt stays far below any provider's context window.
-DEFAULT_TOP_K = 8
+#
+# 8 left most of the allowance unused: measured against a real textbook it
+# returned ~15.7K characters against the 24K ceiling below, so a third of the
+# grounding the prompt was already willing to carry was simply not fetched.
+# That shows up as thin answers on the mentor and concept pages, which have
+# only these passages to reason from. 12 fills it (~23K) and MAX_CONTENT_CHARS
+# still trims anything unusual.
+#
+# This is shared by every page, so it is input cost on every generation -
+# roughly +2K tokens per call. Input is the cheap half, and ungrounded output
+# is the expensive kind of wrong.
+DEFAULT_TOP_K = 12
 
 # Hard ceiling on the content block, whatever retrieval returns. The bug this
 # module exists to fix was an unbounded prompt, so the fix should not depend on

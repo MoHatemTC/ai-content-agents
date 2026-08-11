@@ -11,9 +11,46 @@ contracts other lanes already expect: prompt ``{content}`` blocks,
 
 from __future__ import annotations
 
+import re
+
 from pydantic import BaseModel, Field, model_validator
 
 from src.validation.schemas import ContentReference
+
+# The trailing ordinal in the id convention below. Matched rather than assumed:
+# external ingestion may supply its own ids, and those must still render.
+_ORDINAL_SUFFIX = re.compile(r"-c(\d+)$")
+
+
+def describe_chunk_id(chunk_id: str, *, title: str | None = None) -> str:
+    """Render a chunk id as a citation a person can read.
+
+    Chunk ids are machine keys - ``54f8b219-1298-46c1-8add-46d3f5020e07-c0004``
+    is a document ``uuid4`` plus the chunk's position - and they were being
+    shown to learners verbatim under a heading that said "Provenance
+    references". This turns that into ``Passage 5 · Physics Notes.pdf``.
+
+    Page numbers would be better and are not available: the PDF parser joins
+    every page into one string before chunking, so they do not survive
+    ingestion. The ordinal is what exists.
+
+    Args:
+        chunk_id: The raw citation id.
+        title: The source document's title, when the caller knows it.
+
+    Returns:
+        A human-readable label, or ``chunk_id`` unchanged when it does not
+        follow the convention - an id from elsewhere must degrade to something
+        rather than raise.
+    """
+    match = _ORDINAL_SUFFIX.search(chunk_id)
+    if match is None:
+        return chunk_id
+
+    # 1-based on purpose. Ordinals are 0-based everywhere in the code, but
+    # "Passage 0" reads as a bug to the person being shown it.
+    label = f"Passage {int(match.group(1)) + 1}"
+    return f"{label} · {title}" if title else label
 
 
 class InsufficientGroundingError(RuntimeError):

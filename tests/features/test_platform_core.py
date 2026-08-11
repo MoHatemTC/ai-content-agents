@@ -54,12 +54,18 @@ from src.validation.review_service import ReviewService
 from src.validation.schemas import (
     ContentReference,
     DifficultyLevel,
+    ConceptOutput,
     MentorOutput,
     QuestionBankOutput,
     QuestionItem,
     QuestionType,
+    TestHelpOutput,
 )
+from src.agents.question_bank_agent import QuestionBankAgent
+from src.agents.test_help_agent import TestHelpAgent
+from src.validation.orchestrator import _default_transient_errors
 from src.validation.store import PlatformStore
+from tests.conftest import FakeLLMClient, Reply
 from src.validation.validator_base import ValidatorBase
 
 
@@ -660,7 +666,6 @@ class _FakeAgentModule:
     """Stands in for a real agent, exposing the private methods the adapter uses."""
 
     def __init__(self, response: str | Exception) -> None:
-        self.mock_mode = False
         self.model = "fake"
         self._response = response
 
@@ -1258,3 +1263,335 @@ def test_summary_rows_render_rates_readably(store: PlatformStore) -> None:
     assert rows[-1]["agent"] == "overall"
     assert rows[0]["schema pass"] == "100.0%"
     assert rows[0]["review edit"] == "n/a"  # nothing reviewed yet
+
+
+# --------------------------------------------------------------------------- #
+# Sprint-4 QA: the two question agents disagree about the same gateway failure
+# --------------------------------------------------------------------------- #
+
+
+# Closes BUG-09: question_bank's correct guard raised ValueError, which is not
+# in transient_errors, so it was never retried - while test_help's unguarded
+# dereference raised TypeError, which IS translated and retried. The agent that
+# handled the case correctly was the one that lost the retry.
+#
+# The fix is that there is now one UpstreamResponseError, so an agent raising it
+# is transient by identity. It is NOT that the adapter classifies more exception
+# types as transient: widening it to ValueError would retry deterministic bugs
+# three times and label them as a saturated provider.
+def test_an_agent_raising_the_shared_error_is_retryable() -> None:
+    """The retry classification must not depend on which bug an agent has.
+
+    This asserts the property that actually fixes BUG-09 - that the type the
+    agents raise is the type the orchestrator retries - rather than that the
+    adapter translates something on their behalf.
+    """
+    assert UpstreamResponseError in _default_transient_errors()
+
+    adapter = RegistryAgentAdapter(
+        name="question_bank",
+        agent=_FakeAgentModule(
+            UpstreamResponseError("LLM returned no choices (saturated).")
+        ),
+        schema=QuestionBankOutput,
+    )
+
+    with pytest.raises(UpstreamResponseError, match="no choices"):
+        adapter.run_raw("content")
+
+
+def test_a_deterministic_bug_after_the_gateway_call_is_not_retried() -> None:
+    """The other half: not everything that goes wrong is a saturated provider.
+
+    A ValueError raised after the gateway answered - a failed parse, a bad
+    int() - is deterministic. Retrying it burns real billed calls and, if the
+    adapter translated it, would file the run under a diagnosis that was never
+    true.
+    """
+    adapter = RegistryAgentAdapter(
+        name="question_bank",
+        agent=_FakeAgentModule(ValueError("invalid literal for int()")),
+        schema=QuestionBankOutput,
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        adapter.run_raw("content")
+
+    assert not isinstance(excinfo.value, UpstreamResponseError), (
+        "a deterministic bug was mislabelled as a transient upstream failure"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# The question agents on the path that actually runs in production
+#
+# RegistryAgentAdapter.run_raw calls _build_prompt and _call_llm directly and
+# never calls generate(), so a fix placed only in generate() would pass every
+# unit test and do nothing in production. These drive the real agents through
+# the adapter and the orchestrator.
+# --------------------------------------------------------------------------- #
+
+
+def _question_adapter(agent_class, schema, client):
+    from src.validation.orchestrator import DEFAULT_AGENT_PARAMS
+
+    name = "question_bank" if schema is QuestionBankOutput else "test_help"
+    return RegistryAgentAdapter(
+        name=name,
+        agent=agent_class(client=client, model="test-model"),
+        schema=schema,
+        default_params=DEFAULT_AGENT_PARAMS[name],
+    )
+
+
+@pytest.mark.parametrize(
+    "agent_class,schema",
+    [
+        pytest.param(QuestionBankAgent, QuestionBankOutput, id="question_bank"),
+        pytest.param(TestHelpAgent, TestHelpOutput, id="test_help"),
+    ],
+)
+def test_a_saturated_provider_reaches_the_adapter_as_upstream(
+    agent_class, schema
+) -> None:
+    """Both real agents, through the real adapter, on an error-shaped 200."""
+    adapter = _question_adapter(
+        agent_class, schema, FakeLLMClient(Reply(error={"message": "saturated"}))
+    )
+
+    with pytest.raises(UpstreamResponseError):
+        adapter.run_raw("Loops repeat instructions.")
+
+
+@pytest.mark.parametrize(
+    "agent_class,schema",
+    [
+        pytest.param(QuestionBankAgent, QuestionBankOutput, id="question_bank"),
+        pytest.param(TestHelpAgent, TestHelpOutput, id="test_help"),
+    ],
+)
+def test_a_saturated_provider_is_retried_for_both_agents(
+    store: PlatformStore, agent_class, schema
+) -> None:
+    """A saturated provider is retried, for both real agents, end to end.
+
+    Counting gateway calls is the point: the type assertion lives in
+    test_an_error_shaped_success_is_a_legible_error, and the classification
+    property in test_an_agent_raising_the_shared_error_is_retryable. This is
+    the integration of the two - the real agent, the real adapter, the real
+    retry policy.
+    """
+    client = FakeLLMClient(*[Reply(error={"message": "saturated"})] * 3)
+    name = "question_bank" if schema is QuestionBankOutput else "test_help"
+    orchestrator = Orchestrator(
+        store,
+        agents={name: _question_adapter(agent_class, schema, client)},
+        max_retries=2,
+        retry_backoff=0.0,
+    )
+
+    result = orchestrator.run_agent(name, content="Loops repeat instructions.")
+
+    assert len(client.calls) == 3, "a transient upstream failure was not retried"
+    assert result.run.status is RunStatus.FAILURE
+    # Name the agent's own error type, not the adapter's canned wording - the
+    # canned message contains "choices" whatever went wrong, so asserting on it
+    # would pass even with the agent's guard reverted.
+    assert "UpstreamResponseError" in (result.run.error or ""), result.run.error
+    assert "saturated" in (result.run.error or ""), result.run.error
+
+
+@pytest.mark.parametrize(
+    "agent_class,schema",
+    [
+        pytest.param(QuestionBankAgent, QuestionBankOutput, id="question_bank"),
+        pytest.param(TestHelpAgent, TestHelpOutput, id="test_help"),
+    ],
+)
+def test_an_unanswerable_question_fails_validation_in_production(
+    store: PlatformStore, agent_class, schema
+) -> None:
+    """An answer key outside the options must be caught on the orchestrator path.
+
+    This is why the check lives in the schema rather than in generate(): the
+    orchestrator validates through the schema, so this is the only placement
+    that runs where it matters.
+    """
+    item = {
+        "question": "Which loop repeats while a condition is true?",
+        "options": ["for", "while"],
+        "correct_answer": "a fifth option entirely",
+        "rationale": "because",
+        "difficulty": "beginner",
+        "type": "mcq",
+        "references": [{"segment_id": "chunk_001", "text": "Loops repeat."}],
+    }
+    raw = json.dumps({"questions": [item, item], "requires_human_review": True})
+    name = "question_bank" if schema is QuestionBankOutput else "test_help"
+    orchestrator = Orchestrator(
+        store,
+        agents={name: _question_adapter(agent_class, schema, FakeLLMClient(raw))},
+        max_retries=0,
+    )
+
+    result = orchestrator.run_agent(name, content="Loops repeat instructions.")
+
+    assert not result.validation.passed
+    assert any(
+        "correct_answer" in error for error in result.validation.schema_errors
+    ), result.validation.schema_errors
+
+
+@pytest.mark.parametrize(
+    "agent_class,schema",
+    [
+        pytest.param(QuestionBankAgent, QuestionBankOutput, id="question_bank"),
+        pytest.param(TestHelpAgent, TestHelpOutput, id="test_help"),
+    ],
+)
+def test_a_fenced_reply_survives_the_production_path(
+    store: PlatformStore, agent_class, schema
+) -> None:
+    """Fence stripping has to happen in _call_llm, not in generate()."""
+    item = {
+        "question": "Which loop repeats while a condition is true?",
+        "options": ["for", "while"],
+        "correct_answer": "while",
+        "rationale": "A while loop repeats while its condition is true.",
+        "difficulty": "beginner",
+        "type": "mcq",
+        "references": [{"segment_id": "chunk_001", "text": "Loops repeat."}],
+    }
+    payload = json.dumps({"questions": [item, item], "requires_human_review": True})
+    name = "question_bank" if schema is QuestionBankOutput else "test_help"
+    orchestrator = Orchestrator(
+        store,
+        agents={
+            name: _question_adapter(
+                agent_class, schema, FakeLLMClient(f"```json\n{payload}\n```")
+            )
+        },
+        max_retries=0,
+    )
+
+    result = orchestrator.run_agent(name, content="Loops repeat instructions.")
+
+    assert result.validation.passed, result.validation.schema_errors
+
+
+@pytest.mark.parametrize(
+    "agent_class,schema",
+    [
+        pytest.param(QuestionBankAgent, QuestionBankOutput, id="question_bank"),
+        pytest.param(TestHelpAgent, TestHelpOutput, id="test_help"),
+    ],
+)
+@pytest.mark.parametrize(
+    "bad_params",
+    [
+        pytest.param({"question_type": "ESSAY_BANANA"}, id="bad-type"),
+        pytest.param({"difficulty": "impossible"}, id="bad-difficulty"),
+        pytest.param({"num_questions": 0}, id="zero-count"),
+    ],
+)
+def test_bad_controls_are_rejected_before_a_gateway_call(
+    agent_class, schema, bad_params
+) -> None:
+    """Input validation must run on the production path, and run *first*.
+
+    This is the placement claim the whole design rests on: `run_raw` calls
+    `_build_prompt` and never `generate()`, so validation living in `generate()`
+    would pass every unit test and do nothing here.
+
+    Asserting no gateway call is what makes it specific. A test that only
+    asserted `pytest.raises(ValueError)` would stay green if the check moved
+    into `generate()` or ran after the model had already been paid for.
+    """
+    client = FakeLLMClient("{}")
+    adapter = _question_adapter(agent_class, schema, client)
+
+    with pytest.raises(ValueError):
+        adapter.run_raw("Loops repeat instructions.", **bad_params)
+
+    assert client.calls == [], "the model was called before the input was checked"
+
+
+# --------------------------------------------------------------------------- #
+# Mentor and Concept on the path that actually runs in production
+#
+# The sibling question agents have this; mentor and concept never did, and that
+# is precisely why their control validation sits in generate() - a method
+# RegistryAgentAdapter.run_raw never calls. These tests exist so the gap cannot
+# reopen.
+# --------------------------------------------------------------------------- #
+
+
+def _explanation_adapter(agent_class, schema, client):
+    from src.validation.orchestrator import DEFAULT_AGENT_PARAMS
+
+    name = "mentor" if schema is MentorOutput else "concept"
+    return RegistryAgentAdapter(
+        name=name,
+        agent=agent_class(client=client, model="test-model"),
+        schema=schema,
+        default_params=DEFAULT_AGENT_PARAMS[name],
+    )
+
+
+EXPLANATION_AGENTS = [
+    pytest.param("mentor", MentorOutput, id="mentor"),
+    pytest.param("concept", ConceptOutput, id="concept"),
+]
+
+
+def _explanation_agent_class(name):
+    from src.agents.concept_agent import ConceptAgent
+    from src.agents.mentor_agent import MentorAgent
+
+    return MentorAgent if name == "mentor" else ConceptAgent
+
+
+@pytest.mark.parametrize("name,schema", EXPLANATION_AGENTS)
+def test_a_bad_difficulty_is_rejected_before_a_gateway_call(name, schema) -> None:
+    """Control validation has to run where production runs.
+
+    `run_raw` calls `_build_prompt` and `_call_llm` directly and never calls
+    `generate()`. A check in `generate()` passes every unit test and does
+    nothing here - today `difficulty="ESSAY_BANANA"` is interpolated into the
+    prompt verbatim and the call is billed.
+
+    Asserting no gateway call is what makes this specific: a bare
+    `pytest.raises(ValueError)` would stay green if the check ran after the
+    model had already answered.
+    """
+    client = FakeLLMClient("{}")
+    adapter = _explanation_adapter(_explanation_agent_class(name), schema, client)
+
+    with pytest.raises(ValueError, match="[Dd]ifficulty"):
+        adapter.run_raw("Loops repeat instructions.", difficulty="ESSAY_BANANA")
+
+    assert client.calls == [], "the model was called before the input was checked"
+
+
+@pytest.mark.parametrize("name,schema", EXPLANATION_AGENTS)
+def test_a_saturated_provider_is_retried(store: PlatformStore, name, schema) -> None:
+    """A transient upstream failure must be retried for these agents too.
+
+    Counting gateway calls rather than asserting the exception type: the type
+    alone would not catch an agent whose guard raises something the retry policy
+    does not recognise, which is the defect the sibling pair had (BUG-09).
+    """
+    client = FakeLLMClient(*[Reply(error={"message": "saturated"})] * 3)
+    orchestrator = Orchestrator(
+        store,
+        agents={
+            name: _explanation_adapter(_explanation_agent_class(name), schema, client)
+        },
+        max_retries=2,
+        retry_backoff=0.0,
+    )
+
+    result = orchestrator.run_agent(name, content="Loops repeat instructions.")
+
+    assert len(client.calls) == 3, "a transient upstream failure was not retried"
+    assert result.run.status is RunStatus.FAILURE

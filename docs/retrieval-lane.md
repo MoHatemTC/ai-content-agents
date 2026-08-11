@@ -198,3 +198,33 @@ python -m pytest tests/test_retrieval.py tests/test_retrieval_pipeline.py -v
 python -m ruff check src/retrieval tests/test_retrieval.py tests/test_retrieval_pipeline.py
 python -m mypy src/retrieval --ignore-missing-imports
 ```
+
+## Known limitation: questions about chapters and sections
+
+Chunks carry no structural metadata. A chunk knows its document, its ordinal
+and its text; it does not know which chapter or section it came from. Retrieval
+is embedding similarity over that text, so a question shaped like
+
+> explain chapter 1 and chapter 2
+
+cannot be answered. Two things go wrong at once. The query has no topic to match
+on, so nearest-neighbour search falls back on passages that happen to *mention*
+chapter numbers - cross-references and exercise headers. And even when retrieval
+returns genuinely relevant passages, the model has no way to tell whether they
+came from chapter 1 or chapter 7, so a well-behaved agent says the content does
+not cover what was asked. Observed on a real textbook: the Concept page answered
+"Not available in the provided content" while holding correct passages about
+vector spaces.
+
+**This is the agents behaving correctly.** Refusing to guess is the contract.
+The gap is upstream, in what ingestion records.
+
+Ask by topic instead - "what is a vector space", "how do you find eigenvalues" -
+which is what the retrieval this lane implements is built to answer.
+
+Closing it properly means detecting headings during parsing, storing chapter and
+section on each `Chunk`, carrying them through `GroundedContext` into the
+`[chunk_id]` marker the prompts already cite, and offering them as a filter. That
+is an ingestion change as much as a retrieval one, and every existing document
+has to be re-ingested to pick the metadata up - which is why it is written down
+here rather than done in passing.

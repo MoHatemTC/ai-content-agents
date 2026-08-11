@@ -27,14 +27,14 @@ import json
 import logging
 import re
 from collections import Counter
-from datetime import datetime
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 import yaml
 from dotenv import load_dotenv
 
+from src.validation.review_schema import GeneratedOutput
+from src.validation.reviewable import persist_reviewable_run
 from src.llm_gateway import build_client, default_model
 from src.schemas import FlashcardSet
 from src.study.llm_client import (
@@ -297,6 +297,10 @@ _MIN_BIGRAM_COUNT = 2
 # "potential difference" - so they outrank single words of the same frequency.
 _BIGRAM_WEIGHT = 4
 
+# A whole-line "[chunk_id]" marker as GroundedContext.as_prompt_content writes
+# them. Anchored per line so a bracketed aside inside a passage is left alone.
+_CHUNK_MARKER = re.compile(r"^\s*\[[^\]\n]+\]\s*$", re.MULTILINE)
+
 
 class GroundingError(ValueError):
     """Raised when a card references a topic not in the extraction allow-list."""
@@ -375,6 +379,14 @@ class FlashcardAgent:
         if not content or not content.strip():
             return []
 
+        # Retrieved content arrives as "[chunk_id]\npassage" - the markers the
+        # prompts ask the model to cite. The token pattern below reads
+        # `heat-1-c0001` as the words `heat` and `c0001`, so a chunk id became
+        # a "topic" and the model could be asked to build a flashcard about
+        # c0001. Callers that pass their own allow-list avoid this entirely;
+        # this is for the ones that do not.
+        content = _CHUNK_MARKER.sub(" ", content)
+
         matches = list(re.finditer(r"\b[A-Za-z][A-Za-z0-9]{2,}\b", content))
         if not matches:
             return []
@@ -429,6 +441,33 @@ class FlashcardAgent:
         ranked = [topic for topic, _ in scores.most_common(max_topics)]
         return sorted({surface(topic) for topic in ranked})
 
+    @staticmethod
+    def canonical_topic(topic: str | None, allowed: list[str]) -> str | None:
+        """Return ``topic``'s allow-list spelling, or ``None`` if it is not one.
+
+        The allow-list keeps whichever casing the document uses most, so it
+        carries ``conduction`` while a model writing a plan entry or a card
+        front naturally capitalises it. Exact string equality then rejected
+        genuinely grounded output: a live study plan failed with
+        ``topics not in extraction allow-list: ['Conduction']`` while the list
+        it was checked against contained ``conduction``.
+
+        Matching case-insensitively and returning the *allow-list's* spelling
+        keeps the property that makes the list safe - a topic is always quoted
+        from the document, never invented - while not rejecting a model for
+        capitalising a sentence.
+
+        Args:
+            topic: What the model produced.
+            allowed: The allow-list.
+
+        Returns:
+            The canonical spelling, or ``None`` when the topic is not allowed.
+        """
+        if not topic:
+            return None
+        return {item.casefold(): item for item in allowed}.get(topic.casefold())
+
     def _build_prompt(
         self,
         content: str,
@@ -455,24 +494,22 @@ class FlashcardAgent:
         if card_count < 1:
             raise ValueError("card_count must be >= 1")
 
-        template = self.prompt_cfg.get("system_prompt")
+        template = self.prompt_cfg.get("prompt_template")
         if not template:
-            raise KeyError("'system_prompt' missing in flashcards.yaml")
+            raise KeyError("'prompt_template' missing in flashcards.yaml")
 
-        topics_json = json.dumps(extracted_topics, ensure_ascii=False)
-        prompt_block = (
-            f"{template}\n\n"
-            f"--- CONTENT START ---\n{content}\n--- CONTENT END ---\n\n"
-            f"extracted_topics (pick FROM THIS LIST ONLY): {topics_json}\n"
-            f"card_format: {card_format}\n"
-            f"card_count: {card_count}\n"
-            # The YAML's `output_schema: FlashcardSet` is a label, never sent to
-            # the model. Without the actual shape it guessed `{"cards": [...]}`,
-            # omitted the required `title`, and every live call failed to
-            # validate.
-            f"{schema_block(FlashcardSet)}"
+        rendered = template.format(
+            content=content,
+            extracted_topics=json.dumps(extracted_topics, ensure_ascii=False),
+            card_format=card_format,
+            card_count=card_count,
         )
-        return prompt_block
+        # The literal example in the YAML shows the shape; this appends the
+        # generated JSON schema as well. Both exist for the same reason - the
+        # YAML used to name `FlashcardSet` and never send it, so the model
+        # guessed `{"cards": [...]}`, omitted the required `title`, and every
+        # live call failed to validate. Belt and braces, deliberately.
+        return f"{rendered}{schema_block(FlashcardSet)}"
 
     # ------------------------------------------------------------------
     # LLM
@@ -508,29 +545,39 @@ class FlashcardAgent:
         Raises:
             GroundingError: If any card references an out-of-list topic.
         """
-        allowed = set(extracted_topics)
         bad: list[tuple[int, str]] = []
         for idx, card in enumerate(card_set.cards):
-            if card.source_topic and card.source_topic not in allowed:
+            if not card.source_topic:
+                continue
+            canonical = self.canonical_topic(card.source_topic, extracted_topics)
+            if canonical is None:
                 bad.append((idx, card.source_topic))
+            else:
+                # Rewrite to the allow-list's spelling so the card, and the
+                # source_topics derived from it, quote the document exactly.
+                card.source_topic = canonical
         if bad:
             raise GroundingError(
                 "Card source_topics not in extracted allow-list: "
-                f"{bad!r}; allow-list={sorted(allowed)}"
+                f"{bad!r}; allow-list={sorted(extracted_topics)}"
             )
 
     def _wrap_for_review_gate(
         self,
         card_set: FlashcardSet,
         *,
-        agent_run_id: str,
         extracted_topics: list[str],
     ) -> FlashcardSet:
         """Force the human-review gate flags and normalise.
 
+        The run id used to be appended to ``description`` as
+        "[run_id=fc-... pending_review]", and app.py renders that field
+        verbatim - so every learner read the audit trail off the front of the
+        card set. It belongs on the persisted AgentRun, which is where
+        :meth:`generate_reviewable` now puts it.
+
         Args:
             card_set: Validated card set.
-            agent_run_id: Opaque run id for audit (stored in description tail).
             extracted_topics: Topic allow-list used.
 
         Returns:
@@ -543,8 +590,7 @@ class FlashcardAgent:
         )
         return FlashcardSet(
             title=card_set.title,
-            description=(card_set.description or "")
-            + f" [run_id={agent_run_id} pending_review]",
+            description=card_set.description,
             cards=card_set.cards,
             source_topics=source_topics,
             source_chunk_ids=list(card_set.source_chunk_ids or []),
@@ -562,6 +608,7 @@ class FlashcardAgent:
         card_format: str = "term-definition",
         card_count: int = 10,
         source_chunk_ids: list[str] | None = None,
+        extracted_topics: list[str] | None = None,
     ) -> FlashcardSet:
         """Generate grounded flashcards from cleaned content.
 
@@ -571,6 +618,17 @@ class FlashcardAgent:
             card_count: Target number of cards (default 10).
             source_chunk_ids: Optional chunk ids from ingestion, passed
                 through for provenance.
+            extracted_topics: The allow-list the caller already showed the
+                learner. Defaults to deriving it from ``content``.
+
+                Passing it is what keeps the two ends honest. The pages build
+                their widgets from ``extract_topics(doc.content)`` and then
+                hand the agent the *retrieved* passages, so the agent derived a
+                different, smaller list and rejected topics its own page had
+                just offered. Live: picking "Radiation" raised
+                ``selected_topics reference content topics that were not
+                extracted``. One extraction, supplied by whoever owns the
+                widget, cannot disagree with itself.
 
         Returns:
             A validated :class:`FlashcardSet` with
@@ -586,8 +644,8 @@ class FlashcardAgent:
         if not content or not content.strip():
             raise ValueError("content is empty; cannot generate flashcards")
 
-        run_id = f"fc-{uuid4().hex[:8]}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-        extracted_topics = self.extract_topics(content)
+        if extracted_topics is None:
+            extracted_topics = self.extract_topics(content)
         prompt = self._build_prompt(content, extracted_topics, card_format, card_count)
 
         try:
@@ -604,6 +662,47 @@ class FlashcardAgent:
             raw.source_chunk_ids = list(source_chunk_ids)
 
         self._validate_grounding(raw, extracted_topics)
-        return self._wrap_for_review_gate(
-            raw, agent_run_id=run_id, extracted_topics=extracted_topics
+        return self._wrap_for_review_gate(raw, extracted_topics=extracted_topics)
+
+    def generate_reviewable(
+        self,
+        content: str,
+        *,
+        store: Any | None = None,
+        source_chunk_ids: list[str] | None = None,
+        **kwargs: Any,
+    ) -> GeneratedOutput:
+        """Generate and queue the result for human review.
+
+        **This lane persisted nothing.** Every study agent set
+        ``needs_human_review=True`` and its docstring told the caller to route
+        the result through :mod:`src.validation.review_schema` - and no caller
+        ever did, in app.py, in study/ui.py or in study/batch.py. The pages said
+        "pending review" while the reviewer's queue stayed empty, so a flashcard set
+        could never be approved, and never reached the export gate that
+        :func:`~src.validation.review_schema.assert_exportable` guards.
+
+        Args:
+            content: Cleaned study material.
+            store: Where to persist. Defaults to the shared
+                :class:`~src.validation.store.PlatformStore`; tests inject one.
+            source_chunk_ids: Provenance from ingestion, when the caller has it.
+            **kwargs: Passed through to :meth:`generate`.
+
+        Returns:
+            The persisted :class:`GeneratedOutput`, pending review.
+        """
+        return persist_reviewable_run(
+            store=store,
+            agent_name="flashcard_agent",
+            output_type="flashcard_set",
+            output_schema=FlashcardSet,
+            model=self.model,
+            input_context=content,
+            source_chunk_ids=source_chunk_ids,
+            generate=lambda: self.generate(
+                content,
+                source_chunk_ids=source_chunk_ids,
+                **kwargs,
+            ),
         )

@@ -47,6 +47,7 @@ from src.validation.review_schema import (
 )
 from src.validation.review_service import ReviewService
 from src.validation.store import PlatformStore
+from src.retrieval.models import describe_chunk_id
 
 STATUS_ICONS = {
     OutputStatus.PENDING: "🕓",
@@ -105,9 +106,7 @@ def _show_validation(output: GeneratedOutput) -> None:
         st.warning(f"**Schema:** {error}")
     for violation in violations:
         icon = "🚨" if violation.get("severity") == "error" else "⚠️"
-        st.warning(
-            f"{icon} **{violation.get('rule_name')}:** {violation.get('message')}"
-        )
+        st.warning(f"{icon} **{violation.get('rule_name')}:** {violation.get('message')}")
 
     if report.get("revalidated") is False:
         st.info(
@@ -131,9 +130,14 @@ def _show_provenance(store: PlatformStore, output: GeneratedOutput) -> None:
         st.error(f"Run error: {run.error}")
 
     if run.source_chunk_ids:
+        # Readable for scanning; the raw ids stay one click away, because a
+        # reviewer tracing an output back to its chunk needs the real string.
         st.write(
-            "**Grounded in:** " + ", ".join(f"`{c}`" for c in run.source_chunk_ids)
+            "**Grounded in:** "
+            + ", ".join(describe_chunk_id(c) for c in run.source_chunk_ids)
         )
+        with st.expander("Raw chunk ids"):
+            st.code("\n".join(run.source_chunk_ids), language=None)
     else:
         st.warning("This output was generated without retrieval grounding.")
 
@@ -182,9 +186,9 @@ def render_review_page(service: ReviewService | None = None) -> None:
 
     st.write(f"**{len(outputs)}** output(s).")
     selected_id = st.selectbox(
-        "Output",
-        options=[o.id for o in outputs],
-        format_func=lambda i: _describe(next(o for o in outputs if o.id == i)),
+        "Output", options=[o.id for o in outputs], format_func=lambda i: _describe(
+            next(o for o in outputs if o.id == i)
+        )
     )
     output = review.get(selected_id)
 
@@ -442,9 +446,7 @@ PAGES = {
 
 def main() -> None:
     """Run the review application."""
-    st.set_page_config(
-        page_title="Content Agents — Review", page_icon="✅", layout="wide"
-    )
+    st.set_page_config(page_title="Content Agents — Review", page_icon="✅", layout="wide")
     st.sidebar.title("✅ Review & Export")
     choice = st.sidebar.radio("Page", list(PAGES))
     st.sidebar.caption(f"Database: `{get_store().db_path}`")

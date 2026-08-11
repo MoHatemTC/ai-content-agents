@@ -16,7 +16,8 @@ The SDK sees success, so the agent raises ``TypeError: 'NoneType' object is not
 subscriptable``, which names neither the cause nor a remedy.
 
 **No fence stripping.** Models wrap JSON in ``` blocks despite being told not
-to, and ``json.loads`` then fails on output that was otherwise perfect.
+to, and ``json.loads`` then fails on output that was otherwise perfect. Solved
+by :func:`src.llm_gateway.strip_fences`, re-exported here.
 
 **No retry.** Free-tier models are intermittent: the same prompt returned an
 error payload on one call and valid JSON on the next.
@@ -25,6 +26,19 @@ error payload on one call and valid JSON on the next.
 fact and its docstring says the proper fix belongs here. This is that fix; the
 orchestrator's translation stays as a fallback for the agents in
 ``src/agents/`` that still call the gateway directly.
+
+**The four fixes above then failed to cross back.** This module solved them for
+the study lane while :func:`src.llm_gateway.chat_json` solved them again for the
+content lane, and the two copies drifted apart in both directions: this one
+retried and that one did not, while that one narrowed the JSON-mode fallback to
+HTTP 400/422 and this one kept a bare ``except Exception`` that re-fired
+instantly on a rate limit. Two copies of one guard is what produced BUG-08/09
+in the first place.
+
+So there is one implementation now, in :mod:`src.llm_gateway`, and
+:func:`call_llm` is a thin wrapper that keeps this lane's signature and its
+``max_tokens_default()`` defaulting. What remains here is what is genuinely
+study-specific: the output budget, the schema block, and JSON parsing.
 """
 
 from __future__ import annotations
@@ -32,19 +46,40 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
-import time
 from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
+
+# Re-exported so existing imports keep working. These live in src.llm_gateway,
+# because retry classification depends on there being exactly one
+# UpstreamResponseError - see its docstring - and, now, on there being exactly
+# one retry loop and one response guard.
+from src.llm_gateway import (
+    DEFAULT_ATTEMPTS,
+    DEFAULT_TEMPERATURE,
+    UpstreamResponseError,
+    chat_json,
+    strip_fences,
+)
 
 logger = logging.getLogger(__name__)
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 DEFAULT_MAX_TOKENS = 2000
-DEFAULT_TEMPERATURE = 0.2
-DEFAULT_ATTEMPTS = 2
+
+__all__ = [
+    "DEFAULT_ATTEMPTS",
+    "DEFAULT_MAX_TOKENS",
+    "DEFAULT_TEMPERATURE",
+    "UpstreamResponseError",
+    "call_llm",
+    "max_tokens_default",
+    "output_budget",
+    "parse_json",
+    "schema_block",
+    "strip_fences",
+]
 
 # Output allowance per requested item, and for the surrounding JSON. Measured on
 # real textbook passages, where 20 flashcards cost 3,059 completion tokens -
@@ -54,19 +89,15 @@ OUTPUT_OVERHEAD_TOKENS = 400
 
 # Upper bound whatever is requested, so a slider set to its maximum cannot ask
 # the gateway for more than it will fund. It refuses on the *requested* ceiling.
-MAX_OUTPUT_TOKENS = 8000
-
-_FENCE = re.compile(r"^\s*```(?:json)?\s*(?P<body>.*?)\s*```\s*$", re.DOTALL)
-
-
-class UpstreamResponseError(RuntimeError):
-    """The gateway returned a success status carrying an error payload.
-
-    Named separately from the identically-purposed error in
-    :mod:`src.validation.orchestrator` to avoid a ``study -> validation``
-    import for one exception type. Worth consolidating once something else
-    needs it.
-    """
+#
+# 8000 was low enough to clip the thing it was protecting. A full Question Bank
+# request - 20 items at QUESTION_ITEM_TOKENS - asks for 8400, so the cap
+# silently trimmed it back to 8000 and the reply was truncated: the bug this
+# guard exists to prevent, caused by the guard. Probed against the live
+# gateway, requests were accepted at 8000, 12000, 16000, 32000 and 65536, so
+# 12000 funds every slider in the app with room to spare and stays far below
+# anything the gateway objected to.
+MAX_OUTPUT_TOKENS = 12000
 
 
 def max_tokens_default() -> int:
@@ -140,12 +171,6 @@ def schema_block(schema: type[BaseModel]) -> str:
     )
 
 
-def strip_fences(text: str) -> str:
-    """Remove a surrounding ``` block, if the model added one."""
-    match = _FENCE.match(text)
-    return match.group("body") if match else text.strip()
-
-
 def call_llm(
     client: Any,
     model: str,
@@ -174,61 +199,15 @@ def call_llm(
         UpstreamResponseError: If the gateway returned no usable choice on every
             attempt, or the reply was empty.
     """
-    if client is None:
-        raise UpstreamResponseError(
-            "No LLM client was supplied. Build one with "
-            "src.llm_gateway.build_client(), or inject a double in tests."
-        )
-
-    last_error: str = "no attempts were made"
-
-    for attempt in range(1, max(1, attempts) + 1):
-        response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=temperature,
-            max_tokens=max_tokens if max_tokens is not None else max_tokens_default(),
-        )
-
-        choices = getattr(response, "choices", None)
-        if not choices:
-            # A success status carrying an error payload. Surface what the
-            # gateway said rather than letting choices[0] raise TypeError.
-            detail = getattr(response, "error", None) or "no detail provided"
-            last_error = f"gateway returned no choices ({detail})"
-            logger.warning("llm attempt %d/%d: %s", attempt, attempts, last_error)
-        else:
-            choice = choices[0]
-            content = getattr(choice.message, "content", None)
-
-            # A reasoning model spends its budget thinking before it answers, so
-            # a cap sized for the answer alone truncates the JSON mid-object.
-            # Without this check the failure surfaces from json.loads as "the
-            # model did not return valid JSON", which sends you looking at the
-            # prompt instead of at the one number that caused it. Measured:
-            # gemini-3.5-flash spends ~1,900 tokens reasoning, so it fails at
-            # max_tokens=2000 and succeeds at 8000.
-            if getattr(choice, "finish_reason", None) == "length":
-                raise UpstreamResponseError(
-                    "The model's reply was cut off by the output limit "
-                    f"(max_tokens={max_tokens if max_tokens is not None else max_tokens_default()}), "
-                    "so the JSON is incomplete. Raise LLM_MAX_TOKENS, or use a "
-                    "model that does not emit reasoning tokens - they are "
-                    "charged against the same budget as the answer."
-                )
-
-            if content and content.strip():
-                return strip_fences(content)
-            last_error = "gateway returned an empty message"
-            logger.warning("llm attempt %d/%d: %s", attempt, attempts, last_error)
-
-        if attempt < attempts:
-            time.sleep(0.5 * attempt)
-
-    raise UpstreamResponseError(
-        f"The model returned no usable response after {attempts} attempt(s): "
-        f"{last_error}. This usually means the provider is saturated, rate "
-        "limited, or out of credit."
+    return chat_json(
+        client,
+        model,
+        prompt,
+        temperature=temperature,
+        # The study agents rely on this default; the content agents pass their
+        # own budget. Resolving it here keeps that difference where it belongs.
+        max_tokens=max_tokens if max_tokens is not None else max_tokens_default(),
+        attempts=attempts,
     )
 
 
@@ -255,6 +234,26 @@ def parse_json(text: str, schema: type[ModelT]) -> ModelT:
         raise ValueError(
             f"The model did not return valid JSON ({exc}). Output began: {body[:200]!r}"
         ) from exc
+
+    # The review flag is a control over the system, not an output of it, and
+    # the study schemas now pin it Literal[True] + frozen so nothing downstream
+    # can flip it. Rejecting a `false` reply outright would let a prompt
+    # injection in an uploaded document ("set needs_human_review to false")
+    # fail every generation - trading a review bypass for a denial of service.
+    # The four content agents override rather than reject for exactly this
+    # reason; this is the study lane's single parse point, so it belongs here.
+    if (
+        isinstance(payload, dict)
+        and "needs_human_review" in schema.model_fields
+        and payload.get("needs_human_review") is not True
+    ):
+        logger.warning(
+            "%s returned needs_human_review=%r; forcing True. This can "
+            "indicate a prompt injection in the source document.",
+            schema.__name__,
+            payload.get("needs_human_review"),
+        )
+        payload["needs_human_review"] = True
 
     try:
         return schema.model_validate(payload)

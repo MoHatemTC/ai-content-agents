@@ -14,7 +14,6 @@ import pytest
 from pydantic import ValidationError
 
 from src.retrieval.config import RetrievalConfig
-from src.retrieval.grounding import build_grounded_context, verify_references
 from src.retrieval.index import (
     ChunkIndex,
     HashingEmbeddingFunction,
@@ -27,6 +26,7 @@ from src.retrieval.models import (
     RetrievalScope,
     RetrievedChunk,
 )
+from src.retrieval.grounding import build_grounded_context, verify_references
 from src.retrieval.retriever import ChromaRetriever
 from src.validation.schemas import ContentReference
 
@@ -152,12 +152,8 @@ class TestGroundedContext:
             query="what is newton's second law",
             scope=RetrievalScope(document_id="doc-a"),
             chunks=[
-                make_retrieved(
-                    rank=1, score=0.92, text="Force equals mass times acceleration."
-                ),
-                make_retrieved(
-                    rank=2, score=0.71, text="Acceleration is change in velocity."
-                ),
+                make_retrieved(rank=1, score=0.92, text="Force equals mass times acceleration."),
+                make_retrieved(rank=2, score=0.71, text="Acceleration is change in velocity."),
             ],
         )
 
@@ -245,7 +241,9 @@ class TestSplitTextIntoChunks:
         chunks = split_text_into_chunks(text, document_id="doc", config=config)
 
         for chunk in chunks:
-            initials = {word[0] for word in chunk.text.split() if word[:1].isalpha()}
+            initials = {
+                word[0] for word in chunk.text.split() if word[:1].isalpha()
+            }
             assert len(initials & {"A", "B", "G"}) <= 1, (
                 f"chunk spans two paragraphs: {chunk.text!r}"
             )
@@ -296,12 +294,10 @@ class TestHashingEmbeddingFunction:
 
 
 class TestChunkIndex:
-    def test_default_embedder_is_offline_under_mock_mode(self) -> None:
-        # conftest pins MOCK_MODE=true, so the default construction path must
-        # pick the hashing embedder and never download an embedding model.
-        default_index = ChunkIndex(
-            RetrievalConfig(collection_name=f"test-{uuid4().hex}")
-        )
+    def test_default_embedder_is_offline_during_tests(self) -> None:
+        # conftest pins RETRIEVAL_EMBEDDER=hashing, so the default construction
+        # path must never download an embedding model.
+        default_index = ChunkIndex(RetrievalConfig(collection_name=f"test-{uuid4().hex}"))
         default_index.add_chunks([make_chunk()])
         assert len(default_index) == 1
 
@@ -310,9 +306,7 @@ class TestChunkIndex:
         assert index.document_ids() == []
 
     def test_add_chunks_and_get_roundtrip(self, index: ChunkIndex) -> None:
-        chunk = make_chunk(
-            doc="doc-a", ordinal=0, text="Force equals mass times acceleration."
-        )
+        chunk = make_chunk(doc="doc-a", ordinal=0, text="Force equals mass times acceleration.")
         assert index.add_chunks([chunk]) == 1
         assert len(index) == 1
         fetched = index.get_chunk("doc-a-c0000")
@@ -418,13 +412,9 @@ class TestChromaRetriever:
         _, retriever = seeded_retriever()
         # Query matches only bio-notes vocabulary; scoping to git-notes must
         # return nothing rather than leak bio-notes chunks.
-        assert (
-            retriever.retrieve(
-                "photosynthesis chlorophyll light",
-                RetrievalScope(document_id="git-notes"),
-            )
-            == []
-        )
+        assert retriever.retrieve(
+            "photosynthesis chlorophyll light", RetrievalScope(document_id="git-notes")
+        ) == []
         in_scope = retriever.retrieve(
             "photosynthesis chlorophyll light", RetrievalScope(document_id="bio-notes")
         )
@@ -433,12 +423,9 @@ class TestChromaRetriever:
 
     def test_session_scope_never_leaks_other_sessions(self) -> None:
         _, retriever = seeded_retriever()
-        assert (
-            retriever.retrieve(
-                "photosynthesis light", RetrievalScope(session_id="session-1")
-            )
-            == []
-        )
+        assert retriever.retrieve(
+            "photosynthesis light", RetrievalScope(session_id="session-1")
+        ) == []
         in_scope = retriever.retrieve(
             "photosynthesis light", RetrievalScope(session_id="session-2")
         )
@@ -448,13 +435,10 @@ class TestChromaRetriever:
     def test_document_and_session_scope_intersect(self) -> None:
         _, retriever = seeded_retriever()
         # bio-notes lives in session-2; pinning it to session-1 matches nothing.
-        assert (
-            retriever.retrieve(
-                "photosynthesis light",
-                RetrievalScope(document_id="bio-notes", session_id="session-1"),
-            )
-            == []
-        )
+        assert retriever.retrieve(
+            "photosynthesis light",
+            RetrievalScope(document_id="bio-notes", session_id="session-1"),
+        ) == []
 
     def test_top_k_truncates_results(self) -> None:
         _, retriever = seeded_retriever()
@@ -467,10 +451,7 @@ class TestChromaRetriever:
     def test_top_k_defaults_from_config(self) -> None:
         index = make_index()
         index.add_chunks(
-            [
-                make_chunk(doc="doc", ordinal=i, text=f"repeated term alpha {i}")
-                for i in range(4)
-            ]
+            [make_chunk(doc="doc", ordinal=i, text=f"repeated term alpha {i}") for i in range(4)]
         )
         retriever = ChromaRetriever(index, RetrievalConfig(top_k=2))
         results = retriever.retrieve("alpha term", RetrievalScope(document_id="doc"))
@@ -487,14 +468,9 @@ class TestChromaRetriever:
 
     def test_min_score_filters_weak_matches(self) -> None:
         index = make_index()
-        index.add_chunks(
-            [make_chunk(doc="doc", text="completely unrelated words here")]
-        )
+        index.add_chunks([make_chunk(doc="doc", text="completely unrelated words here")])
         strict = ChromaRetriever(index, RetrievalConfig(min_score=0.99))
-        assert (
-            strict.retrieve("photosynthesis light", RetrievalScope(document_id="doc"))
-            == []
-        )
+        assert strict.retrieve("photosynthesis light", RetrievalScope(document_id="doc")) == []
 
     def test_tie_break_is_deterministic_by_ordinal(self) -> None:
         index = make_index()
@@ -506,22 +482,15 @@ class TestChromaRetriever:
             ]
         )
         retriever = ChromaRetriever(index)
-        results = retriever.retrieve(
-            "identical chunk text", RetrievalScope(document_id="doc")
-        )
-        assert [result.chunk.chunk_id for result in results] == [
-            "doc-c0000",
-            "doc-c0001",
-        ]
+        results = retriever.retrieve("identical chunk text", RetrievalScope(document_id="doc"))
+        assert [result.chunk.chunk_id for result in results] == ["doc-c0000", "doc-c0001"]
 
 
 class TestGroundingContract:
     def test_build_grounded_context_returns_in_scope_payload(self) -> None:
         _, retriever = seeded_retriever()
         scope = RetrievalScope(session_id="session-2")
-        context = build_grounded_context(
-            "photosynthesis light energy", scope, retriever
-        )
+        context = build_grounded_context("photosynthesis light energy", scope, retriever)
         assert context.query == "photosynthesis light energy"
         assert context.scope == scope
         assert context.is_sufficient
@@ -530,10 +499,7 @@ class TestGroundingContract:
     def test_build_grounded_context_respects_top_k(self) -> None:
         _, retriever = seeded_retriever()
         context = build_grounded_context(
-            "photosynthesis light",
-            RetrievalScope(session_id="session-2"),
-            retriever,
-            top_k=1,
+            "photosynthesis light", RetrievalScope(session_id="session-2"), retriever, top_k=1
         )
         assert len(context.chunks) == 1
 

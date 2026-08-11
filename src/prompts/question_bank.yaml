@@ -18,6 +18,7 @@ instructions:
   - Include the correct answer.
   - Include a rationale explaining why the answer is correct.
   - Include grounding references using stable identifiers such as segment_id.
+  - Keep each reference excerpt short - a sentence or two, at most 300 characters.
   - Mark every generated output as requiring human review.
   - If the provided content is insufficient, clearly indicate that instead of guessing.
 
@@ -35,7 +36,7 @@ output_schema:
       type: "mcq"
       references:
         - segment_id: "seg1"
-          text: "Relevant content excerpt"
+          text: "Short excerpt, at most 300 characters"
 
   requires_human_review: true
 
@@ -69,15 +70,23 @@ prompt_template: |
   - Use ONLY the supplied educational content.
   - Never invent facts.
   - Generate only questions that can be answered directly from the provided content.
+  - For true_false questions, set "options" to ["True", "False"].
+  - For short_answer questions, set "options" to null.
+  - correct_answer must be exactly one of the strings in options, character for
+    character, whenever options is not null. A key that is not among the choices
+    makes the question unanswerable and unscorable.
   - Every question must include:
       - question
-      - options (null for short_answer)
+      - options (["True", "False"] for true_false, null for short_answer)
       - correct_answer
       - rationale
       - difficulty
       - type
       - references
   - Every question must contain at least one grounding reference.
+  - Each reference's text must be a SHORT excerpt - a sentence or two,
+    at most 300 characters. Quote only the part that supports the
+    question; do not copy the whole passage back.
   - Set requires_human_review to true.
   - If the content is insufficient, explain that instead of guessing.
 
@@ -100,7 +109,7 @@ prompt_template: |
         "references": [
           {{
             "segment_id": "seg1",
-            "text": "Relevant content excerpt"
+            "text": "Short excerpt, at most 300 characters"
           }}
         ]
       }}

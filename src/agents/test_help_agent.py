@@ -2,30 +2,31 @@
 Test Help Agent
 
 This agent generates grounded practice questions to help learners
-prepare for tests and exams using uploaded educational content.
-It loads its prompt template from YAML, sends the prompt to the LLM,
-and validates the structured response using the TestHelpOutput schema.
+prepare for assessments on uploaded educational content.
+
+Everything it does lives in :class:`~src.agents.question_agent_base.QuestionAgentBase`,
+which it shares with :class:`~src.agents.question_bank_agent.QuestionBankAgent`.
+This agent is the one that had BUG-08: it indexed ``response.choices[0]``
+without checking, so a saturated provider surfaced as
+``TypeError: 'NoneType' object is not subscriptable``. Its sibling guarded the
+same case correctly. Sharing the implementation is the fix that keeps them from
+drifting apart again.
 """
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-from typing import Any
-
-import yaml
 from dotenv import load_dotenv
-from pydantic import ValidationError
 
-from src.llm_gateway import build_client, default_model
-from src.validation.schemas import TestHelpOutput, normalize_question_payload
-
-__test__ = False
+from src.agents.question_agent_base import QuestionAgentBase
+from src.validation.schemas import TestHelpOutput
 
 load_dotenv()
 
+# Stops pytest collecting the Test*-prefixed class as a test case.
+__test__ = False
 
-class TestHelpAgent:
+
+class TestHelpAgent(QuestionAgentBase):
     """
     AI Test Help Agent.
 
@@ -38,162 +39,7 @@ class TestHelpAgent:
 
     __test__ = False
 
-    def __init__(self, *, client: Any | None = None, model: str | None = None) -> None:
-        self.prompt = self._load_prompt()
-        self.client = client if client is not None else build_client()
-        self.model = model or default_model()
-
-    def _load_prompt(self) -> dict[str, Any]:
-        """
-        Load test_help.yaml.
-
-        Returns:
-            Dictionary containing the YAML configuration.
-        """
-
-        prompt_path = (
-            Path(__file__).resolve().parent.parent / "prompts" / "test_help.yaml"
-        )
-
-        # Check if the YAML file exists
-        if not prompt_path.exists():
-            raise FileNotFoundError(f"Prompt file not found: {prompt_path}")
-
-        try:
-            with open(prompt_path, "r", encoding="utf-8") as file:
-                data = yaml.safe_load(file)
-
-        except yaml.YAMLError as e:
-            raise ValueError("Invalid YAML syntax in test_help.yaml.") from e
-
-        # Check if the YAML file is empty
-        if data is None:
-            raise ValueError("test_help.yaml is empty.")
-
-        # Ensure the YAML content is a dictionary
-        if not isinstance(data, dict):
-            raise TypeError("test_help.yaml must contain a YAML dictionary.")
-
-        return data
-
-    def _build_prompt(
-        self,
-        content: str,
-        question_type: str,
-        difficulty: str,
-        num_questions: int,
-    ) -> str:
-        """
-        Fill the YAML prompt template.
-
-        Args:
-            content:
-                Educational content.
-
-            question_type:
-                Requested question type.
-
-            difficulty:
-                Difficulty level.
-
-            num_questions:
-                Number of questions to generate.
-
-        Returns:
-            Final prompt string.
-        """
-
-        template = self.prompt.get("prompt_template")
-
-        if template is None:
-            raise KeyError("'prompt_template' not found in test_help.yaml")
-
-        return template.format(
-            content=content,
-            question_type=question_type,
-            difficulty=difficulty,
-            num_questions=num_questions,
-        )
-
-    def _call_llm(self, prompt: str) -> str:
-        """
-        Send prompt to LiteLLM.
-
-        Args:
-            prompt:
-                Final prompt.
-
-        Returns:
-            Raw LLM response.
-        """
-
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt,
-                }
-            ],
-            temperature=0.3,
-        )
-
-        content = response.choices[0].message.content
-
-        if not content:
-            raise ValueError("The LLM returned an empty response.")
-
-        return content.strip()
-
-    def generate(
-        self,
-        content: str,
-        question_type: str,
-        difficulty: str,
-        num_questions: int,
-    ) -> TestHelpOutput:
-        """
-        Generate grounded practice questions for test preparation.
-
-        Args:
-            content:
-                Educational content.
-
-            question_type:
-                Requested question type.
-
-            difficulty:
-                Difficulty level.
-
-            num_questions:
-                Number of questions to generate.
-
-        Returns:
-            Validated TestHelpOutput object.
-        """
-
-        prompt = self._build_prompt(
-            content=content,
-            question_type=question_type,
-            difficulty=difficulty,
-            num_questions=num_questions,
-        )
-
-        raw_response = self._call_llm(prompt)
-
-        # print("\n=== RAW LLM RESPONSE ===")
-        # print(raw_response) # to debug/check the raw response from the LLM
-        # print("========================\n")
-
-        try:
-            response_json = json.loads(raw_response)
-        except json.JSONDecodeError as e:
-            raise ValueError("The LLM returned invalid JSON.") from e
-
-        try:
-            return TestHelpOutput.model_validate(normalize_question_payload(response_json))
-
-        except ValidationError as e:
-            raise ValueError(
-                "The LLM response does not match TestHelpOutput schema."
-            ) from e
+    prompt_file = "test_help.yaml"
+    output_schema = TestHelpOutput
+    agent_name = "test_help_agent"
+    output_type = "test_help"

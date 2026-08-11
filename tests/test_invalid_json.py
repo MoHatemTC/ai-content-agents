@@ -1,31 +1,28 @@
-import json
 from unittest.mock import MagicMock
 
 import pytest
 
 from src.agents.concept_agent import ConceptAgent
 from src.agents.mentor_agent import MentorAgent
-from tests.conftest import CompliantAgentsClient
+from tests.conftest import CompliantAgentsClient, FakeLLMClient
 
 
-def test_invalid_json():
+def test_invalid_json_names_the_agent_that_produced_it():
+    """This asserted json.loads raises on bad JSON - i.e. it tested CPython.
+
+    It named no agent and could not fail for any reason connected to this
+    codebase. What is worth pinning is that an agent turns a malformed reply
+    into an error a person can act on.
     """
-    Verify that invalid JSON raises a JSONDecodeError.
-    """
+    agent = MentorAgent(client=FakeLLMClient('{ "explanation": "cut off'), model="m")
 
-    invalid_response = """
-    {
-        "explanation": "Python loops"
-    """
-
-    with pytest.raises(json.JSONDecodeError):
-        json.loads(invalid_response)
+    with pytest.raises(ValueError, match="invalid JSON"):
+        agent.generate("Loops repeat.", "Explain loops.")
 
 
 def test_mentor_agent_invalid_llm_json_raises_clear_error():
     """MentorAgent translates malformed LLM JSON into a clear ValueError."""
     agent = MentorAgent(client=CompliantAgentsClient())
-    agent.mock_mode = False
     response = MagicMock()
     response.choices[0].message.content = "this is not valid json"
     agent.client = MagicMock()
@@ -42,7 +39,6 @@ def test_mentor_agent_invalid_llm_json_raises_clear_error():
 def test_concept_agent_invalid_llm_json_raises_clear_error():
     """ConceptAgent translates malformed LLM JSON into a clear ValueError."""
     agent = ConceptAgent(client=CompliantAgentsClient())
-    agent.mock_mode = False
     response = MagicMock()
     response.choices[0].message.content = "this is not valid json"
     agent.client = MagicMock()

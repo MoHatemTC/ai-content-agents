@@ -100,7 +100,9 @@ def test_generate_batch_continues_after_partial_failure(
     ]
     assert result.failed_items[0].index == 1
     assert result.failed_items[0].input_item == {"content": "bad"}
-    assert result.failed_items[0].error == "generation failed"
+    # The type prefix is deliberate: a batch records only this string, so a
+    # bare "generation failed" left a failed item undiagnosable.
+    assert result.failed_items[0].error == "ValueError: generation failed"
     assert result.total_processed == 3
     assert result.total_succeeded == 2
     assert result.total_failed == 1

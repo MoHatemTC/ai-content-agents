@@ -19,11 +19,12 @@ import logging
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 import yaml
 from dotenv import load_dotenv
 
+from src.validation.review_schema import GeneratedOutput
+from src.validation.reviewable import persist_reviewable_run
 from src.llm_gateway import build_client, default_model
 from src.study.flashcard_agent import FlashcardAgent
 from src.study.llm_client import (
@@ -105,20 +106,19 @@ class RevisionAgent:
         selected_topics: list[str],
         session_date: date,
     ) -> str:
-        template = self.prompt_cfg.get("system_prompt")
+        template = self.prompt_cfg.get("prompt_template")
         if not template:
-            raise KeyError("'system_prompt' missing in revision.yaml")
-        extracted_json = json.dumps(extracted_topics, ensure_ascii=False)
-        selected_json = json.dumps(selected_topics, ensure_ascii=False)
-        return (
-            f"{template}\n\n"
-            f"extracted_topics (full allow-list): {extracted_json}\n"
-            f"selected_topics (subset to revise): {selected_json}\n"
-            f"session_date: {session_date.isoformat()}\n"
-            # The YAML names the schema but never sends it; without the shape
-            # the model omits required keys and validation fails.
-            f"{schema_block(RevisionSession)}"
+            raise KeyError("'prompt_template' missing in revision.yaml")
+
+        rendered = template.format(
+            extracted_topics=json.dumps(extracted_topics, ensure_ascii=False),
+            selected_topics=json.dumps(selected_topics, ensure_ascii=False),
+            session_date=session_date.isoformat(),
         )
+        # The literal example in the YAML shows the shape; this appends the
+        # generated JSON schema too. Without one or the other the model omits
+        # required keys and validation fails.
+        return f"{rendered}{schema_block(RevisionSession)}"
 
     # ------------------------------------------------------------------
     # LLM
@@ -156,14 +156,18 @@ class RevisionAgent:
                     f"next_revision_date before session_date for {i.topic!r}"
                 )
 
-    def _wrap_for_review_gate(
-        self, session: RevisionSession, *, run_id: str
-    ) -> RevisionSession:
+    def _wrap_for_review_gate(self, session: RevisionSession) -> RevisionSession:
+        """Force the review-gate flags and normalise.
+
+        The run id used to be appended to ``notes``, which app.py renders as a
+        caption under the session - so the learner read it. It lives on the
+        persisted AgentRun now.
+        """
         source_topics = sorted({i.topic for i in session.items})
         return RevisionSession(
             session_date=session.session_date,
             items=session.items,
-            notes=(session.notes or "") + f" [run_id={run_id} pending_review]",
+            notes=session.notes,
             selected_weak_topics=sorted(session.selected_weak_topics or source_topics),
             source_topics=source_topics,
             needs_human_review=True,
@@ -179,6 +183,7 @@ class RevisionAgent:
         *,
         selected_topics: list[str],
         session_date: date | str,
+        extracted_topics: list[str] | None = None,
     ) -> RevisionSession:
         """Produce targeted revision items for the selected weak topics.
 
@@ -190,6 +195,17 @@ class RevisionAgent:
                 deterministic substring of ``content``) otherwise the call
                 raises.
             session_date: ISO date/date for the session.
+            extracted_topics: The allow-list the caller already showed the
+                learner. Defaults to deriving it from ``content``.
+
+                Passing it is what keeps the two ends honest. The pages build
+                their widgets from ``extract_topics(doc.content)`` and then
+                hand the agent the *retrieved* passages, so the agent derived a
+                different, smaller list and rejected topics its own page had
+                just offered. Live: picking "Radiation" raised
+                ``selected_topics reference content topics that were not
+                extracted``. One extraction, supplied by whoever owns the
+                widget, cannot disagree with itself.
 
         Returns:
             Validated :class:`RevisionSession` marked
@@ -207,15 +223,20 @@ class RevisionAgent:
             raise ValueError("selected_topics cannot be empty")
 
         sdate = self._parse_date(session_date)
-        run_id = f"rv-{uuid4().hex[:8]}"
 
-        extracted_topics = FlashcardAgent.extract_topics(content)
+        if extracted_topics is None:
+            extracted_topics = FlashcardAgent.extract_topics(content)
         # Fall back if heuristic yielded nothing for very short content
         extracted_topics = extracted_topics or list(dict.fromkeys(selected_topics))
 
-        invalid_selected = [
-            t for t in selected_topics if t not in set(extracted_topics)
-        ]
+        canonical_selected: list[str] = []
+        invalid_selected: list[str] = []
+        for topic in selected_topics:
+            canonical = FlashcardAgent.canonical_topic(topic, extracted_topics)
+            if canonical is None:
+                invalid_selected.append(topic)
+            else:
+                canonical_selected.append(canonical)
         if invalid_selected:
             raise RevisionGroundingError(
                 "selected_topics reference content topics that were not "
@@ -223,6 +244,7 @@ class RevisionAgent:
                 f"Extracted allow-list: {sorted(extracted_topics)}"
             )
 
+        selected_topics = canonical_selected
         prompt = self._build_prompt(extracted_topics, selected_topics, sdate)
         try:
             text = self._call_llm(prompt, output_budget(len(selected_topics)))
@@ -232,4 +254,46 @@ class RevisionAgent:
         raw = parse_json(text, RevisionSession)
 
         self._validate_revision(raw, extracted_topics, selected_topics)
-        return self._wrap_for_review_gate(raw, run_id=run_id)
+        return self._wrap_for_review_gate(raw)
+
+    def generate_reviewable(
+        self,
+        content: str,
+        *,
+        store: Any | None = None,
+        source_chunk_ids: list[str] | None = None,
+        **kwargs: Any,
+    ) -> GeneratedOutput:
+        """Generate and queue the result for human review.
+
+        **This lane persisted nothing.** Every study agent set
+        ``needs_human_review=True`` and its docstring told the caller to route
+        the result through :mod:`src.validation.review_schema` - and no caller
+        ever did, in app.py, in study/ui.py or in study/batch.py. The pages said
+        "pending review" while the reviewer's queue stayed empty, so a revision session
+        could never be approved, and never reached the export gate that
+        :func:`~src.validation.review_schema.assert_exportable` guards.
+
+        Args:
+            content: Cleaned study material.
+            store: Where to persist. Defaults to the shared
+                :class:`~src.validation.store.PlatformStore`; tests inject one.
+            source_chunk_ids: Provenance from ingestion, when the caller has it.
+            **kwargs: Passed through to :meth:`generate`.
+
+        Returns:
+            The persisted :class:`GeneratedOutput`, pending review.
+        """
+        return persist_reviewable_run(
+            store=store,
+            agent_name="revision_agent",
+            output_type="revision_session",
+            output_schema=RevisionSession,
+            model=self.model,
+            input_context=content,
+            source_chunk_ids=source_chunk_ids,
+            generate=lambda: self.generate(
+                content,
+                **kwargs,
+            ),
+        )

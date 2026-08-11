@@ -21,7 +21,7 @@ from streamlit.testing.v1 import AppTest
 from src.ingestion.loader import ContentLoader
 from src.ingestion.schema import Chunk, Document
 from src.ui_common import chunk_ids, render_current_content_status
-from tests.conftest import CompliantStudyClient
+from tests.conftest import CompliantAgentsClient, CompliantStudyClient
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STUDY_UI = REPO_ROOT / "src" / "study" / "ui.py"
@@ -60,17 +60,35 @@ def _no_live_calls(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("LITELLM_API_KEY", "sk-test-not-a-real-key")
     monkeypatch.setenv("LITELLM_BASE_URL", "https://gateway.invalid/v1")
 
+    from src.agents.concept_agent import ConceptAgent
+    from src.agents.mentor_agent import MentorAgent
+    from src.agents.question_bank_agent import QuestionBankAgent
+    from src.agents.test_help_agent import TestHelpAgent
     from src.study.flashcard_agent import FlashcardAgent
     from src.study.revision_agent import RevisionAgent
     from src.study.study_plan_agent import StudyPlanAgent
 
-    for agent_class in (FlashcardAgent, StudyPlanAgent, RevisionAgent):
+    # Mentor and concept take a different fake: CompliantAgentsClient reads the
+    # [chunk_id] markers back out of the prompt and echoes real ids and real
+    # text, so the reference and support checks those agents run have something
+    # they can actually verify. It serves the two question agents for the same
+    # reason - they verify citations too. CompliantStudyClient answers the
+    # study prompts.
+    for agent_class, fake in (
+        (FlashcardAgent, CompliantStudyClient),
+        (StudyPlanAgent, CompliantStudyClient),
+        (RevisionAgent, CompliantStudyClient),
+        (MentorAgent, CompliantAgentsClient),
+        (ConceptAgent, CompliantAgentsClient),
+        (QuestionBankAgent, CompliantAgentsClient),
+        (TestHelpAgent, CompliantAgentsClient),
+    ):
         original = agent_class.__init__
 
-        def patched(self, *, client=None, model=None, _original=original):
+        def patched(self, *, client=None, model=None, _original=original, _fake=fake):
             _original(
                 self,
-                client=client if client is not None else CompliantStudyClient(),
+                client=client if client is not None else _fake(),
                 model=model or "test-model",
             )
 
@@ -350,3 +368,359 @@ def test_deleting_the_active_document_clears_it(tmp_path, monkeypatch) -> None:
     assert not at.exception
     assert at.session_state["current_doc"] is None
     assert at.session_state["current_chunks"] == []
+
+
+# --------------------------------------------------------------------------- #
+# The mentor and concept pages retrieve, rather than sending the whole document
+#
+# These two pages had no coverage at all - the only page this file ever selected
+# in src/app.py was Flashcards - which is why the defect below reached a user.
+# --------------------------------------------------------------------------- #
+
+
+# A document large enough that sending it whole is obviously wrong. The real
+# report came from a 1,598-page textbook exceeding a 1,048,576-token limit; this
+# is the same shape, small enough to keep the test fast.
+BIG_DOCUMENT = (
+    "Diplomacy is the practice of negotiation between nations. "
+    "Treaties record the settlements those talks produce. "
+    "Envoys carry instructions from their capitals. "
+) * 400
+
+
+def _big_document(document_id: str = "doc-big") -> Document:
+    return Document(
+        id=document_id,
+        title="Diplomacy Primer (long)",
+        content=BIG_DOCUMENT,
+        source_type="paste",
+        file_type="txt",
+    )
+
+
+def _load_big_content(at: AppTest, count: int = 40) -> None:
+    at.session_state["current_doc"] = _big_document()
+    at.session_state["current_chunks"] = _chunks(document_id="doc-big", count=count)
+
+
+@pytest.mark.parametrize(
+    "page_label,button_label",
+    [
+        ("🧭 Mentor", "Generate Mentor Response"),
+        ("💡 Concept Explanation", "Generate Concept Explanation"),
+    ],
+    ids=["mentor", "concept"],
+)
+def test_the_page_generates_from_uploaded_content(page_label, button_label) -> None:
+    """The basic thing neither page had a test for: it runs at all."""
+    at = AppTest.from_file(str(COMBINED_APP), default_timeout=120)
+    _load_content(at, count=3)
+    at.run()
+
+    at.sidebar.radio[0].set_value(page_label).run()
+    _submit_button(at, button_label).click().run()
+
+    assert not at.exception
+    errors = [str(e.value) for e in at.error]
+    assert not errors, f"page reported: {errors}"
+
+
+@pytest.mark.parametrize(
+    "page_label,button_label",
+    [
+        ("🧭 Mentor", "Generate Mentor Response"),
+        ("💡 Concept Explanation", "Generate Concept Explanation"),
+    ],
+    ids=["mentor", "concept"],
+)
+def test_the_whole_document_is_not_sent_to_the_model(
+    page_label, button_label, monkeypatch
+) -> None:
+    """The reported bug: a 1,598-page textbook went to the model verbatim.
+
+    ``ContextWindowExceededError: The input token count exceeds the maximum
+    number of tokens allowed (1048576)``. Both pages passed ``doc.content``
+    while the three study pages retrieved first.
+
+    Asserting on the *prompt the model received* is what makes this specific.
+    A test that only checked the page did not error would pass either way, since
+    a small document fits regardless.
+    """
+    prompts: list[str] = []
+
+    from tests.conftest import CompliantAgentsClient
+
+    original_create = CompliantAgentsClient.create
+
+    def recording_create(self, **kwargs):
+        prompts.append(kwargs["messages"][0]["content"])
+        return original_create(self, **kwargs)
+
+    monkeypatch.setattr(CompliantAgentsClient, "create", recording_create)
+
+    at = AppTest.from_file(str(COMBINED_APP), default_timeout=120)
+    _load_big_content(at)
+    at.run()
+
+    at.sidebar.radio[0].set_value(page_label).run()
+    _submit_button(at, button_label).click().run()
+
+    assert not at.exception
+    assert prompts, "the page never called the model"
+
+    prompt = prompts[0]
+    assert BIG_DOCUMENT not in prompt, (
+        "the whole document reached the model - this is the "
+        "ContextWindowExceededError bug"
+    )
+    assert len(prompt) < len(BIG_DOCUMENT), (
+        f"prompt ({len(prompt):,} chars) is not smaller than the document "
+        f"({len(BIG_DOCUMENT):,} chars); retrieval did not narrow anything"
+    )
+    # Retrieval happened rather than the content simply being dropped.
+    assert "doc-big-c" in prompt, "no retrieved chunk markers in the prompt"
+
+
+# --------------------------------------------------------------------------- #
+# "Sources" has to be earned
+#
+# The section was headed "Provenance references" while nothing verified it:
+# verify_references only runs when the agent is handed a GroundedContext, and
+# these pages deliberately do not pass one (issue #33). A model could invent a
+# chunk id and the page would present it as a source.
+# --------------------------------------------------------------------------- #
+
+
+class _CitesAnInventedChunk:
+    """A gateway that answers correctly but cites a chunk that does not exist."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+        self.chat = self
+        self.completions = self
+
+    def create(self, **kwargs):
+        import json as _json
+
+        self.calls.append(kwargs)
+        # Answer whichever agent asked. This used to send `definition` and
+        # `next_steps` together so one payload would satisfy both schemas;
+        # with extra="forbid" that is now rejected before the grounding check
+        # it is here to exercise - which is the point of forbidding extras.
+        prompt = kwargs["messages"][0]["content"]
+        payload = {
+            "explanation": "Diplomacy is the practice of negotiation.",
+            "key_points": ["Envoys carry instructions."],
+            "references": [
+                {"segment_id": "doc-1-c9999", "text": "a passage never retrieved"}
+            ],
+            "requires_human_review": True,
+        }
+        if "next_steps" in prompt:
+            payload["next_steps"] = ["Read the treaty chapter."]
+        else:
+            payload["definition"] = "Diplomacy is the practice of negotiation."
+        body = _json.dumps(payload)
+        message = type("M", (), {"content": body})
+        choice = type("C", (), {"message": message, "finish_reason": "stop"})
+        return type("R", (), {"choices": [choice], "error": None})
+
+
+@pytest.mark.parametrize(
+    "page_label,button_label",
+    [
+        ("🧭 Mentor", "Generate Mentor Response"),
+        ("💡 Concept Explanation", "Generate Concept Explanation"),
+    ],
+    ids=["mentor", "concept"],
+)
+def test_an_invented_citation_is_flagged_not_displayed_as_a_source(
+    page_label, button_label, monkeypatch
+) -> None:
+    """A citation the retriever never returned must not read as provenance.
+
+    Relabelling without this check would make things worse: an invented
+    citation rendered as "Passage 5 - Diplomacy Primer" is far more convincing
+    than the raw UUID it replaced.
+    """
+    from src.agents.concept_agent import ConceptAgent
+    from src.agents.mentor_agent import MentorAgent
+
+    for agent_class in (MentorAgent, ConceptAgent):
+        original = agent_class.__init__
+
+        def patched(self, *, client=None, model=None, _original=original):
+            _original(self, client=_CitesAnInventedChunk(), model="test-model")
+
+        monkeypatch.setattr(agent_class, "__init__", patched)
+
+    at = AppTest.from_file(str(COMBINED_APP), default_timeout=120)
+    _load_content(at, count=3)
+    at.run()
+
+    at.sidebar.radio[0].set_value(page_label).run()
+    _submit_button(at, button_label).click().run()
+
+    assert not at.exception
+    warnings = " ".join(str(w.value) for w in at.warning)
+
+    # The page now passes a GroundedContext, so the agent verifies citations
+    # itself and refuses outright - stronger than the previous behaviour, which
+    # rendered the answer with an "Unverified citation" caveat beside it.
+    # render_provenance still carries that caveat as defence in depth for any
+    # caller that does not supply a context.
+    assert "withheld by the grounding check" in warnings, (
+        "an invented chunk id was presented as a source"
+    )
+    assert "doc-1-c9999" in warnings
+
+
+@pytest.mark.parametrize(
+    "page_label,button_label",
+    [
+        ("🧭 Mentor", "Generate Mentor Response"),
+        ("💡 Concept Explanation", "Generate Concept Explanation"),
+    ],
+    ids=["mentor", "concept"],
+)
+def test_a_real_citation_is_shown_as_a_readable_passage(
+    page_label, button_label
+) -> None:
+    """The other half: a genuine citation must not be flagged.
+
+    A check that rejects everything would satisfy the test above.
+    """
+    at = AppTest.from_file(str(COMBINED_APP), default_timeout=120)
+    _load_content(at, count=3)
+    at.run()
+
+    at.sidebar.radio[0].set_value(page_label).run()
+    _submit_button(at, button_label).click().run()
+
+    assert not at.exception
+    warnings = " ".join(str(w.value) for w in at.warning)
+    assert "Unverified citation" not in warnings, (
+        "a genuine citation was flagged as invented"
+    )
+
+    rendered = " ".join(str(m.value) for m in at.markdown)
+    assert "Passage " in rendered, "no readable passage label was rendered"
+
+
+# --------------------------------------------------------------------------- #
+# The Question Bank and Test Help pages
+#
+# Both agents were built, tested and documented in Sprint 4 and then had no
+# interface at all - not a page in src/app.py, and frontend/qbank_ui.py was
+# `def render(): pass`. The only way to reach either was a pytest file.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "page_label",
+    ["📝 Question Bank", "🎯 Test Help"],
+    ids=["question_bank", "test_help"],
+)
+def test_the_question_page_generates_from_uploaded_content(page_label) -> None:
+    """The basic thing neither page could do before: run at all."""
+    at = AppTest.from_file(str(COMBINED_APP), default_timeout=120)
+    _load_content(at, count=3)
+    at.run()
+
+    at.sidebar.radio[0].set_value(page_label).run()
+    _submit_button(at, "Generate Questions").click().run()
+
+    assert not at.exception
+    errors = [str(e.value) for e in at.error]
+    assert not errors, f"page reported: {errors}"
+
+    rendered = " ".join(str(block.value) for block in at.markdown)
+    assert "PENDING HUMAN REVIEW" in rendered
+
+
+@pytest.mark.parametrize(
+    "page_label",
+    ["📝 Question Bank", "🎯 Test Help"],
+    ids=["question_bank", "test_help"],
+)
+def test_the_question_page_queues_its_output_for_review(
+    page_label, tmp_path, monkeypatch
+) -> None:
+    """The badge has to mean something.
+
+    The page cannot be handed a store - it builds its own - so this points
+    PLATFORM_DB_PATH at a temporary file and reads the queue back out. Without
+    it the page would write into the repo's ingestion.db during the test run.
+    """
+    monkeypatch.setenv("PLATFORM_DB_PATH", str(tmp_path / "platform.db"))
+
+    at = AppTest.from_file(str(COMBINED_APP), default_timeout=120)
+    _load_content(at, count=3)
+    at.run()
+
+    at.sidebar.radio[0].set_value(page_label).run()
+    _submit_button(at, "Generate Questions").click().run()
+
+    assert not at.exception
+
+    from src.validation.review_schema import OutputStatus
+    from src.validation.store import PlatformStore
+
+    store = PlatformStore(db_path=str(tmp_path / "platform.db"))
+    queued = store.list_outputs(status=OutputStatus.PENDING)
+    assert queued, "the page printed PENDING but queued nothing for review"
+
+
+@pytest.mark.parametrize(
+    "page_label",
+    ["📝 Question Bank", "🎯 Test Help"],
+    ids=["question_bank", "test_help"],
+)
+def test_the_question_page_retrieves_instead_of_sending_the_document(
+    page_label, monkeypatch
+) -> None:
+    """The same defect the mentor and concept pages shipped (issue #33).
+
+    Asserting on the prompt the model received is what makes this specific; a
+    page that merely does not error would pass either way on a small document.
+    """
+    prompts: list[str] = []
+    original_create = CompliantAgentsClient.create
+
+    def recording_create(self, **kwargs):
+        prompts.append(kwargs["messages"][0]["content"])
+        return original_create(self, **kwargs)
+
+    monkeypatch.setattr(CompliantAgentsClient, "create", recording_create)
+
+    at = AppTest.from_file(str(COMBINED_APP), default_timeout=120)
+    _load_big_content(at)
+    at.run()
+
+    at.sidebar.radio[0].set_value(page_label).run()
+    _submit_button(at, "Generate Questions").click().run()
+
+    assert not at.exception
+    assert prompts, "the page never called the model"
+    assert BIG_DOCUMENT not in prompts[0], "the whole document reached the model"
+    assert "doc-big-c" in prompts[0], "no retrieved chunk markers in the prompt"
+
+
+@pytest.mark.parametrize(
+    "page_label",
+    ["📝 Question Bank", "🎯 Test Help"],
+    ids=["question_bank", "test_help"],
+)
+def test_the_question_page_is_gated_until_content_is_loaded(page_label) -> None:
+    """With nothing uploaded, the page asks for content and offers no form."""
+    at = AppTest.from_file(str(COMBINED_APP), default_timeout=120)
+    at.run()
+
+    at.sidebar.radio[0].set_value(page_label).run()
+
+    assert not at.exception
+    warnings = [str(w.value) for w in at.warning]
+    assert any("upload educational content" in text for text in warnings), warnings
+    assert not [
+        button for button in at.button if "Generate Questions" in str(button.label)
+    ]

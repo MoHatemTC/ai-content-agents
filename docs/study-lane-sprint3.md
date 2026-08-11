@@ -223,3 +223,32 @@ streamlit run src/study/ui.py
 # Run the unified app (Home + Upload + Study agents)
 streamlit run src/app.py
 ```
+
+## Known gap: the planner and the reviser never see the passages
+
+`src/app.py` and `src/study/ui.py` both retrieve before generating, and both
+pass the retrieved text in as `content`. The flashcard agent puts it in the
+prompt. **The study-plan and revision agents do not**: they use `content` only
+to derive the topic allow-list via `FlashcardAgent.extract_topics()`, and the
+prompt they send carries topic *names*, dates and the learner's goal - no
+passage text at all.
+
+So "grounded study plan" currently means grounded in a word-frequency allow-list
+extracted from the document, not in retrieved content. That is a real and
+useful constraint - the planner provably cannot invent a topic, and
+`_validate_plan` enforces it - but it is weaker than what the flashcard, mentor,
+concept, question-bank and test-help agents do, and weaker than the phrase
+suggests.
+
+Consequences worth knowing before relying on it:
+
+* Topic *ordering and duration* are guesses. The model is choosing how long
+  "Kinetic Energy" needs without having read what the document says about it.
+* `source_chunk_ids` recorded on the review record describe what was retrieved
+  for the query, not what the plan was built from.
+
+Closing it means adding `{content}` to `study_plan.yaml` and `revision.yaml`
+and passing the passages through `_build_prompt` - a behaviour change with a
+real token-budget cost on long documents, which is why it was recorded here
+rather than folded into the prompt-restructuring pass that found it. The prompt
+`notes:` in both YAML files point back at this section.
