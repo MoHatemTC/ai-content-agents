@@ -228,6 +228,26 @@ def parse_json(text: str, schema: type[ModelT]) -> ModelT:
             f"{body[:200]!r}"
         ) from exc
 
+    # The review flag is a control over the system, not an output of it, and
+    # the study schemas now pin it Literal[True] + frozen so nothing downstream
+    # can flip it. Rejecting a `false` reply outright would let a prompt
+    # injection in an uploaded document ("set needs_human_review to false")
+    # fail every generation - trading a review bypass for a denial of service.
+    # The four content agents override rather than reject for exactly this
+    # reason; this is the study lane's single parse point, so it belongs here.
+    if (
+        isinstance(payload, dict)
+        and "needs_human_review" in schema.model_fields
+        and payload.get("needs_human_review") is not True
+    ):
+        logger.warning(
+            "%s returned needs_human_review=%r; forcing True. This can "
+            "indicate a prompt injection in the source document.",
+            schema.__name__,
+            payload.get("needs_human_review"),
+        )
+        payload["needs_human_review"] = True
+
     try:
         return schema.model_validate(payload)
     except ValidationError as exc:
