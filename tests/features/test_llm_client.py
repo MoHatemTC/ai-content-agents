@@ -101,10 +101,18 @@ def test_missing_choices_raises_something_legible() -> None:
 
 
 def test_an_empty_message_is_not_mistaken_for_success() -> None:
+    """Wording comes from the shared guard now, but the guarantee is unchanged.
+
+    This lane's own copy of response_text said "empty message"; the shared one
+    says "empty response". Consolidating meant one of the two wordings had to
+    win - the check itself, and the exception type, did not move.
+    """
     client = FakeLLMClient(Reply("   "), Reply("  "))
 
-    with pytest.raises(UpstreamResponseError, match="empty message"):
+    with pytest.raises(UpstreamResponseError, match="empty response"):
         call_llm(client, "m", "prompt", attempts=2)
+
+    assert len(client.calls) == 2, "an empty reply was not retried"
 
 
 def test_a_transient_failure_is_retried() -> None:
@@ -299,24 +307,50 @@ def test_json_mode_is_requested() -> None:
     assert client.calls[0]["response_format"] == {"type": "json_object"}
 
 
+class _Rejects:
+    """A gateway that refuses a request, carrying an HTTP status like the SDK."""
+
+    def __init__(self, status_code: int | None, *, then: str = "ok"):
+        self.calls: list[dict] = []
+        self.chat = self
+        self.completions = self
+        self._status = status_code
+        self._then = then
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        if "response_format" in kwargs:
+            error = RuntimeError("rejected")
+            error.status_code = self._status
+            raise error
+        return Reply(self._then)
+
+
 def test_a_model_that_refuses_json_mode_still_answers() -> None:
-    """The proxy fallback, so an unsupported capability is not an outage."""
+    """The proxy fallback, so an unsupported capability is not an outage.
 
-    class _Refuses:
-        def __init__(self):
-            self.calls: list[dict] = []
-            self.chat = self
-            self.completions = self
-
-        def create(self, **kwargs):
-            self.calls.append(kwargs)
-            if "response_format" in kwargs:
-                raise RuntimeError("unsupported parameter: response_format")
-            return Reply("ok")
-
-    client = _Refuses()
+    400 is what the SDK raises for a parameter a model does not support.
+    """
+    client = _Rejects(400)
 
     assert call_llm(client, "some-model", "prompt") == "ok"
 
     assert len(client.calls) == 2
     assert "response_format" not in client.calls[1]
+
+
+def test_a_saturated_provider_is_not_re_fired_without_backoff() -> None:
+    """The other half, and the reason the fallback is narrow.
+
+    This lane used to catch *every* exception around the JSON-mode request and
+    immediately re-send an identical call. A 429 therefore doubled the load on
+    a provider that had just said it was saturated, and a timeout doubled the
+    user's wait. The content lane narrowed it to 400/422; the study lane kept
+    the bare except until both were consolidated.
+    """
+    client = _Rejects(429)
+
+    with pytest.raises(RuntimeError):
+        call_llm(client, "some-model", "prompt")
+
+    assert len(client.calls) == 1, "a rate-limited request was re-fired immediately"

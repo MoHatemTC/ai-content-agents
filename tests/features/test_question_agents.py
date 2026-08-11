@@ -259,13 +259,19 @@ def test_an_error_shaped_success_is_a_legible_error(agent_class, schema) -> None
     Orchestrator.transient_errors, so raising it is what makes a saturated
     provider retryable instead of being recorded as a permanent failure.
     """
-    agent = agent_class(
-        client=FakeLLMClient(Reply(error={"message": "provider saturated"})),
-        model="test-model",
+    # Two, because generate() now retries: a provider that recovers on the
+    # second call is the case retry exists for, so staying saturated is what
+    # this test is actually about.
+    client = FakeLLMClient(
+        Reply(error={"message": "provider saturated"}),
+        Reply(error={"message": "provider saturated"}),
     )
+    agent = agent_class(client=client, model="test-model")
 
     with pytest.raises(UpstreamResponseError, match="no choices"):
         agent.generate(SOURCE, "mcq", "beginner", 1)
+
+    assert len(client.calls) == 2, "a saturated provider was not retried"
 
 
 # Closes BUG-10: no fence stripping, so a fenced reply failed to parse.
@@ -727,3 +733,51 @@ def test_the_warnings_reach_the_review_record(agent_class, schema, tmp_path) -> 
     warnings = (output.validation_report or {}).get("grounding_warnings", [])
     assert warnings, "the reviewer gets no sign the claim was unmatched"
     assert output.status is OutputStatus.PENDING
+
+
+# --------------------------------------------------------------------------- #
+# Retry belongs to whoever owns the path, and only to one of them
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("agent_class,schema", AGENTS)
+def test_a_transient_failure_is_retried_on_the_page_path(agent_class, schema) -> None:
+    """The study lane retried from the start; these four never did.
+
+    The orchestrator has retry, but every Streamlit page calls the agent
+    directly and never touches the orchestrator - so a free-tier gateway
+    returning one error payload failed the page outright, when a second call
+    would have served it.
+    """
+    client = FakeLLMClient(
+        Reply(error={"message": "provider saturated"}),
+        Reply(reply([question()])),
+    )
+    agent = agent_class(client=client, model="test-model")
+
+    result = agent.generate(SOURCE, "mcq", "beginner", 1)
+
+    assert len(result.questions) == 1
+    assert len(client.calls) == 2, "the transient failure was not retried"
+
+
+@pytest.mark.parametrize("agent_class,schema", AGENTS)
+def test_the_orchestrator_path_does_not_retry_twice_over(agent_class, schema) -> None:
+    """Two retry layers multiply, and that is worse than none.
+
+    ``RegistryAgentAdapter.run_raw`` calls ``_call_llm`` directly and runs its
+    own retry with backoff. Retrying inside the client as well turned an
+    orchestrator configured for two retries into six calls against a provider
+    that had just said it was saturated - the exact harm the narrow
+    ``response_format`` fallback exists to avoid.
+    """
+    client = FakeLLMClient(*[Reply(error={"message": "saturated"})] * 4)
+    agent = agent_class(client=client, model="test-model")
+
+    with pytest.raises(UpstreamResponseError):
+        agent._call_llm("a prompt")
+
+    assert len(client.calls) == 1, (
+        "_call_llm retried on its own; the orchestrator's max_retries would "
+        "then be a multiplier rather than a limit"
+    )

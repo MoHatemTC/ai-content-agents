@@ -26,6 +26,19 @@ error payload on one call and valid JSON on the next.
 fact and its docstring says the proper fix belongs here. This is that fix; the
 orchestrator's translation stays as a fallback for the agents in
 ``src/agents/`` that still call the gateway directly.
+
+**The four fixes above then failed to cross back.** This module solved them for
+the study lane while :func:`src.llm_gateway.chat_json` solved them again for the
+content lane, and the two copies drifted apart in both directions: this one
+retried and that one did not, while that one narrowed the JSON-mode fallback to
+HTTP 400/422 and this one kept a bare ``except Exception`` that re-fired
+instantly on a rate limit. Two copies of one guard is what produced BUG-08/09
+in the first place.
+
+So there is one implementation now, in :mod:`src.llm_gateway`, and
+:func:`call_llm` is a thin wrapper that keeps this lane's signature and its
+``max_tokens_default()`` defaulting. What remains here is what is genuinely
+study-specific: the output budget, the schema block, and JSON parsing.
 """
 
 from __future__ import annotations
@@ -33,23 +46,40 @@ from __future__ import annotations
 import json
 import logging
 import os
-import time
 from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
-# Re-exported so existing imports keep working. Both now live in
-# src.llm_gateway, because retry classification depends on there being
-# exactly one UpstreamResponseError - see its docstring.
-from src.llm_gateway import UpstreamResponseError, strip_fences
+# Re-exported so existing imports keep working. These live in src.llm_gateway,
+# because retry classification depends on there being exactly one
+# UpstreamResponseError - see its docstring - and, now, on there being exactly
+# one retry loop and one response guard.
+from src.llm_gateway import (
+    DEFAULT_ATTEMPTS,
+    DEFAULT_TEMPERATURE,
+    UpstreamResponseError,
+    chat_json,
+    strip_fences,
+)
 
 logger = logging.getLogger(__name__)
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 DEFAULT_MAX_TOKENS = 2000
-DEFAULT_TEMPERATURE = 0.2
-DEFAULT_ATTEMPTS = 2
+
+__all__ = [
+    "DEFAULT_ATTEMPTS",
+    "DEFAULT_MAX_TOKENS",
+    "DEFAULT_TEMPERATURE",
+    "UpstreamResponseError",
+    "call_llm",
+    "max_tokens_default",
+    "output_budget",
+    "parse_json",
+    "schema_block",
+    "strip_fences",
+]
 
 # Output allowance per requested item, and for the surrounding JSON. Measured on
 # real textbook passages, where 20 flashcards cost 3,059 completion tokens -
@@ -161,77 +191,15 @@ def call_llm(
         UpstreamResponseError: If the gateway returned no usable choice on every
             attempt, or the reply was empty.
     """
-    if client is None:
-        raise UpstreamResponseError(
-            "No LLM client was supplied. Build one with "
-            "src.llm_gateway.build_client(), or inject a double in tests."
-        )
-
-    last_error: str = "no attempts were made"
-
-    for attempt in range(1, max(1, attempts) + 1):
-        request: dict[str, Any] = {
-            "model": model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": temperature,
-            "max_tokens": (
-                max_tokens if max_tokens is not None else max_tokens_default()
-            ),
-            # Every caller of this function parses the reply as JSON, and study
-            # material contains backslashes: a physics passage makes the model
-            # write LaTeX, and \v in \vec is not a valid JSON escape, so a
-            # complete reply fails json.loads. Measured on the mentor lane, the
-            # same model against the same textbook: 0 of 8 plain requests
-            # parsed, 8 of 8 in JSON mode.
-            "response_format": {"type": "json_object"},
-        }
-        try:
-            response = client.chat.completions.create(**request)
-        except Exception:
-            # Not every model behind a LiteLLM proxy supports JSON mode, and a
-            # rejected request is worse than an unescaped one.
-            request.pop("response_format")
-            response = client.chat.completions.create(**request)
-
-        choices = getattr(response, "choices", None)
-        if not choices:
-            # A success status carrying an error payload. Surface what the
-            # gateway said rather than letting choices[0] raise TypeError.
-            detail = getattr(response, "error", None) or "no detail provided"
-            last_error = f"gateway returned no choices ({detail})"
-            logger.warning("llm attempt %d/%d: %s", attempt, attempts, last_error)
-        else:
-            choice = choices[0]
-            content = getattr(choice.message, "content", None)
-
-            # A reasoning model spends its budget thinking before it answers, so
-            # a cap sized for the answer alone truncates the JSON mid-object.
-            # Without this check the failure surfaces from json.loads as "the
-            # model did not return valid JSON", which sends you looking at the
-            # prompt instead of at the one number that caused it. Measured:
-            # gemini-3.5-flash spends ~1,900 tokens reasoning, so it fails at
-            # max_tokens=2000 and succeeds at 8000.
-            if getattr(choice, "finish_reason", None) == "length":
-                raise UpstreamResponseError(
-                    "The model's reply was cut off by the output limit "
-                    f"(max_tokens={max_tokens if max_tokens is not None else max_tokens_default()}), "
-                    "so the JSON is incomplete. Raise LLM_MAX_TOKENS, or use a "
-                    "model that does not emit reasoning tokens - they are "
-                    "charged against the same budget as the answer."
-                )
-
-            if content and content.strip():
-                return strip_fences(content)
-            last_error = "gateway returned an empty message"
-            logger.warning("llm attempt %d/%d: %s", attempt, attempts, last_error)
-
-        if attempt < attempts:
-            time.sleep(0.5 * attempt)
-
-    raise UpstreamResponseError(
-        f"The model returned no usable response after {attempts} attempt(s): "
-        f"{last_error}. This usually means the provider is saturated, rate "
-        "limited, or out of credit."
+    return chat_json(
+        client,
+        model,
+        prompt,
+        temperature=temperature,
+        # The study agents rely on this default; the content agents pass their
+        # own budget. Resolving it here keeps that difference where it belongs.
+        max_tokens=max_tokens if max_tokens is not None else max_tokens_default(),
+        attempts=attempts,
     )
 
 

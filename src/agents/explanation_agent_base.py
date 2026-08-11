@@ -39,6 +39,7 @@ import yaml
 from pydantic import BaseModel, ValidationError
 
 from src.llm_gateway import (
+    DEFAULT_ATTEMPTS,
     UpstreamResponseError,
     build_client,
     chat_json,
@@ -184,8 +185,15 @@ class ExplanationAgentBase:
     # LLM
     # ------------------------------------------------------------------
 
-    def _call_llm(self, prompt: str) -> str:
+    def _call_llm(self, prompt: str, *, attempts: int = 1) -> str:
         """Send the prompt and return the reply body.
+
+        Args:
+            prompt: The rendered prompt.
+            attempts: Left at 1 for the orchestrator, which calls this method
+                directly and runs its own retry - two layers would multiply.
+                :meth:`generate` passes ``DEFAULT_ATTEMPTS``, because the pages
+                that call it get no retry from anywhere else.
 
         Raises:
             UpstreamResponseError: If the gateway returned no usable choice, or
@@ -193,7 +201,11 @@ class ExplanationAgentBase:
                 retry policy recognises a saturated provider.
         """
         return chat_json(
-            self.client, self.model, prompt, max_tokens=max_tokens_default()
+            self.client,
+            self.model,
+            prompt,
+            max_tokens=max_tokens_default(),
+            attempts=attempts,
         )
 
     # ------------------------------------------------------------------
@@ -232,7 +244,9 @@ class ExplanationAgentBase:
             user_question=user_question,
             difficulty=difficulty,
         )
-        raw_response = self._call_llm(prompt)
+        # The orchestrator never calls generate(); it calls _call_llm and
+        # retries itself. This is the page path, which had no retry at all.
+        raw_response = self._call_llm(prompt, attempts=DEFAULT_ATTEMPTS)
 
         try:
             payload = json.loads(raw_response)

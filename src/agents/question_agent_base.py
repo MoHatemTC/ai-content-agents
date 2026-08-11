@@ -34,7 +34,12 @@ from typing import Any, ClassVar
 import yaml
 from pydantic import BaseModel, ValidationError
 
-from src.llm_gateway import build_client, chat_json, default_model
+from src.llm_gateway import (
+    DEFAULT_ATTEMPTS,
+    build_client,
+    chat_json,
+    default_model,
+)
 from src.retrieval.grounding import verify_references
 from src.retrieval.models import GroundedContext
 from src.validation.review_schema import GeneratedOutput
@@ -181,8 +186,18 @@ class QuestionAgentBase:
     # LLM
     # ------------------------------------------------------------------
 
-    def _call_llm(self, prompt: str, num_questions: int | None = None) -> str:
+    def _call_llm(
+        self, prompt: str, num_questions: int | None = None, *, attempts: int = 1
+    ) -> str:
         """Send the prompt and return the reply body.
+
+        Args:
+            prompt: The rendered prompt.
+            num_questions: Sizes the output budget when known.
+            attempts: Left at 1 for the orchestrator, which calls this method
+                directly and runs its own retry - two layers would multiply.
+                :meth:`generate` passes ``DEFAULT_ATTEMPTS``, because the pages
+                that call it get no retry from anywhere else.
 
         Raises:
             UpstreamResponseError: If the gateway returned no usable choice,
@@ -194,6 +209,7 @@ class QuestionAgentBase:
             self.client,
             self.model,
             prompt,
+            attempts=attempts,
             # Sized to the request, like the study lane: the gateway refuses on
             # the *requested* ceiling, so a flat cap is wrong in both directions.
             max_tokens=output_budget(num_questions)
@@ -234,7 +250,11 @@ class QuestionAgentBase:
             UpstreamResponseError: If the gateway returned nothing usable.
         """
         prompt = self._build_prompt(content, question_type, difficulty, num_questions)
-        raw_response = self._call_llm(prompt, num_questions)
+        # The orchestrator never calls generate(); it calls _call_llm and
+        # retries itself. This is the page path, which had no retry at all.
+        raw_response = self._call_llm(
+            prompt, num_questions, attempts=DEFAULT_ATTEMPTS
+        )
 
         try:
             payload = json.loads(raw_response)
