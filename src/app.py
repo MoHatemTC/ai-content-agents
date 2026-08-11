@@ -274,6 +274,13 @@ def _render_question_page(agent, *, title: str, caption: str, form_key: str) -> 
         st.success(f"Generated {len(payload.get('questions', []))} questions")
         st.markdown(PENDING_BADGE)
         st.write(f"Review status: **{reviewable.status.value.upper()}**")
+        # The support heuristic is advisory, not a gate - it rejected 5 of 20
+        # correct live generations, so it flags rather than blocks. Shown here
+        # and recorded on the review record, exactly as mentor and concept do.
+        for warning in (reviewable.validation_report or {}).get(
+            "grounding_warnings", []
+        ):
+            st.caption(f":orange[⚑ {warning}]")
         for index, item in enumerate(payload.get("questions", []), start=1):
             with st.expander(f"{index}. {item.get('question', '')}"):
                 options = item.get("options")

@@ -77,6 +77,10 @@ class QuestionAgentBase:
         self.prompt = self._load_prompt()
         self.client = client if client is not None else build_client()
         self.model = model or default_model()
+        # Warnings from the most recent generate(), read by generate_reviewable
+        # so a fuzzy grounding signal reaches the reviewer rather than the
+        # learner. See _enforce_grounding for why it is not a hard reject.
+        self._grounding_warnings: list[str] = []
 
     # ------------------------------------------------------------------
     # Prompt
@@ -275,7 +279,9 @@ class QuestionAgentBase:
         self._enforce_request(result, question_type, difficulty, num_questions)
 
         if context is not None:
-            self._enforce_grounding(result, context)
+            self._grounding_warnings = self._enforce_grounding(result, context)
+        else:
+            self._grounding_warnings = []
 
         return result
 
@@ -394,17 +400,41 @@ class QuestionAgentBase:
                 num_questions=num_questions,
                 context=context,
             ),
+            # A fuzzy signal belongs in front of the human reviewer, not in a
+            # hard reject the learner reads as a failure. persist_reviewable_run
+            # merges this into validation_report; the page renders it.
+            collect_report=lambda: (
+                {"grounding_warnings": list(self._grounding_warnings)}
+                if self._grounding_warnings
+                else {}
+            ),
         )
 
-    def _enforce_grounding(self, result: Any, context: GroundedContext) -> None:
+    def _enforce_grounding(self, result: Any, context: GroundedContext) -> list[str]:
         """Check citations and rationales against the retrieved passages.
 
         These agents cite per question rather than at the top level, so the
         references are flattened before verification.
 
+        **Exact checks block; the fuzzy one informs** - the same split
+        :class:`~src.agents.explanation_agent_base.ExplanationAgentBase` made,
+        for the same measured reason. Citation verification is set membership
+        over chunk ids and produced zero false positives across 20 live
+        generations, so it raises. ``validate_support`` is a 0.6 token-overlap
+        heuristic over prose, and it rejected 5 of those same 20 - one correct
+        answer in four withheld from the learner, which is what got grounding
+        switched off wholesale last time.
+
+        These two agents kept raising on both long after mentor and concept
+        stopped, because nothing called them with a context: they had no UI
+        until the Question Bank and Test Help pages existed. The moment they
+        got one, they inherited the failure that fix was written to prevent.
+
+        Returns:
+            Human-readable warnings; empty when nothing was flagged.
+
         Raises:
-            ValueError: If any citation is invented, or a rationale asserts
-                something the passages do not support.
+            ValueError: If a citation was invented.
         """
         references = [
             reference for item in result.questions for reference in item.references
@@ -417,8 +447,17 @@ class QuestionAgentBase:
             )
 
         support = validate_support(extract_claim_text(result), context)
-        if not support.supported:
-            raise ValueError(
-                "The generated questions contain unsupported claims: "
-                f"{support.unsupported_claims}"
-            )
+        if support.supported:
+            return []
+
+        logger.info(
+            "%s: %d claim(s) not matched to the retrieved passages; flagged for "
+            "review rather than rejected.",
+            self.output_schema.__name__,
+            len(support.unsupported_claims),
+        )
+        return [
+            "Could not match this statement to the retrieved passages: "
+            f"{claim}"
+            for claim in support.unsupported_claims
+        ]
