@@ -35,7 +35,11 @@ from src.study.schemas import RevisionSession, StudyPlan
 from src.services.mentor_concept import MentorConceptService
 from src.ui_common import render_current_content_status, render_provenance
 from src.retrieval import ChunkIndex, RetrievalConfig
-from src.study.grounding import NoGroundingError, grounded_content, index_chunks
+from src.study.grounding import (
+    NoGroundingError,
+    ensure_document_indexed,
+    grounded_content,
+)
 
 # ---------------------------------------------------------------------------
 # Initialize shared services
@@ -129,21 +133,29 @@ def ensure_indexed(show_progress: bool = False) -> bool:
     if doc is None or not chunks:
         return False
 
+    # session_state is the in-session fast path - it saves a Chroma round-trip
+    # on every rerun. It is not the record of truth: it is empty in a new
+    # session, so on its own it re-embeds a document that is already indexed.
     indexed = st.session_state.setdefault("indexed_documents", set())
     if doc.id in indexed:
+        return False
+
+    index = get_chunk_index()
+    if index.document_chunk_count(doc.id) == len(chunks):
+        indexed.add(doc.id)
         return False
 
     message = f"Preparing {len(chunks):,} passages for retrieval..."
     if show_progress:
         with st.status(message, expanded=False) as status:
-            index_chunks(get_chunk_index(), doc.id, chunks)
+            performed = ensure_document_indexed(index, doc.id, chunks)
             status.update(label=f"Indexed {len(chunks):,} passages", state="complete")
     else:
         with st.spinner(message):
-            index_chunks(get_chunk_index(), doc.id, chunks)
+            performed = ensure_document_indexed(index, doc.id, chunks)
 
     indexed.add(doc.id)
-    return True
+    return performed
 
 
 def ground(focus: str, topics: list[str]):

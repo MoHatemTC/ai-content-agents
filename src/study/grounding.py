@@ -85,6 +85,57 @@ def index_chunks(index: ChunkIndex, document_id: str, chunks) -> int:
     return len(retrieval_chunks)
 
 
+def ensure_document_indexed(index: ChunkIndex, document_id: str, chunks) -> bool:
+    """Index ``document_id`` unless the index already holds exactly these chunks.
+
+    **The persisted index was being thrown away.** With ``CHROMA_DIR`` set the
+    vectors survive a restart, but both callers decided "already indexed" from
+    ``st.session_state``, which is empty in every new session. They then called
+    :func:`index_chunks`, and ``ChunkIndex.add_document`` has replace semantics -
+    delete, re-add, re-embed. Measured on an 861-chunk textbook: 65 seconds of
+    embedding per fresh session, to arrive back where it started.
+
+    The count is the guard rather than mere presence. A document re-chunked by a
+    changed chunker keeps its id but has a different number of chunks, and
+    silently serving vectors built by the old chunker would be worse than
+    re-embedding.
+
+    This lives here, and not in either page, because there were two copies of
+    the decision with the same bug in both - which is the duplication that
+    produced BUG-08/09 and cost a PR to undo.
+
+    Args:
+        index: The retrieval index.
+        document_id: The document to check.
+        chunks: Ingestion chunk records the page is holding.
+
+    Returns:
+        Whether indexing was actually performed.
+    """
+    if not chunks:
+        return False
+
+    indexed = index.document_chunk_count(document_id)
+    if indexed == len(chunks):
+        logger.debug(
+            "document %s already holds %d chunks; skipping embedding",
+            document_id,
+            indexed,
+        )
+        return False
+
+    if indexed:
+        logger.info(
+            "document %s has %d indexed chunks but %d were supplied; rebuilding",
+            document_id,
+            indexed,
+            len(chunks),
+        )
+
+    index_chunks(index, document_id, chunks)
+    return True
+
+
 def build_query(focus: str, topics: list[str], limit: int = 8) -> str:
     """Turn the user's focus, or the document's topics, into a retrieval query.
 
