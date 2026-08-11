@@ -27,3 +27,11 @@ htmlcov/
 # and only valid for the embedding model that wrote it. Disposable: delete it
 # and re-ingest to rebuild.
 .chroma/
+
+# The vendored frontend (frontend/, from joo156/sensei-ai via git subtree).
+# Its own .gitignore does not apply once the files live here, so its build
+# artefacts are listed explicitly - node_modules alone is ~400 packages.
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+frontend/.vite/
