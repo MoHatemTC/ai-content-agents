@@ -18,6 +18,7 @@ Each engineer owns a vertical slice ("lane"); the docs describe the contracts:
 - [Mentor & Concept Agents](docs/mentor-concept-lane.md)
 - [Retrieval & Grounding](docs/retrieval-lane.md)
 - [Review, Validation, Orchestration & Export](docs/validation-lane.md)
+- [Agent parity matrix](docs/agent-parity.md) — what each lane does and does not do, so a fix that lands in one lane is not silently missing from the other two
 
 [Deployment guide](docs/deployment.md) — configuration, running, troubleshooting.
 
