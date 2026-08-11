@@ -26,6 +26,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
+from src.agents.question_agent_base import QUESTION_ITEM_TOKENS
 from src.agents.question_bank_agent import QuestionBankAgent
 from src.agents.test_help_agent import TestHelpAgent
 from src.retrieval.models import (
@@ -38,6 +39,12 @@ from src.validation.review_schema import OutputStatus, RunStatus
 from src.validation.schemas import QuestionBankOutput, TestHelpOutput
 from src.validation.store import PlatformStore
 from src.llm_gateway import UpstreamResponseError
+from src.study.llm_client import (
+    MAX_OUTPUT_TOKENS,
+    OUTPUT_OVERHEAD_TOKENS,
+    max_tokens_default,
+    output_budget,
+)
 from tests.conftest import FakeLLMClient, Reply
 
 # Both agents are near-identical copies of each other, so every check runs
@@ -781,3 +788,92 @@ def test_the_orchestrator_path_does_not_retry_twice_over(agent_class, schema) ->
         "_call_llm retried on its own; the orchestrator's max_retries would "
         "then be a multiplier rather than a limit"
     )
+
+
+# --------------------------------------------------------------------------- #
+# The output budget has to fund the question the UI can ask for
+#
+# Five advanced MCQs from a real 861-chunk textbook came back truncated
+# mid-JSON. output_budget's per-item allowance is 200, measured on flashcards -
+# a front and a back. A question item is a stem, four options, a rationale and
+# a references[].text quoting a retrieved passage, so it costs 2-3x that, and
+# for any count of 8 or fewer the scaled value fell below the flat floor and
+# the sizing never engaged at all.
+# --------------------------------------------------------------------------- #
+
+
+def a_chunk(chars: int) -> str:
+    """A passage the size real ingestion produces (this corpus averages 766)."""
+    return ("The column space of A is the span of its columns, a subspace of "
+            "R^m whose dimension is the rank of A. " * 40)[:chars]
+
+
+def a_cited_question(quote_chars: int) -> dict:
+    """An advanced MCQ citing a realistically-sized excerpt."""
+    return question(
+        difficulty="advanced",
+        rationale="The transformation is onto exactly when Col A spans R^m, so "
+                  "failing to be onto means the rank is strictly less than m.",
+        references=[{"segment_id": "doc-1-c0123", "text": a_chunk(quote_chars)}],
+    )
+
+
+@pytest.mark.parametrize("agent_class,schema", AGENTS)
+@pytest.mark.parametrize("count", [1, 5, 15, 20], ids=["one", "five", "fifteen", "max"])
+def test_the_agent_sends_a_budget_sized_to_the_question(
+    agent_class, schema, count
+) -> None:
+    """Assert on what reached the gateway, not on the helper.
+
+    output_budget always took a per_item override; the defect was that this
+    call site never passed one. A test of the helper alone would have passed
+    throughout the bug.
+    """
+    client = FakeLLMClient(reply([question()] * count))
+    agent = agent_class(client=client, model="test-model")
+
+    try:
+        agent.generate(SOURCE, "mcq", "beginner", count)
+    except ValueError:
+        pass  # the reply's content is not what this test is about
+
+    sent = client.calls[0]["max_tokens"]
+    assert sent >= OUTPUT_OVERHEAD_TOKENS + count * QUESTION_ITEM_TOKENS or (
+        sent == max_tokens_default()
+    ), f"asked for {count} questions with only {sent} output tokens"
+
+
+def test_the_full_slider_is_not_clipped_by_the_cap() -> None:
+    """20 is what the UI offers; MAX_OUTPUT_TOKENS must not trim the request.
+
+    At the old cap of 8000 a 20-question request asked for 8400 and was
+    silently trimmed back - reproducing the truncation this fixes, at the top
+    of the range, caused by the guard meant to prevent it.
+    """
+    budget = output_budget(20, per_item=QUESTION_ITEM_TOKENS)
+
+    assert budget == OUTPUT_OVERHEAD_TOKENS + 20 * QUESTION_ITEM_TOKENS
+    assert budget <= MAX_OUTPUT_TOKENS
+
+
+@pytest.mark.parametrize("count", [5, 20], ids=["five", "max"])
+def test_a_full_set_of_cited_questions_fits_the_budget(count: int) -> None:
+    """The measurement that started this, as a test.
+
+    A realistic advanced MCQ citing a 766-char excerpt - the mean chunk size of
+    the document that failed - must fit, at both ends of the slider.
+    """
+    payload = json.dumps(
+        {"questions": [a_cited_question(766)] * count, "requires_human_review": True}
+    )
+    estimated_tokens = len(payload) / 4  # the usual English approximation
+
+    assert estimated_tokens < output_budget(count, per_item=QUESTION_ITEM_TOKENS), (
+        f"{count} cited questions need ~{estimated_tokens:.0f} tokens but the "
+        f"agent asks for {output_budget(count, per_item=QUESTION_ITEM_TOKENS)}"
+    )
+
+
+def test_the_flashcard_budget_is_untouched() -> None:
+    """The study lane's allowance is right for the items it was measured on."""
+    assert output_budget(25) == OUTPUT_OVERHEAD_TOKENS + 25 * 200

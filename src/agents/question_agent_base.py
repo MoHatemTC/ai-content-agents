@@ -53,6 +53,21 @@ from src.validation.support_validator import extract_claim_text, validate_suppor
 
 logger = logging.getLogger(__name__)
 
+# Output allowance per question, for output_budget().
+#
+# The study lane's PER_ITEM_TOKENS is 200, measured on flashcards - "20
+# flashcards cost 3,059 completion tokens, ~153 each". A flashcard is a front
+# and a back. A QuestionItem is a stem, four options, a correct_answer, a
+# rationale, and a references[].text quoting a retrieved passage, and that
+# quote's size follows the chunk size. Measured against a real textbook
+# (chunks averaging 766 chars): 369 tokens per item uncapped, ~253 once the
+# prompt bounds the excerpt. 400 leaves headroom for an advanced question
+# against a long chunk.
+#
+# Reusing the flashcard figure is what made five questions ask for 2000 tokens
+# and come back truncated mid-JSON.
+QUESTION_ITEM_TOKENS = 400
+
 
 class QuestionAgentBase:
     """Generate grounded assessment questions from educational content.
@@ -211,8 +226,10 @@ class QuestionAgentBase:
             prompt,
             attempts=attempts,
             # Sized to the request, like the study lane: the gateway refuses on
-            # the *requested* ceiling, so a flat cap is wrong in both directions.
-            max_tokens=output_budget(num_questions)
+            # the *requested* ceiling, so a flat cap is wrong in both
+            # directions. per_item is passed because the study lane's default
+            # is calibrated for flashcards, which carry no citation.
+            max_tokens=output_budget(num_questions, per_item=QUESTION_ITEM_TOKENS)
             if num_questions is not None
             else max_tokens_default(),
         )
