@@ -69,6 +69,19 @@ logger = logging.getLogger(__name__)
 QUESTION_ITEM_TOKENS = 400
 
 
+class QuestionCountError(ValueError):
+    """The reply carried the wrong number of questions.
+
+    Its own type so :meth:`QuestionAgentBase.generate` can retry this and only
+    this. A model that under-delivers on a large request usually complies on a
+    second attempt; a model that invents a citation invents it again, and a
+    reply that fails the schema fails it the same way. Retrying those would
+    spend a second call to print the same error.
+
+    Subclasses ValueError, which is what callers already catch.
+    """
+
+
 class QuestionAgentBase:
     """Generate grounded assessment questions from educational content.
 
@@ -260,12 +273,55 @@ class QuestionAgentBase:
         Returns:
             A validated instance of :attr:`output_schema`.
 
+        A reply carrying the wrong *number* of questions is retried once.
+        Models under-deliver on large requests - asking for 20 and getting 19
+        is common - and discarding 19 good questions to print an error is a
+        poor trade when a second attempt usually complies. The contract itself
+        is unchanged: you never receive a count you did not ask for (BUG-01).
+
+        Only the count is retried. A grounding failure means the model invented
+        a citation, which it will invent again, and a schema failure fails the
+        same way twice; both would spend a call to reprint the same message.
+
+        The retry lives here rather than in :meth:`_call_llm` because the
+        orchestrator calls that method directly and runs its own retry - and
+        two layers multiply. It does compose with the transient retry inside
+        ``chat_json``, so a request that is both short *and* hitting a
+        saturated provider costs at most four calls. A retried 20-question
+        generation is another ~8,400 output tokens, which is the price of not
+        throwing away a nearly-complete set.
+
         Raises:
             ValueError: If a control value is invalid, the reply is not JSON,
-                the reply does not satisfy the schema, the reply does not match
-                what was requested, or the citations are not grounded.
+                the reply does not satisfy the schema, or the citations are not
+                grounded.
+            QuestionCountError: If the count is still wrong after the retry.
             UpstreamResponseError: If the gateway returned nothing usable.
         """
+        try:
+            return self._generate_once(
+                content, question_type, difficulty, num_questions, context
+            )
+        except QuestionCountError as first:
+            logger.info(
+                "%s returned the wrong question count (%s); retrying once.",
+                self.output_schema.__name__,
+                first,
+            )
+
+        return self._generate_once(
+            content, question_type, difficulty, num_questions, context
+        )
+
+    def _generate_once(
+        self,
+        content: str | GroundedContext,
+        question_type: str,
+        difficulty: str,
+        num_questions: int,
+        context: GroundedContext | None = None,
+    ) -> Any:
+        """One generation attempt: prompt, call, parse, validate, enforce."""
         prompt = self._build_prompt(content, question_type, difficulty, num_questions)
         # The orchestrator never calls generate(); it calls _call_llm and
         # retries itself. This is the page path, which had no retry at all.
@@ -347,7 +403,7 @@ class QuestionAgentBase:
 
         actual = len(result.questions)
         if actual != num_questions:
-            raise ValueError(
+            raise QuestionCountError(
                 f"The model returned {actual} questions but exactly "
                 f"{num_questions} were requested."
             )

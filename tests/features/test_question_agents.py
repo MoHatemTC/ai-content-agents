@@ -26,7 +26,10 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from src.agents.question_agent_base import QUESTION_ITEM_TOKENS
+from src.agents.question_agent_base import (
+    QUESTION_ITEM_TOKENS,
+    QuestionCountError,
+)
 from src.agents.question_bank_agent import QuestionBankAgent
 from src.agents.test_help_agent import TestHelpAgent
 from src.retrieval.models import (
@@ -105,10 +108,16 @@ def test_the_requested_question_count_is_enforced(agent_class, schema) -> None:
     over- or under-delivers is normal; silently passing that through to the
     learner is not.
     """
-    agent = agent_with(agent_class, reply([question()] * 3))
+    # Two replies, because a wrong count is retried once now. A model that
+    # stays non-compliant is what this test is about; one that complies on the
+    # second attempt is covered separately.
+    client = FakeLLMClient(reply([question()] * 3), reply([question()] * 3))
+    agent = agent_class(client=client, model="test-model")
 
-    with pytest.raises(ValueError, match="exactly 1"):
+    with pytest.raises(QuestionCountError, match="exactly 1"):
         agent.generate(SOURCE, "mcq", "beginner", 1)
+
+    assert len(client.calls) == 2, "the wrong count was not retried"
 
 
 # Closes BUG-02: the reply's type was never compared with the request.
@@ -877,3 +886,55 @@ def test_a_full_set_of_cited_questions_fits_the_budget(count: int) -> None:
 def test_the_flashcard_budget_is_untouched() -> None:
     """The study lane's allowance is right for the items it was measured on."""
     assert output_budget(25) == OUTPUT_OVERHEAD_TOKENS + 25 * 200
+
+
+# --------------------------------------------------------------------------- #
+# A short set is retried once, not discarded
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("agent_class,schema", AGENTS)
+def test_a_short_reply_is_retried_and_accepted(agent_class, schema) -> None:
+    """Asking for 20 and getting 19 should not throw away the 19."""
+    client = FakeLLMClient(
+        reply([question()] * 19),   # short
+        reply([question()] * 20),   # complies
+    )
+    agent = agent_class(client=client, model="test-model")
+
+    result = agent.generate(SOURCE, "mcq", "beginner", 20)
+
+    assert len(result.questions) == 20
+    assert len(client.calls) == 2
+
+
+@pytest.mark.parametrize("agent_class,schema", AGENTS)
+def test_a_grounding_failure_is_not_retried(agent_class, schema) -> None:
+    """Only the count is retried.
+
+    A model that invents a citation invents it again, so a second call spends
+    money to reprint the same error.
+    """
+    client = FakeLLMClient(
+        *[reply([question(references=[
+            {"segment_id": "doc-1-c9999", "text": "never retrieved"}
+        ])])] * 3
+    )
+    agent = agent_class(client=client, model="test-model")
+
+    with pytest.raises(ValueError, match="not grounded"):
+        agent.generate(SOURCE, "mcq", "beginner", 1, context=a_context())
+
+    assert len(client.calls) == 1, "a grounding failure was retried"
+
+
+@pytest.mark.parametrize("agent_class,schema", AGENTS)
+def test_a_schema_failure_is_not_retried(agent_class, schema) -> None:
+    """Same reasoning: a malformed reply fails the same way twice."""
+    client = FakeLLMClient(*['{"questions": [{"question": "no other fields"}]}'] * 3)
+    agent = agent_class(client=client, model="test-model")
+
+    with pytest.raises(ValueError, match="schema"):
+        agent.generate(SOURCE, "mcq", "beginner", 1)
+
+    assert len(client.calls) == 1, "a schema failure was retried"
