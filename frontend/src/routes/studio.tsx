@@ -121,7 +121,7 @@ function StudioPage() {
             <SelectContent>
               {docs.map((d) => (
                 <SelectItem key={d.id} value={d.id}>
-                  {d.title} · {d.chunks.length} chunks
+                  {d.title}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -1068,7 +1068,6 @@ function DocLine({ doc }: { doc: string }) {
         Grounded to · {active.name}
       </p>
       <p className="mt-0.5 truncate font-medium">{d?.title ?? "No document selected"}</p>
-      {d && <p className="text-muted-foreground mt-0.5">{d.chunks.length} chunks indexed</p>}
       {d?.notes && (
         <p className="border-primary/30 text-muted-foreground mt-2 line-clamp-3 border-l-2 pl-2 italic">
           Your notes: {d.notes}
