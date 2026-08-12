@@ -96,7 +96,9 @@ function QuizItem({ q, index }: { q: GeneratedQuestion; index: number }) {
                     <span className="text-success text-[11px] font-semibold tracking-widest uppercase">
                       Expected answer
                     </span>
-                    <AgentText className="text-foreground mt-0.5 block">{q.answer}</AgentText>
+                    <AgentText inline className="text-foreground mt-0.5 block">
+                      {q.answer}
+                    </AgentText>
                   </span>
                 )}
               </div>
@@ -147,7 +149,9 @@ function QuizItem({ q, index }: { q: GeneratedQuestion; index: number }) {
                       ""
                     )}
                   </span>
-                  <span className="flex-1">{opt}</span>
+                  <span className="flex-1">
+                    <AgentText inline>{opt}</AgentText>
+                  </span>
                 </button>
               </li>
             );
@@ -169,7 +173,13 @@ function QuizItem({ q, index }: { q: GeneratedQuestion; index: number }) {
               )}
             >
               {correct ? <Check className="size-3.5" /> : <X className="size-3.5" />}
-              {correct ? "Correct" : `Answer: ${q.answer}`}
+              {correct ? (
+                "Correct"
+              ) : (
+                <>
+                  Answer: <AgentText inline>{q.answer}</AgentText>
+                </>
+              )}
             </span>
           ))}
         <Button size="sm" variant="ghost" onClick={reset}>

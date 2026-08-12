@@ -48,7 +48,7 @@ export function QuestionCard({ q, index = 0 }: { q: GeneratedQuestion; index?: n
                   : "border-border bg-muted/40 text-muted-foreground",
               )}
             >
-              {opt}
+              <AgentText inline>{opt}</AgentText>
             </li>
           ))}
         </ul>
