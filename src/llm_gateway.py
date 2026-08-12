@@ -40,7 +40,18 @@ DEFAULT_MODEL = "FW-Kimi-K2.6"
 # The study agents used a 60 s timeout; the src/agents ones used the SDK
 # default. 60 s for all of them: a request that has not answered by then is not
 # going to, and an unbounded wait is worse in a Streamlit app than a clear error.
-DEFAULT_TIMEOUT = 60.0
+#
+# That assumption was calibrated against a ~12000-token output ceiling. Raising
+# MAX_OUTPUT_TOKENS/EXPLANATION_TOKENS to 65536 (src/study/llm_client.py,
+# src/agents/explanation_agent_base.py) caps completion *length*; this caps
+# completion *duration* - two different axes that were only coincidentally
+# compatible at the old ceiling. A timeout has no status_code, so chat_json's
+# retry loop below treats it like any other non-400/422 failure and lets it
+# propagate immediately rather than retrying - it was never silently retried,
+# only rarely reached. Raised so a legitimately long reply - the kind the
+# higher ceiling exists to allow - has room to finish instead of being cut off
+# by the clock at the exact moment the token budget stopped being the limit.
+DEFAULT_TIMEOUT = 180.0
 
 # Total tries, including the first. Free-tier gateways return an error payload
 # intermittently for a prompt that succeeds on retry, which is why the study
