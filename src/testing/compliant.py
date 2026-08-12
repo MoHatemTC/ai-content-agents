@@ -434,7 +434,17 @@ class LatexAgentsClient(CompliantAgentsClient):
     """
 
     #: The notation observed live, from the Linear Algebra textbook.
-    MATHS = r"$x_1, \dots, x_n$ in $\mathbb{R}^n$, with $\underline{x}$"
+    #:
+    #: The second half matters more than the first. ``\dots``, ``\mathbb`` and
+    #: ``\underline`` are *invalid* escapes: they make the parser raise, which
+    #: is loud and was fixed. ``\times`` and ``\beta`` are *valid* ones meaning
+    #: something else - they decode to TAB and BACKSPACE, and the reply reaches
+    #: the learner as "8imes300" and "y = Ξeta_0" with nothing raised at all.
+    MATHS = (
+        r"$x_1, \dots, x_n$ in $\mathbb{R}^n$, with $\underline{x}$, "
+        r"an $8 \times 300$ matrix and $y = \beta_0 + \beta_1 x$, "
+        r"where $\frac{a}{b} \neq \rho$ and $\theta \rightarrow 0$"
+    )
 
     def create(self, **kwargs: Any) -> Reply:
         self.calls.append(kwargs)

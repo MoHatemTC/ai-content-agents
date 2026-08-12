@@ -84,6 +84,33 @@ def test_mentor_survives_latex(context: GroundedContext) -> None:
     assert r"\underline{x}" in result.explanation
 
 
+@pytest.mark.parametrize(
+    ("command", "eaten_as"),
+    [(r"\times", "\t"), (r"\beta", "\b"), (r"\frac", "\f"), (r"\neq", "\n"),
+     (r"\rho", "\r")],
+)
+def test_commands_that_decode_to_control_characters_survive(
+    context: GroundedContext, command: str, eaten_as: str
+) -> None:
+    r"""The silent failure: ``\t`` and ``\b`` are *valid* JSON escapes.
+
+    ``\dots`` raises and gets noticed. ``\times`` decodes to TAB + "imes" and
+    sails through parsing, schema validation, grounding and persistence to
+    reach the learner as "8imes300".
+    """
+    agent = MentorAgent(client=LatexAgentsClient(), model="test-model")
+
+    result = agent.generate(
+        content=context,
+        user_question="explain chapter 1",
+        difficulty="intermediate",
+        context=context,
+    )
+
+    assert command in result.explanation
+    assert eaten_as not in result.explanation
+
+
 def test_concept_survives_latex(context: GroundedContext) -> None:
     agent = ConceptAgent(client=LatexAgentsClient(), model="test-model")
 

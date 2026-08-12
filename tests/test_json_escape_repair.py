@@ -66,6 +66,69 @@ def test_unicode_escapes_still_decode() -> None:
     assert loads_model_json(r'{"t": "éè"}')["t"] == "éè"
 
 
+# --------------------------------------------------------------------------- #
+# Valid escapes that meant something else
+#
+# \t and \b ARE valid JSON escapes, so `\times` decodes to TAB + "imes" and
+# `\beta` to BACKSPACE + "eta" without raising anything at all. Read out of
+# chat_messages, a stored reply carried 0x09 twice and 0x08 four times, and
+# reached the learner as "8imes300" and "y = Ξeta_0". Silent corruption, where
+# the earlier bug at least failed loudly.
+# --------------------------------------------------------------------------- #
+
+
+def test_times_is_latex_not_a_tab() -> None:
+    """The exact text from the corrupted reply."""
+    parsed = loads_model_json(r'{"t": "forms an $8 \times 300$ matrix"}')
+
+    assert parsed["t"] == r"forms an $8 \times 300$ matrix"
+    assert "\t" not in parsed["t"]
+
+
+def test_beta_is_latex_not_a_backspace() -> None:
+    parsed = loads_model_json(r'{"t": "$y = \beta_0 + \beta_1 x$"}')
+
+    assert parsed["t"] == r"$y = \beta_0 + \beta_1 x$"
+    assert "\b" not in parsed["t"]
+
+
+@pytest.mark.parametrize(
+    "command",
+    [r"\theta", r"\tau", r"\frac{a}{b}", r"\forall", r"\neq", r"\nu", r"\nabla",
+     r"\rho", r"\rightarrow", r"\begin{bmatrix}", r"\textbf{x}", r"\bar{x}"],
+)
+def test_ambiguous_initial_commands_survive(command: str) -> None:
+    r"""Every LaTeX command starting with b, f, n, r or t is exposed."""
+    parsed = loads_model_json('{"t": "%s"}' % command)
+
+    assert parsed["t"] == command
+
+
+def test_a_real_newline_followed_by_a_word_stays_a_newline() -> None:
+    r"""The regression the obvious fix causes.
+
+    "Escape every backslash before a letter" would turn this into a literal
+    ``\nThe``. Every real newline in the stored replies is followed by a word -
+    8 of 8 were ``The`` or ``Hello`` - so that fix breaks every paragraph break
+    in the app.
+    """
+    parsed = loads_model_json(r'{"t": "First para.\nThe second one.\nHello again."}')
+
+    assert parsed["t"] == "First para.\nThe second one.\nHello again."
+
+
+def test_escapes_the_model_got_right_are_left_alone() -> None:
+    r"""``\\mathbf`` appeared 16 times in the stored corpus, correctly escaped."""
+    parsed = loads_model_json(r'{"t": "$\\mathbf{v}$ and $\\begin{bmatrix}$"}')
+
+    assert parsed["t"] == r"$\mathbf{v}$ and $\begin{bmatrix}$"
+
+
+def test_a_tab_that_is_really_a_tab_is_preserved() -> None:
+    """``\\t`` not followed by a command is still a tab."""
+    assert loads_model_json(r'{"t": "col1\tcol2"}')["t"] == "col1\tcol2"
+
+
 def test_structurally_broken_json_still_raises() -> None:
     """Repair fixes escapes, not truncation. A cut-off reply is still an error."""
     with pytest.raises(json.JSONDecodeError):

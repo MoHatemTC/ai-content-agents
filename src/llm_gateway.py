@@ -232,8 +232,15 @@ def loads_model_json(text: str) -> Any:
     other lever and is the wrong one - the notation is the point, and the
     interface now renders it.
 
-    Strict parsing is tried first, so a reply that is already valid is never
-    touched. Only on failure are the unrecognised escapes repaired.
+    **Two failures, not one.** ``\d`` is not an escape at all, so it raises and
+    is repaired. ``\t`` and ``\b`` *are* escapes, so ``\times`` decodes to TAB +
+    "imes" and ``\beta`` to BACKSPACE + "eta" with nothing raised anywhere: the
+    reply parses, validates, passes grounding, is persisted, and reaches the
+    learner as "8imes300" and "y = Ξeta_0". A stored reply carried 0x09 twice
+    and 0x08 four times before this was caught.
+
+    That second case is why the pass runs *before* the strict parse rather than
+    only after a failure - there is no failure to react to.
 
     Args:
         text: The reply body.
@@ -246,24 +253,71 @@ def loads_model_json(text: str) -> Any:
             are repaired - a truncated or non-JSON reply is a real error and
             must stay one.
     """
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        return json.loads(_ESCAPES.sub(_repair_escape, text))
+    return json.loads(_ESCAPES.sub(_repair_escape, text))
 
 
-# Valid escapes match first so they are consumed whole; only a backslash that
-# starts nothing valid falls through to the second branch. Scanning for lone
-# backslashes without this turns an already-correct ``\\d`` into ``\\\d``.
-# ``u`` needs its four hex digits or LaTeX's ``\underline`` and ``\uparrow``
-# pass as valid and still fail.
-_ESCAPES = re.compile(r'\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4})|\\')
+# LaTeX commands whose first letter is also a JSON escape character. These are
+# the only ambiguous ones: every other letter already forms an invalid escape
+# and is repaired by the last branch below, including ``\u`` when it is not
+# followed by four hex digits (``\underline``, ``\uparrow``).
+#
+# Sorted longest-first so ``textbf`` wins over ``text``; the trailing boundary
+# then stops ``\textbf`` matching as ``text`` plus stray letters.
+_LATEX_AMBIGUOUS = sorted(
+    (
+        # t - \times and \text were both seen corrupting live output
+        "times", "theta", "tau", "text", "textbf", "textit", "texttt", "tfrac",
+        "tilde", "to", "top", "triangle", "therefore", "tan", "tanh", "tbinom",
+        # b - \beta and \begin likewise
+        "beta", "bar", "begin", "binom", "bmatrix", "bmod", "boldsymbol",
+        "bullet", "big", "bigcup", "bigcap", "bot", "boxed",
+        # f
+        "frac", "forall", "floor", "flat", "fbox", "frown",
+        # n
+        "neq", "ne", "nu", "nabla", "not", "notin", "nonumber", "ni", "nleq",
+        "ngeq", "nmid", "nsubseteq", "nsupseteq",
+        # r
+        "rho", "rightarrow", "rangle", "rceil", "rfloor", "right", "rtimes",
+        "rm", "rvert", "real",
+    ),
+    key=len,
+    reverse=True,
+)
+
+# Order is the whole design:
+#   1. an already-escaped backslash, consumed whole so a correct ``\\mathbf``
+#      is never touched (the model does get it right sometimes),
+#   2. a LaTeX command whose initial doubles as an escape character - the
+#      branch that stops ``\times`` decoding to TAB + "imes",
+#   3. a genuine escape, left alone - this is what keeps a real ``\n`` before a
+#      word working, and every newline in a real reply is followed by a word,
+#   4. anything else: an invalid escape, doubled so JSON accepts it.
+_ESCAPES = re.compile(
+    r"(?P<kept>\\\\)"
+    r"|(?P<latex>\\(?:" + "|".join(_LATEX_AMBIGUOUS) + r")(?![A-Za-z]))"
+    r'|(?P<valid>\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))'
+    r"|(?P<lone>\\)"
+)
+
+#: Control characters that mean a command was eaten despite the list above.
+#: Neither has any business in a study explanation, and their presence is the
+#: only trace left once ``\beta`` has become BACKSPACE + "eta".
+CORRUPTION_MARKERS = ("\x08", "\x0c")
 
 
 def _repair_escape(match: re.Match[str]) -> str:
-    """Keep a valid escape; double a bare backslash so JSON accepts it."""
-    found = match.group(0)
-    return found if len(found) > 1 else "\\\\"
+    """Escape a LaTeX command or a bare backslash; keep everything else.
+
+    Which branch matched is the whole decision, so it is read from the group
+    name rather than re-derived from the text - ``\\to`` and ``\\uABCD`` are
+    both longer than two characters and mean opposite things.
+    """
+    branch = match.lastgroup
+    if branch == "latex":
+        return "\\" + match.group(0)
+    if branch == "lone":
+        return "\\\\"
+    return match.group(0)
 
 
 def chat_json(

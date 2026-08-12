@@ -37,6 +37,7 @@ from pydantic import BaseModel, ValidationError
 from src.llm_gateway import (
     DEFAULT_ATTEMPTS,
     build_client,
+    CORRUPTION_MARKERS,
     chat_json,
     default_model,
     loads_model_json,
@@ -336,6 +337,16 @@ class QuestionAgentBase:
             payload = loads_model_json(raw_response)
         except json.JSONDecodeError as e:
             raise ValueError("The LLM returned invalid JSON.") from e
+
+        # A control character here means a LaTeX command the repair does not
+        # know about was eaten by a valid escape - eta becoming BACKSPACE +
+        # "eta". The text is already wrong and nothing further will notice, so
+        # this is the last chance to reject it rather than serve it.
+        if any(marker in raw_response for marker in CORRUPTION_MARKERS):
+            raise ValueError(
+                "The LLM reply contains control characters, which means a "
+                "LaTeX command was mis-read as an escape sequence."
+            )
 
         # The review flag is a control over the system, not an output of it.
         # Rejecting a `false` reply instead would let a prompt injection in an
