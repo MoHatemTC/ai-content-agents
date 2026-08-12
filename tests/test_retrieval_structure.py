@@ -181,12 +181,19 @@ def test_scope_without_ordinal_range_is_unchanged() -> None:
 
 
 def test_ordinal_range_confines_the_search() -> None:
+    """Two single-operator clauses, not one dict carrying both.
+
+    Chroma rejects ``{"$gte": 120, "$lte": 180}`` with "Expected operator
+    expression to have exactly one operator" - which only showed up when a
+    real labelled document was queried, never in a double.
+    """
     scope = RetrievalScope(document_id="doc-1", ordinal_range=(120, 180))
 
     assert scope.to_where() == {
         "$and": [
             {"document_id": "doc-1"},
-            {"ordinal": {"$gte": 120, "$lte": 180}},
+            {"ordinal": {"$gte": 120}},
+            {"ordinal": {"$lte": 180}},
         ]
     }
 
@@ -200,7 +207,8 @@ def test_ordinal_range_composes_with_session_scope() -> None:
         "$and": [
             {"document_id": "doc-1"},
             {"session_id": "s-1"},
-            {"ordinal": {"$gte": 0, "$lte": 10}},
+            {"ordinal": {"$gte": 0}},
+            {"ordinal": {"$lte": 10}},
         ]
     }
 

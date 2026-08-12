@@ -140,7 +140,11 @@ class RetrievalScope(BaseModel):
             clauses.append({"session_id": self.session_id})
         if self.ordinal_range is not None:
             first, last = self.ordinal_range
-            clauses.append({"ordinal": {"$gte": first, "$lte": last}})
+            # Two clauses, not one {"$gte": ..., "$lte": ...} dict: Chroma
+            # rejects an operator expression carrying more than one operator
+            # ("Expected operator expression to have exactly one operator").
+            clauses.append({"ordinal": {"$gte": first}})
+            clauses.append({"ordinal": {"$lte": last}})
         if not clauses:
             return None
         if len(clauses) == 1:
