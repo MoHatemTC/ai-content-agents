@@ -42,11 +42,11 @@ logger = logging.getLogger(__name__)
 # enough that the prompt stays far below any provider's context window.
 #
 # 8 left most of the allowance unused: measured against a real textbook it
-# returned ~15.7K characters against the 24K ceiling below, so a third of the
-# grounding the prompt was already willing to carry was simply not fetched.
-# That shows up as thin answers on the mentor and concept pages, which have
-# only these passages to reason from. 12 fills it (~23K) and MAX_CONTENT_CHARS
-# still trims anything unusual.
+# returned ~15.7K characters against the 24K ceiling that used to sit below,
+# so a third of the grounding the prompt was already willing to carry was
+# simply not fetched. That shows up as thin answers on the mentor and concept
+# pages, which have only these passages to reason from. 12 fills it (~23K)
+# and MAX_CONTENT_CHARS still trims anything unusual.
 #
 # This is shared by every page, so it is input cost on every generation -
 # roughly +2K tokens per call. Input is the cheap half, and ungrounded output
@@ -56,7 +56,48 @@ DEFAULT_TOP_K = 12
 # Hard ceiling on the content block, whatever retrieval returns. The bug this
 # module exists to fix was an unbounded prompt, so the fix should not depend on
 # retrieval always being well behaved.
-MAX_CONTENT_CHARS = 24_000
+#
+# Unlike the output-token ceilings, this one is not free headroom: retrieved
+# content is included in the prompt and billed as input tokens whether or not
+# the model needed all of it, so this is not raised to the same "spend the
+# full validated budget" degree as those. 24K was sized tight against
+# DEFAULT_TOP_K's own ~23K typical yield, leaving almost no margin for a
+# document with larger-than-average chunks or an unusually long retrieved
+# set. Doubled to give that margin room without doubling the typical-case
+# cost - ordinary generations still retrieve the same ~23K regardless of
+# where this ceiling sits; it only matters for the outlier it exists to
+# catch.
+MAX_CONTENT_CHARS = 48_000
+
+
+def cap_content(content: str, limit: int = MAX_CONTENT_CHARS) -> str:
+    """Trim ``content`` to ``limit`` on a passage boundary.
+
+    :meth:`~src.retrieval.models.GroundedContext.as_prompt_content` joins
+    retrieved passages with a blank line; cutting anywhere else would serve a
+    half-quoted passage, misrepresenting what the source says. Exported so
+    every caller of ``as_prompt_content`` shares one cap rather than each
+    re-deriving it - which is exactly how the FastAPI generation services
+    ended up with no cap at all while this module had one.
+
+    Args:
+        content: The rendered prompt content block.
+        limit: The character ceiling; defaults to :data:`MAX_CONTENT_CHARS`.
+
+    Returns:
+        ``content`` unchanged if within ``limit``, else trimmed to whole
+        passages (or a hard slice, if even the first passage exceeds it).
+    """
+    if len(content) <= limit:
+        return content
+    kept: list[str] = []
+    budget = limit
+    for block in content.split("\n\n"):
+        if len(block) + 2 > budget:
+            break
+        kept.append(block)
+        budget -= len(block) + 2
+    return "\n\n".join(kept) or content[:limit]
 
 
 class NoGroundingError(RuntimeError):
@@ -191,18 +232,9 @@ def grounded_content(
             "try a different focus."
         )
 
-    content = context.as_prompt_content()
-    if len(content) > MAX_CONTENT_CHARS:
-        # Trim on a passage boundary so a chunk is never half-quoted; a card
-        # citing a truncated passage would misrepresent the source.
-        kept: list[str] = []
-        budget = MAX_CONTENT_CHARS
-        for block in content.split("\n\n"):
-            if len(block) + 2 > budget:
-                break
-            kept.append(block)
-            budget -= len(block) + 2
-        content = "\n\n".join(kept) or content[:MAX_CONTENT_CHARS]
+    raw_content = context.as_prompt_content()
+    content = cap_content(raw_content)
+    if len(content) < len(raw_content):
         logger.info("trimmed grounded content to %d chars", len(content))
 
     logger.info(

@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/app/AppShell";
 import { RoleGate } from "@/components/app/RoleGate";
+import { AgentText } from "@/components/app/AgentText";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ReviewBadge, NeutralBadge, DifficultyBadge } from "@/components/app/badges";
@@ -611,7 +612,9 @@ function ReviewItem({
         </span>
       </div>
 
-      <h3 className="mt-4 text-[15px] leading-relaxed font-medium">{q.prompt}</h3>
+      <h3 className="mt-4 text-[15px] leading-relaxed font-medium">
+        <AgentText inline>{q.prompt}</AgentText>
+      </h3>
 
       {q.options.length > 0 && (
         <ul className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -625,7 +628,7 @@ function ReviewItem({
                   : "border-border bg-muted/40 text-muted-foreground",
               )}
             >
-              {opt}
+              <AgentText inline>{opt}</AgentText>
             </li>
           ))}
         </ul>
@@ -661,11 +664,11 @@ function ReviewItem({
                   <p className="text-muted-foreground text-[11px] font-semibold tracking-widest uppercase">
                     Answer key & rationale
                   </p>
-                  <p className="mt-1 text-sm font-medium">{q.answer}</p>
+                  <AgentText className="mt-1 text-sm font-medium">{q.answer}</AgentText>
                   {q.rationale && (
-                    <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
+                    <AgentText className="text-muted-foreground mt-1 text-sm leading-relaxed">
                       {q.rationale}
-                    </p>
+                    </AgentText>
                   )}
                 </div>
               )}

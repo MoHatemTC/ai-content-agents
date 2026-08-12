@@ -10,10 +10,8 @@ import json
 import logging
 import sqlite3
 from datetime import datetime, timezone
-from typing import Any
 from uuid import uuid4
 
-from backend.errors import ApiError
 from backend.chat.schemas import (
     ChatCitation,
     ChatSummary,
@@ -25,11 +23,13 @@ from backend.chat.schemas import (
     WsChatMessage,
 )
 from backend.generation.service import _get_llm_client, _resolve_model
+from backend.runs import generate_or_422, recorded_run
 from backend.search.service import build_grounded_context
 from src.agents.concept_agent import ConceptAgent
 from src.agents.mentor_agent import MentorAgent
 from src.retrieval.models import InsufficientGroundingError
-from src.validation.review_schema import AgentRun, GeneratedOutput, OutputStatus
+from src.study.grounding import DEFAULT_TOP_K
+from src.validation.review_schema import GeneratedOutput, OutputStatus
 from src.validation.store import PlatformStore
 
 logger = logging.getLogger(__name__)
@@ -137,32 +137,6 @@ def list_chats_service(
     return GetChatsResponse(chats=chats)
 
 
-def _generate_or_422(agent: Any, **kwargs: Any) -> Any:
-    """Call an explanation agent, turning a grounding refusal into a 422.
-
-    PREVIEW ADAPTATION. These two call sites passed ``strict=False``, which
-    existed on the separate MentorAgent and ConceptAgent this branch was
-    written against. PR #39 merged those into one ExplanationAgentBase and
-    dropped the flag, because it split the checks by kind instead: the fuzzy
-    support heuristic became advisory for every caller - which is most of what
-    strict=False bought - while the exact checks still refuse. So the toggle is
-    gone rather than renamed.
-
-    What still raises is an invented citation, or a reply that cites nothing.
-    A chat answer is not a good reason to relax either, so the call is adapted
-    rather than the guarantee. A 422 naming the problem beats the 500 the
-    catch-all handler would otherwise return.
-    """
-    try:
-        return agent.generate(**kwargs)
-    except ValueError as exc:
-        raise ApiError(
-            status_code=422,
-            code="ungrounded_reply",
-            message=f"The model's reply could not be grounded in this workspace: {exc}",
-        ) from exc
-
-
 def send_chat_message_service(
     request: MentorChatRequest,
     *,
@@ -198,61 +172,90 @@ def send_chat_message_service(
     finally:
         conn.close()
 
-    # Retrieve grounded context
-    grounded = build_grounded_context(
-        workspace_id=request.workspaceId,
-        query=request.message,
-        document_ids=request.documentIds if request.documentIds else None,
-        chroma_dir=chroma_dir,
-    )
-
-    if not grounded.chunks:
-        raise InsufficientGroundingError(
-            "No relevant document chunks found to ground the answer."
+    # Everything that can fail lives inside the recorder, so a refused or
+    # unanswerable turn is a failed run in History rather than a silence.
+    with recorded_run(
+        store,
+        agent_name=f"{kind}_agent",
+        input_context=f"chat:{request.chatId}",
+        model=_resolve_model(request.model),
+    ) as run:
+        # Retrieve grounded context. top_k matches the study lane's, not the
+        # search lane's default of 5: every Streamlit page - mentor and
+        # concept included - retrieves 12 passages through the same
+        # ground()/grounded_content() helper; this endpoint had drifted back
+        # to 5. (No content cap here: explanation_agent_base.generate() lets
+        # `context` override `content` for the prompt whenever both are
+        # supplied, which they always are below, so a capped string handed
+        # to `content=` would be silently discarded - capping would need to
+        # change what `context` itself renders, which touches the shared
+        # agent base the Streamlit/orchestrator path also depends on.)
+        grounded = build_grounded_context(
+            workspace_id=request.workspaceId,
+            query=request.message,
+            document_ids=request.documentIds if request.documentIds else None,
+            chroma_dir=chroma_dir,
+            db_path=db_path,
+            top_k=DEFAULT_TOP_K,
         )
 
-    # Get document titles for citations
-    doc_titles: dict[str, str] = {}
-    conn = _connect(db_path)
-    try:
-        rows = conn.execute("SELECT id, title FROM documents").fetchall()
-        doc_titles = {r[0]: r[1] for r in rows}
-    finally:
-        conn.close()
+        if not grounded.chunks:
+            raise InsufficientGroundingError(
+                "No relevant document chunks found to ground the answer."
+            )
+        run.source_chunk_ids = grounded.chunk_ids
 
-    client = _get_llm_client(for_study=False)
+        # Document titles and chunk pages for citations. The page is what makes
+        # a reference readable ("p. 213" beats a uuid), and it lives here rather
+        # than on the retrieved chunk: RetrievedChunk carries no page, so the
+        # previous getattr(retrieved, "page", None) was always None and the
+        # reference panel never showed one.
+        doc_titles: dict[str, str] = {}
+        chunk_pages: dict[str, int] = {}
+        conn = _connect(db_path)
+        try:
+            rows = conn.execute("SELECT id, title FROM documents").fetchall()
+            doc_titles = {r[0]: r[1] for r in rows}
+            page_rows = conn.execute(
+                "SELECT id, page FROM document_chunks WHERE page IS NOT NULL"
+            ).fetchall()
+            chunk_pages = {r[0]: r[1] for r in page_rows}
+        finally:
+            conn.close()
 
-    if kind == "concept":
-        agent = ConceptAgent(client=client, model=_resolve_model(request.model))
-        output = _generate_or_422(
-            agent,
-            content=grounded,
-            user_question=request.message,
-            difficulty="intermediate",
-            context=grounded,
-        )
-        reply_text = f"{output.definition}\n\n{output.explanation}"
-    else:
-        agent = MentorAgent(client=client, model=_resolve_model(request.model))
-        output = _generate_or_422(
-            agent,
-            content=grounded,
-            user_question=request.message,
-            difficulty="intermediate",
-            context=grounded,
-        )
-        reply_text = output.explanation
+        client = _get_llm_client(for_study=False)
 
-    # Build citations from the references the agent actually cited for this
-    # reply, so each message shows its own sources rather than every chunk that
-    # was retrieved. Falls back to the retrieved context when the reply carries
-    # no references.
-    chunk_by_id = {c.chunk.chunk_id: c for c in grounded.chunks}
-    refs = getattr(output, "references", None) or []
+        if kind == "concept":
+            agent = ConceptAgent(client=client, model=_resolve_model(request.model))
+            output = generate_or_422(
+                agent,
+                content=grounded,
+                user_question=request.message,
+                difficulty="intermediate",
+                context=grounded,
+            )
+            reply_text = f"{output.definition}\n\n{output.explanation}"
+        else:
+            agent = MentorAgent(client=client, model=_resolve_model(request.model))
+            output = generate_or_422(
+                agent,
+                content=grounded,
+                user_question=request.message,
+                difficulty="intermediate",
+                context=grounded,
+            )
+            reply_text = output.explanation
 
-    citations: list[ChatCitation] = []
-    if refs:
-        for ref in refs:
+        # Build citations from the references the agent actually cited for this
+        # reply, so each message shows its own sources rather than every chunk
+        # that was retrieved. There is deliberately no fallback: `context=` is
+        # passed above, so a reply citing nothing is refused before it gets
+        # here, and attaching the whole context to it would claim a citation
+        # the model never made.
+        chunk_by_id = {c.chunk.chunk_id: c for c in grounded.chunks}
+
+        citations: list[ChatCitation] = []
+        for ref in getattr(output, "references", None) or []:
             segment_id = ref.segment_id
             retrieved = chunk_by_id.get(segment_id)
             doc_id = segment_id.split("-c")[0] if "-c" in segment_id else segment_id
@@ -262,84 +265,72 @@ def send_chat_message_service(
                 ChatCitation(
                     docId=doc_id,
                     docTitle=title,
-                    page=getattr(retrieved, "page", None) if retrieved else None,
+                    chunk=segment_id,
+                    page=chunk_pages.get(segment_id),
                     snippet=snippet[:200],
                 )
             )
-    else:
-        for chunk in grounded.chunks:
-            doc_id = (
-                chunk.chunk.chunk_id.split("-c")[0]
-                if "-c" in chunk.chunk.chunk_id
-                else chunk.chunk.chunk_id
-            )
-            title = doc_titles.get(doc_id, "Document")
-            citations.append(
-                ChatCitation(
-                    docId=doc_id,
-                    docTitle=title,
-                    page=getattr(chunk, "page", None),
-                    snippet=chunk.chunk.text[:200],
-                )
-            )
 
-    assistant_msg_id = f"m-{uuid4().hex[:8]}"
-    assistant_now = datetime.now(timezone.utc).isoformat()
-    citations_json = json.dumps([c.model_dump() for c in citations])
+        assistant_msg_id = f"m-{uuid4().hex[:8]}"
+        assistant_now = datetime.now(timezone.utc).isoformat()
+        citations_json = json.dumps([c.model_dump() for c in citations])
 
-    conn = _connect(db_path)
-    try:
-        conn.execute(
-            """
-            INSERT INTO chat_messages (id, chat_id, role, text, citations_json, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                assistant_msg_id,
-                request.chatId,
-                "assistant",
-                reply_text,
-                citations_json,
-                assistant_now,
+        conn = _connect(db_path)
+        try:
+            conn.execute(
+                """
+                INSERT INTO chat_messages (id, chat_id, role, text, citations_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    assistant_msg_id,
+                    request.chatId,
+                    "assistant",
+                    reply_text,
+                    citations_json,
+                    assistant_now,
+                ),
+            )
+            conn.execute(
+                "UPDATE chats SET updated_at = ? WHERE id = ?",
+                (assistant_now, request.chatId),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        # Save the output; recorded_run owns the AgentRun lifecycle.
+        gen_id = f"gen-{uuid4().hex[:8]}"
+        gen_output = GeneratedOutput(
+            id=gen_id,
+            agent_run_id=run.id,
+            output_type=f"{kind}_chat",
+            payload={
+                "text": reply_text,
+                "citations": [c.model_dump() for c in citations],
+            },
+            schema_name="MentorOutput" if kind == "mentor" else "ConceptOutput",
+            validation_passed=True,
+            validation_report={
+                "grounded": True,
+                # generate_reviewable() collects these into the review record;
+                # this path calls generate(), so it carries them itself. They
+                # are advisory - a 0.6 token-overlap heuristic that rejects
+                # correct answers - so they inform the reviewer, never block.
+                "grounding_warnings": list(
+                    getattr(agent, "_grounding_warnings", []) or []
+                ),
+            },
+            status=OutputStatus.PENDING,
+        )
+        store.save_output(gen_output)
+
+        return MentorChatResponse(
+            message=WsChatMessage(
+                id=assistant_msg_id,
+                role="assistant",
+                text=reply_text,
+                time=assistant_now[11:16],
             ),
+            citations=citations,
         )
-        conn.execute(
-            "UPDATE chats SET updated_at = ? WHERE id = ?",
-            (assistant_now, request.chatId),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-    # Save to PlatformStore
-    run = AgentRun(
-        agent_name=f"{kind}_agent",
-        input_context=f"chat:{request.chatId}",
-        source_chunk_ids=grounded.chunk_ids,
-        model=request.model,
-    )
-    run.mark_finished()
-    store.save_agent_run(run)
-
-    gen_id = f"gen-{uuid4().hex[:8]}"
-    gen_output = GeneratedOutput(
-        id=gen_id,
-        agent_run_id=run.id,
-        output_type=f"{kind}_chat",
-        payload={"text": reply_text, "citations": [c.model_dump() for c in citations]},
-        schema_name="MentorOutput" if kind == "mentor" else "ConceptOutput",
-        validation_passed=True,
-        validation_report={"grounded": True},
-        status=OutputStatus.PENDING,
-    )
-    store.save_output(gen_output)
-
-    return MentorChatResponse(
-        message=WsChatMessage(
-            id=assistant_msg_id,
-            role="assistant",
-            text=reply_text,
-            time=assistant_now[11:16],
-        ),
-        citations=citations,
-    )

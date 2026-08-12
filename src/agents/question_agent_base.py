@@ -39,8 +39,10 @@ from src.llm_gateway import (
     build_client,
     chat_json,
     default_model,
+    find_corruption,
+    loads_model_json,
 )
-from src.retrieval.grounding import verify_references
+from src.retrieval.grounding import CitationGroundingError, verify_references
 from src.retrieval.models import GroundedContext
 from src.validation.review_schema import GeneratedOutput
 from src.validation.reviewable import persist_reviewable_run
@@ -66,7 +68,12 @@ logger = logging.getLogger(__name__)
 #
 # Reusing the flashcard figure is what made five questions ask for 2000 tokens
 # and come back truncated mid-JSON.
-QUESTION_ITEM_TOKENS = 400
+#
+# Widened from 400 to 600 for further margin now that MAX_OUTPUT_TOKENS has
+# the budget to fund it - not a new measurement, the 369/253 figures above
+# still stand, this is spare room on top of them rather than a revised
+# estimate.
+QUESTION_ITEM_TOKENS = 600
 
 
 class QuestionCountError(ValueError):
@@ -330,9 +337,24 @@ class QuestionAgentBase:
         )
 
         try:
-            payload = json.loads(raw_response)
+            # Tolerates the unescaped backslashes LaTeX puts in a JSON string;
+            # a truncated or non-JSON reply still raises.
+            payload = loads_model_json(raw_response)
         except json.JSONDecodeError as e:
             raise ValueError("The LLM returned invalid JSON.") from e
+
+        # A control character here means a LaTeX command the repair does not
+        # know about was mis-read as an escape - backslash-b becoming a
+        # BACKSPACE and taking the "b" with it. The text is already wrong and
+        # nothing downstream will notice, so this is the last chance to reject
+        # it rather than serve it. Checked on the decoded payload: the raw
+        # reply holds a backslash and a letter, never the control character.
+        corruption = find_corruption(payload)
+        if corruption is not None:
+            raise ValueError(
+                f"The LLM reply contains {corruption!r}, which means a LaTeX "
+                "command was mis-read as an escape sequence."
+            )
 
         # The review flag is a control over the system, not an output of it.
         # Rejecting a `false` reply instead would let a prompt injection in an
@@ -527,7 +549,8 @@ class QuestionAgentBase:
             Human-readable warnings; empty when nothing was flagged.
 
         Raises:
-            ValueError: If a citation was invented, or none was given.
+            CitationGroundingError: If a citation was invented, or none
+                was given.
         """
         references = [
             reference for item in result.questions for reference in item.references
@@ -538,14 +561,14 @@ class QuestionAgentBase:
             # passes grounding. Every prompt here says "every question must
             # contain at least one grounding reference"; this is what makes
             # that true rather than merely requested.
-            raise ValueError(
+            raise CitationGroundingError(
                 "The generated questions cite no sources, so they cannot be "
                 "verified against the retrieved content."
             )
 
         verification = verify_references(references, context)
         if not verification.valid:
-            raise ValueError(
+            raise CitationGroundingError(
                 "The generated references are not grounded in the retrieved "
                 f"content: {verification.unknown_segment_ids}"
             )

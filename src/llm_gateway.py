@@ -21,6 +21,7 @@ CI has none.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -39,7 +40,18 @@ DEFAULT_MODEL = "FW-Kimi-K2.6"
 # The study agents used a 60 s timeout; the src/agents ones used the SDK
 # default. 60 s for all of them: a request that has not answered by then is not
 # going to, and an unbounded wait is worse in a Streamlit app than a clear error.
-DEFAULT_TIMEOUT = 60.0
+#
+# That assumption was calibrated against a ~12000-token output ceiling. Raising
+# MAX_OUTPUT_TOKENS/EXPLANATION_TOKENS to 65536 (src/study/llm_client.py,
+# src/agents/explanation_agent_base.py) caps completion *length*; this caps
+# completion *duration* - two different axes that were only coincidentally
+# compatible at the old ceiling. A timeout has no status_code, so chat_json's
+# retry loop below treats it like any other non-400/422 failure and lets it
+# propagate immediately rather than retrying - it was never silently retried,
+# only rarely reached. Raised so a legitimately long reply - the kind the
+# higher ceiling exists to allow - has room to finish instead of being cut off
+# by the clock at the exact moment the token budget stopped being the limit.
+DEFAULT_TIMEOUT = 180.0
 
 # Total tries, including the first. Free-tier gateways return an error payload
 # intermittently for a prompt that succeeds on retry, which is why the study
@@ -212,6 +224,172 @@ def strip_fences(text: str) -> str:
     """Remove a surrounding ``` block, if the model added one."""
     match = _FENCE.match(text)
     return match.group("body") if match else text.strip()
+
+
+def loads_model_json(text: str) -> Any:
+    r"""``json.loads`` for a reply that may carry LaTeX.
+
+    The agents ask for mathematics as LaTeX and the model writes it inside JSON
+    string values - ``$x_1, \dots, x_n$``. JSON recognises only ``\" \\ \/ \b
+    \f \n \r \t \uXXXX``, so ``\d`` makes the parser reject a reply that is
+    otherwise complete and correct, and the learner sees "The LLM returned
+    invalid JSON".
+
+    :func:`chat_json` sends ``response_format`` to stop this at the source, and
+    that measured 8 of 8 when it was written. It no longer holds for every
+    model: against the real Linear Algebra textbook,
+    ``gemini/gemini-flash-lite-latest`` failed 3 of 6 identical Mentor requests
+    this way *with* JSON mode accepted. Forbidding LaTeX in the prompt is the
+    other lever and is the wrong one - the notation is the point, and the
+    interface now renders it.
+
+    **Two failures, not one.** ``\d`` is not an escape at all, so it raises and
+    is repaired. ``\t`` and ``\b`` *are* escapes, so ``\times`` decodes to TAB +
+    "imes" and ``\beta`` to BACKSPACE + "eta" with nothing raised anywhere: the
+    reply parses, validates, passes grounding, is persisted, and reaches the
+    learner as "8imes300" and "y = Ξeta_0". A stored reply carried 0x09 twice
+    and 0x08 four times before this was caught.
+
+    That second case is why the pass runs *before* the strict parse rather than
+    only after a failure - there is no failure to react to.
+
+    Args:
+        text: The reply body.
+
+    Returns:
+        The decoded payload.
+
+    Raises:
+        json.JSONDecodeError: If the text is still not JSON once its escapes
+            are repaired - a truncated or non-JSON reply is a real error and
+            must stay one.
+    """
+    return json.loads(_ESCAPES.sub(_repair_escape, _protect_maths(text)))
+
+
+# A maths span. Inside one, every backslash is a LaTeX command by construction,
+# which is what makes a list of command names unnecessary: measured across the
+# stored replies, 29 of 29 commands sat inside delimiters and none outside,
+# because that is what the prompts ask for.
+#
+# The length caps bound the one way this misreads prose. "the process costs $5
+# … the output is worth $10" is ordinary writing - and a Leontief economics
+# chapter is exactly where it appears - so an unbalanced pair would otherwise
+# swallow everything between them and escape a real newline.
+#
+# 120 is measured, not guessed: across 49 real inline spans the median was 12
+# characters and the longest 56 - a bmatrix - so this leaves roughly double the
+# headroom while failing closed on a sentence-length gap. Display maths keeps a
+# larger allowance because nobody writes "$$5".
+_MATHS_SPANS = re.compile(
+    r"\$\$[\s\S]{1,400}?\$\$"  # display maths
+    r"|\$[^$]{1,120}?\$"  # inline maths
+)
+
+# Within a span: an already-escaped backslash, consumed whole so a correct
+# ``\\begin`` is not escaped twice, or a command *name*.
+#
+# Two letters minimum, because a command has at least two and a control escape
+# has exactly one. Escaping every backslash instead turned a real newline
+# inside display maths into a literal ``\n`` - the model does lay equations out
+# across lines, and ``$$A =`` newline ``\begin{bmatrix}`` is how they arrive.
+_SPAN_COMMAND = re.compile(r"\\\\|\\[A-Za-z]{2,}")
+
+
+def _protect_maths(text: str) -> str:
+    r"""Escape the LaTeX commands inside a maths span.
+
+    This is the pass that removes the guessing. ``$x \ne y$`` is unambiguous:
+    a command is the only thing a backslash can start there, so ``\ne`` is the
+    symbol and not a newline followed by "e". Outside a span the question stays
+    open and the second pass answers it conservatively.
+
+    Anything this leaves - a lone ``\n``, a ``\,`` thin space - falls through to
+    that second pass and is treated exactly as it would be in prose.
+    """
+
+    def protect(match: re.Match[str]) -> str:
+        return _SPAN_COMMAND.sub(
+            lambda m: m.group(0) if m.group(0) == "\\\\" else "\\" + m.group(0),
+            match.group(0),
+        )
+
+    return _MATHS_SPANS.sub(protect, text)
+
+# The second pass, for what is left outside a maths span. Order is the design:
+#   1. an already-escaped backslash, consumed whole. After _protect_maths this
+#      also covers every command inside maths, and a correct ``\\mathbf`` the
+#      model wrote itself,
+#   2. a backslash-b or backslash-f followed by letters. These decode to
+#      BACKSPACE and FORM FEED, neither of which means anything in an
+#      explanation, so the letters are a command whether or not anyone
+#      delimited them,
+#   3. a genuine escape, left alone: what keeps a real newline a newline,
+#   4. anything else: an invalid escape, doubled so JSON accepts it.
+#
+# There is deliberately no list of command names. Undelimited ``\theta`` is
+# indistinguishable from a tab, so it stays a tab and find_corruption refuses
+# the reply - one more sample, rather than a guess that was wrong twice.
+_ESCAPES = re.compile(
+    r"(?P<kept>\\\\)"
+    r"|(?P<never>\\[bf][A-Za-z]+)"
+    r'|(?P<valid>\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))'
+    r"|(?P<lone>\\)"
+)
+
+#: What a mis-read LaTeX command leaves behind once JSON has decoded it.
+#:
+#: A newline is deliberately absent: it is ordinary in an explanation, so
+#: flagging it would reject every well-formed reply. That leaves an
+#: n-initial command outside ``$...$`` as the one case nothing can catch, and
+#: it degrades to a stray line break rather than mangled words.
+CORRUPTION_MARKERS = ("\x08", "\x0c", "\x09", "\x0d")
+
+
+def _repair_escape(match: re.Match[str]) -> str:
+    """Escape a LaTeX command or a bare backslash; keep everything else.
+
+    Which branch matched is the whole decision, so it is read from the group
+    name rather than re-derived from the text - ``\\to`` and ``\\uABCD`` are
+    both longer than two characters and mean opposite things.
+    """
+    branch = match.lastgroup
+    if branch == "never":
+        return "\\" + match.group(0)
+    if branch == "lone":
+        return "\\\\"
+    return match.group(0)
+
+
+def find_corruption(payload: Any) -> str | None:
+    """Return the first corruption marker in any string inside ``payload``.
+
+    The last line of defence. ``loads_model_json`` protects the commands it
+    knows about; anything it misses has already decoded to a control character
+    by the time this runs, and nothing downstream will notice - the reply
+    parses, satisfies its schema, passes grounding, and reaches the learner as
+    mangled words.
+
+    It must be handed the **decoded** payload. The marker cannot appear in the
+    raw reply, which holds the two characters ``\\`` and ``b`` and no backspace
+    at all; checking the raw text was a guarantee that could never fire.
+
+    Args:
+        payload: A decoded JSON value.
+
+    Returns:
+        The offending character, or ``None`` when the payload is clean.
+    """
+    if isinstance(payload, str):
+        return next((m for m in CORRUPTION_MARKERS if m in payload), None)
+    if isinstance(payload, dict):
+        payload = payload.values()
+    if isinstance(payload, (list, tuple)) or hasattr(payload, "__iter__"):
+        for item in payload:
+            found = find_corruption(item)
+            if found is not None:
+                return found
+    return None
 
 
 def chat_json(

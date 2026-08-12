@@ -32,6 +32,7 @@ from backend.generation.schemas import (
     WsFlashcard,
 )
 from backend.errors import ApiError
+from backend.runs import generate_or_422, recorded_run
 from backend.search.service import build_grounded_context
 from src.agents.question_bank_agent import QuestionBankAgent
 from src.agents.test_help_agent import TestHelpAgent
@@ -39,9 +40,10 @@ from src.llm_gateway import build_client, default_model
 from src.retrieval.models import InsufficientGroundingError
 from src.schemas.flashcards import Flashcard
 from src.study.flashcard_agent import FlashcardAgent
+from src.study.grounding import DEFAULT_TOP_K, cap_content
 from src.study.revision_agent import RevisionAgent
 from src.study.study_plan_agent import StudyPlanAgent
-from src.validation.review_schema import AgentRun, GeneratedOutput, OutputStatus
+from src.validation.review_schema import GeneratedOutput, OutputStatus
 from src.validation.schemas import QuestionBankOutput, QuestionItem
 from src.validation.store import PlatformStore
 from src.validation.support_validator import extract_claim_text, validate_support
@@ -124,152 +126,154 @@ def generate_questions_service(
 ) -> GenerateQuestionsResponse:
     """Generate question bank or exam help grounded in workspace documents."""
     store = PlatformStore(db_path)
+    agent_name = "test_help_agent" if is_test_help else "question_bank_agent"
+    model = _resolve_model(request.model)
 
     # 1. Build grounded context
     query = (
         f"Key concepts difficulty {request.difficulty} types {','.join(request.types)}"
     )
-    grounded = build_grounded_context(
-        workspace_id=request.workspaceId,
-        query=query,
-        document_ids=request.documentIds if request.documentIds else None,
-        chroma_dir=chroma_dir,
-    )
-
-    if not grounded.chunks:
-        raise InsufficientGroundingError(
-            "No indexed documents found in workspace to ground generation."
-        )
-
-    # 2. Invoke agent
-    client = _get_llm_client(for_study=False)
     q_type = request.types[0] if request.types else "MCQ"
-    content_text = grounded.as_prompt_content()
 
-    if is_test_help:
-        agent = TestHelpAgent(client=client, model=_resolve_model(request.model))
-        output: QuestionBankOutput = agent.generate(
-            content=content_text,
-            question_type=q_type,
-            difficulty=request.difficulty.lower(),
-            num_questions=request.count,
-        )
-    else:
-        agent = QuestionBankAgent(client=client, model=_resolve_model(request.model))
-        output = agent.generate(
-            content=content_text,
-            question_type=q_type,
-            difficulty=request.difficulty.lower(),
-            num_questions=request.count,
-        )
-
-    # 3. Build per-question citations from each question's own grounded references.
-    # The agent returns references per question, so citations must follow the
-    # question rather than reusing one shared list for the whole request.
-    chunk_by_id = {chunk.chunk.chunk_id: chunk for chunk in grounded.chunks}
-
-    def _question_citations(q: QuestionItem) -> list[Citation]:
-        """Map one question's agent references to the citation contract."""
-        refs = getattr(q, "references", None) or []
-        if not refs:
-            # No per-question references: fall back to the retrieved context so
-            # every question still shows where the material came from.
-            return [
-                Citation(
-                    doc=(
-                        chunk.chunk.chunk_id.split("-c")[0]
-                        if "-c" in chunk.chunk.chunk_id
-                        else chunk.chunk.chunk_id
-                    ),
-                    chunk=chunk.chunk.chunk_id,
-                    snippet=chunk.chunk.text[:200],
-                    score=round(chunk.score, 3),
-                )
-                for chunk in grounded.chunks
-            ]
-
-        result: list[Citation] = []
-        for ref in refs:
-            segment_id = ref.segment_id
-            retrieved = chunk_by_id.get(segment_id)
-            doc_id = segment_id.split("-c")[0] if "-c" in segment_id else segment_id
-            snippet = ref.text or (retrieved.chunk.text if retrieved else "")
-            result.append(
-                Citation(
-                    doc=doc_id,
-                    chunk=segment_id,
-                    snippet=snippet[:200],
-                    score=round(retrieved.score, 3) if retrieved else 0.0,
-                )
-            )
-        return result
-
-    # 4. Support validation score
-    support = validate_support(extract_claim_text(output), grounded)
-    grounding_score = 100.0 if support.supported else 85.0
-    quality_score = 9.2 if support.supported else 7.5
-
-    questions: list[GeneratedQuestion] = []
-    for idx, q in enumerate(output.questions, start=1):
-        questions.append(
-            GeneratedQuestion(
-                id=f"q-{uuid4().hex[:8]}",
-                prompt=q.question,
-                type=_display_type(getattr(q, "type", "") or q_type),
-                difficulty=request.difficulty,
-                options=getattr(q, "options", None),
-                answer=getattr(q, "correct_answer", "") or getattr(q, "answer", ""),
-                rationale=getattr(q, "rationale", ""),
-                bloom="Understanding",
-                quality=quality_score,
-                grounded=grounding_score,
-                estMinutes=2,
-                review="Pending",
-                citations=_question_citations(q),
-            )
-        )
-
-    # 5. Save AgentRun and GeneratedOutput to PlatformStore
-    run = AgentRun(
-        agent_name="test_help_agent" if is_test_help else "question_bank_agent",
+    # Everything that can fail runs inside the recorder, so an unanswerable
+    # query or a refused generation is a failed run in History rather than a
+    # response that never happened.
+    with recorded_run(
+        store,
+        agent_name=agent_name,
         input_context=f"workspace:{request.workspaceId}",
-        source_chunk_ids=grounded.chunk_ids,
-        model=_resolve_model(request.model),
-    )
-    run.mark_finished()
-    store.save_agent_run(run)
-
-    gen_id = f"gen-{uuid4().hex[:8]}"
-    gen_output = GeneratedOutput(
-        id=gen_id,
-        agent_run_id=run.id,
-        output_type="question_bank",
-        payload={"questions": [q.model_dump() for q in questions]},
-        schema_name="QuestionBankOutput",
-        validation_passed=support.supported,
-        validation_report={
-            "support": support.supported,
-            "grounding_score": grounding_score,
-        },
-        status=OutputStatus.PENDING,
-    )
-    store.save_output(gen_output)
-
-    # Auto-flag if thresholds not met
-    if grounding_score < 98.0 or quality_score < 8.5:
-        store.log_event(
-            "auto_flagged",
-            f"Output {gen_id} auto-flagged due to low grounding ({grounding_score}) or quality ({quality_score})",
-            output_id=gen_id,
+        model=model,
+    ) as run:
+        grounded = build_grounded_context(
+            workspace_id=request.workspaceId,
+            query=query,
+            document_ids=request.documentIds if request.documentIds else None,
+            chroma_dir=chroma_dir,
+            db_path=db_path,
+            top_k=DEFAULT_TOP_K,
         )
 
-    return GenerateQuestionsResponse(
-        generationId=gen_id,
-        kind="question_bank",
-        grounding_score=grounding_score,
-        quality_score=quality_score,
-        questions=questions,
-    )
+        if not grounded.chunks:
+            raise InsufficientGroundingError(
+                "No indexed documents found in workspace to ground generation."
+            )
+        run.source_chunk_ids = grounded.chunk_ids
+
+        # 2. Invoke agent
+        client = _get_llm_client(for_study=False)
+        agent_type = TestHelpAgent if is_test_help else QuestionBankAgent
+        agent = agent_type(client=client, model=model)
+        # `context=` is what switches _enforce_grounding on. Without it the
+        # agent verifies nothing (question_agent_base._generate_once), so an
+        # invented segment_id reaches the UI wearing a citation chip.
+        #
+        # `content=` is capped and `context=` is not: unlike the explanation
+        # agents (mentor/concept), question_agent_base._build_prompt renders
+        # `content` regardless of `context` - `context` only turns on
+        # verification - so this is the one place capping the prompt text
+        # actually does anything for this agent family.
+        output: QuestionBankOutput = generate_or_422(
+            agent,
+            content=cap_content(grounded.as_prompt_content()),
+            question_type=q_type,
+            difficulty=request.difficulty.lower(),
+            num_questions=request.count,
+            context=grounded,
+        )
+
+        # 3. Build per-question citations from each question's own references.
+        # The agent returns references per question, so citations must follow
+        # the question rather than reusing one shared list for the request.
+        chunk_by_id = {chunk.chunk.chunk_id: chunk for chunk in grounded.chunks}
+
+        def _question_citations(q: QuestionItem) -> list[Citation]:
+            """Map one question's agent references to the citation contract."""
+            # No fallback to "every retrieved chunk" here. A citation chip
+            # states the model cited that passage; attaching the whole context
+            # to an uncited question says something the model never said. With
+            # `context=` passed above, an uncited set is refused outright, so
+            # this list is empty only when a question genuinely cited nothing.
+            result: list[Citation] = []
+            for ref in getattr(q, "references", None) or []:
+                segment_id = ref.segment_id
+                retrieved = chunk_by_id.get(segment_id)
+                doc_id = segment_id.split("-c")[0] if "-c" in segment_id else segment_id
+                snippet = ref.text or (retrieved.chunk.text if retrieved else "")
+                result.append(
+                    Citation(
+                        doc=doc_id,
+                        chunk=segment_id,
+                        snippet=snippet[:200],
+                        score=round(retrieved.score, 3) if retrieved else 0.0,
+                    )
+                )
+            return result
+
+        # 4. Support validation score
+        support = validate_support(extract_claim_text(output), grounded)
+        grounding_score = 100.0 if support.supported else 85.0
+        quality_score = 9.2 if support.supported else 7.5
+
+        questions: list[GeneratedQuestion] = []
+        for q in output.questions:
+            questions.append(
+                GeneratedQuestion(
+                    id=f"q-{uuid4().hex[:8]}",
+                    prompt=q.question,
+                    type=_display_type(getattr(q, "type", "") or q_type),
+                    difficulty=request.difficulty,
+                    options=getattr(q, "options", None),
+                    answer=getattr(q, "correct_answer", "")
+                    or getattr(q, "answer", ""),
+                    rationale=getattr(q, "rationale", ""),
+                    bloom="Understanding",
+                    quality=quality_score,
+                    grounded=grounding_score,
+                    estMinutes=2,
+                    review="Pending",
+                    citations=_question_citations(q),
+                )
+            )
+
+        # 5. Save the GeneratedOutput; recorded_run owns the AgentRun.
+        gen_id = f"gen-{uuid4().hex[:8]}"
+        gen_output = GeneratedOutput(
+            id=gen_id,
+            agent_run_id=run.id,
+            output_type="question_bank",
+            payload={"questions": [q.model_dump() for q in questions]},
+            schema_name="QuestionBankOutput",
+            validation_passed=support.supported,
+            validation_report={
+                "support": support.supported,
+                "grounding_score": grounding_score,
+                # The agent's own grounding warnings are advisory (a 0.6
+                # token-overlap heuristic); they inform the reviewer rather
+                # than blocking, so they belong in the review record.
+                "grounding_warnings": list(
+                    getattr(agent, "_grounding_warnings", []) or []
+                ),
+            },
+            status=OutputStatus.PENDING,
+        )
+        store.save_output(gen_output)
+
+        # Auto-flag if thresholds not met
+        if grounding_score < 98.0 or quality_score < 8.5:
+            store.log_event(
+                "auto_flagged",
+                f"Output {gen_id} auto-flagged due to low grounding "
+                f"({grounding_score}) or quality ({quality_score})",
+                output_id=gen_id,
+            )
+
+        return GenerateQuestionsResponse(
+            generationId=gen_id,
+            kind="question_bank",
+            grounding_score=grounding_score,
+            quality_score=quality_score,
+            questions=questions,
+        )
 
 
 def generate_flashcards_service(
@@ -282,9 +286,8 @@ def generate_flashcards_service(
 
     When ``request.topic`` names a real topic (anything but "All chapters"),
     it becomes the retrieval query so the deck drills that specific material
-    instead of the whole document. Every card carries its own citations built
-    from the chunk id the model cited (or, as a fallback, the chunks whose
-    text contains the card's source topic).
+    instead of the whole document. Every card carries the citation for the
+    chunk the model actually cited, and none when it cited nothing.
     """
     store = PlatformStore(db_path)
     topic = (request.topic or "").strip()
@@ -293,35 +296,58 @@ def generate_flashcards_service(
         if topic and topic.lower() != "all chapters"
         else "flashcards key concepts definitions terms"
     )
-    grounded = build_grounded_context(
-        workspace_id=request.workspaceId,
-        query=query,
-        document_ids=request.documentIds if request.documentIds else None,
-        chroma_dir=chroma_dir,
-    )
+    model = _resolve_model(request.model)
 
-    if not grounded.chunks:
-        raise InsufficientGroundingError(
-            "No indexed documents found in workspace to ground generation."
+    with recorded_run(
+        store,
+        agent_name="flashcard_agent",
+        input_context=f"workspace:{request.workspaceId}",
+        model=model,
+    ) as run:
+        grounded = build_grounded_context(
+            workspace_id=request.workspaceId,
+            query=query,
+            document_ids=request.documentIds if request.documentIds else None,
+            chroma_dir=chroma_dir,
+            db_path=db_path,
+            top_k=DEFAULT_TOP_K,
         )
 
-    client = _get_llm_client(for_study=True)
-    agent = FlashcardAgent(client=client, model=_resolve_model(request.model))
+        if not grounded.chunks:
+            raise InsufficientGroundingError(
+                "No indexed documents found in workspace to ground generation."
+            )
+        run.source_chunk_ids = grounded.chunk_ids
 
-    content_text = grounded.as_prompt_content()
-    card_set = agent.generate(
-        content=content_text,
-        card_format=request.cardFormat,
-        card_count=request.count,
-    )
+        client = _get_llm_client(for_study=True)
+        agent = FlashcardAgent(client=client, model=model)
 
-    chunk_by_id = {c.chunk.chunk_id: c for c in grounded.chunks}
+        # source_chunk_ids is the study lane's provenance: without it the set
+        # keeps whatever ids the model invented, card.source_chunk_id misses,
+        # and citations have to be guessed by keyword instead.
+        card_set = agent.generate(
+            content=cap_content(grounded.as_prompt_content()),
+            card_format=request.cardFormat,
+            card_count=request.count,
+            source_chunk_ids=grounded.chunk_ids,
+        )
 
-    def _card_citations(card: Flashcard) -> list[Citation]:
-        """Map one card's cited chunk (or topic match) to citations."""
-        chunk_id = card.source_chunk_id
-        retrieved = chunk_by_id.get(chunk_id) if chunk_id else None
-        if retrieved:
+        chunk_by_id = {c.chunk.chunk_id: c for c in grounded.chunks}
+
+        def _card_citations(card: Flashcard) -> list[Citation]:
+            """Map one card's cited chunk to a citation.
+
+            No keyword fallback. Matching ``source_topic`` against chunk text
+            found *a* passage containing the word, not the passage the card
+            came from, and then showed it under the same "references" chip as
+            a verified citation - a fuzzy signal wearing an exact one's badge.
+            The study schemas carry no references field (see
+            docs/agent-parity.md), so an uncited card shows nothing.
+            """
+            chunk_id = card.source_chunk_id
+            retrieved = chunk_by_id.get(chunk_id) if chunk_id else None
+            if not retrieved or not chunk_id:
+                return []
             doc_id = chunk_id.split("-c")[0] if "-c" in chunk_id else chunk_id
             return [
                 Citation(
@@ -331,62 +357,32 @@ def generate_flashcards_service(
                     score=round(retrieved.score, 3),
                 )
             ]
-        if not card.source_topic:
-            return []
-        needle = card.source_topic.lower()
-        matched = [
-            c
-            for c in grounded.chunks
-            if needle in c.chunk.text.lower()
-        ]
-        return [
-            Citation(
-                doc=(
-                    c.chunk.chunk_id.split("-c")[0]
-                    if "-c" in c.chunk.chunk_id
-                    else c.chunk.chunk_id
-                ),
-                chunk=c.chunk.chunk_id,
-                snippet=c.chunk.text[:200],
-                score=round(c.score, 3),
+
+        flashcards: list[WsFlashcard] = [
+            WsFlashcard(
+                front=card.front,
+                back=card.back,
+                tag=card.source_topic,
+                format=card.format,
+                topic=card.source_topic,
+                sourceChunkId=card.source_chunk_id,
+                citations=_card_citations(card),
             )
-            for c in matched[:3]
+            for card in card_set.cards
         ]
 
-    flashcards: list[WsFlashcard] = [
-        WsFlashcard(
-            front=card.front,
-            back=card.back,
-            tag=card.source_topic,
-            format=card.format,
-            topic=card.source_topic,
-            sourceChunkId=card.source_chunk_id,
-            citations=_card_citations(card),
+        gen_id = f"gen-{uuid4().hex[:8]}"
+        gen_output = GeneratedOutput(
+            id=gen_id,
+            agent_run_id=run.id,
+            output_type="flashcards",
+            payload={"flashcards": [f.model_dump() for f in flashcards]},
+            schema_name="FlashcardSet",
+            validation_passed=True,
+            validation_report={"count": len(flashcards)},
+            status=OutputStatus.PENDING,
         )
-        for card in card_set.cards
-    ]
-
-    run = AgentRun(
-        agent_name="flashcard_agent",
-        input_context=f"workspace:{request.workspaceId}",
-        source_chunk_ids=grounded.chunk_ids,
-        model=_resolve_model(request.model),
-    )
-    run.mark_finished()
-    store.save_agent_run(run)
-
-    gen_id = f"gen-{uuid4().hex[:8]}"
-    gen_output = GeneratedOutput(
-        id=gen_id,
-        agent_run_id=run.id,
-        output_type="flashcards",
-        payload={"flashcards": [f.model_dump() for f in flashcards]},
-        schema_name="FlashcardSet",
-        validation_passed=True,
-        validation_report={"count": len(flashcards)},
-        status=OutputStatus.PENDING,
-    )
-    store.save_output(gen_output)
+        store.save_output(gen_output)
 
     return GenerateFlashcardsResponse(
         generationId=gen_id,
@@ -412,6 +408,7 @@ def flashcard_topics_service(
         query="flashcards key concepts definitions terms",
         document_ids=request.documentIds if request.documentIds else None,
         chroma_dir=chroma_dir,
+            db_path=db_path,
     )
     if not grounded.chunks:
         return FlashcardTopicsResponse(topics=[])
@@ -429,88 +426,94 @@ def generate_study_plan_service(
 ) -> GenerateStudyPlanResponse:
     """Generate study plan grounded in workspace documents."""
     store = PlatformStore(db_path)
-    grounded = build_grounded_context(
-        workspace_id=request.workspaceId,
-        query="study plan topics schedule breakdown",
-        document_ids=request.documentIds if request.documentIds else None,
-        chroma_dir=chroma_dir,
-    )
+    model = _resolve_model(request.model)
 
-    if not grounded.chunks:
-        raise InsufficientGroundingError(
-            "No indexed documents found in workspace to ground generation."
-        )
-
-    client = _get_llm_client(for_study=True)
-    agent = StudyPlanAgent(client=client, model=_resolve_model(request.model))
-
-    content_text = grounded.as_prompt_content()
-
-    start = date.today()  # noqa: DTZ011
-    if request.days:
-        span_days = max(int(request.days), 1)
-        is_day_based = True
-        end = start + timedelta(days=span_days)
-    else:
-        weeks = max(request.weeks or 4, 1)
-        span_days = weeks * 7
-        is_day_based = span_days < 14
-        end = start + timedelta(weeks=weeks)
-
-    hours_per_week = request.hoursPerWeek or (
-        (request.hoursPerDay or 2) * 7 if request.hoursPerDay is not None else 10.0
-    )
-
-    plan = agent.generate(
-        content=content_text,
-        start_date=start,
-        end_date=end,
-        learner_goal="Master workspace topics",
-        difficulty="medium",
-        hours_per_week=hours_per_week,
-    )
-
-    sections: list[StudyPlanSection] = []
-    days: list[StudyPlanDay] = []
-
-    for idx, item in enumerate(plan.topic_schedule, start=1):
-        label = f"Day {idx}" if is_day_based else f"Week {(idx - 1) // 7 + 1}"
-        sections.append(
-            StudyPlanSection(
-                title=f"{label}: {item.topic}",
-                items=[f"Resource: {r}" for r in item.resources]
-                or [f"Study {item.topic}"],
-            )
-        )
-        days.append(
-            StudyPlanDay(
-                day=idx,
-                topics=[item.topic],
-                hours=item.duration_hours,
-            )
-        )
-
-    run = AgentRun(
+    with recorded_run(
+        store,
         agent_name="study_plan_agent",
         input_context=f"workspace:{request.workspaceId}",
-        source_chunk_ids=grounded.chunk_ids,
-        model=_resolve_model(request.model),
-    )
-    run.mark_finished()
-    store.save_agent_run(run)
+        model=model,
+    ) as run:
+        grounded = build_grounded_context(
+            workspace_id=request.workspaceId,
+            query="study plan topics schedule breakdown",
+            document_ids=request.documentIds if request.documentIds else None,
+            chroma_dir=chroma_dir,
+            db_path=db_path,
+            top_k=DEFAULT_TOP_K,
+        )
 
-    gen_id = f"gen-{uuid4().hex[:8]}"
-    gen_output = GeneratedOutput(
-        id=gen_id,
-        agent_run_id=run.id,
-        output_type="study_plan",
-        payload={"goal": plan.goal, "schedule": [s.model_dump() for s in sections]},
-        schema_name="StudyPlan",
-        validation_passed=True,
-        validation_report={"days": len(days)},
-        status=OutputStatus.PENDING,
-    )
-    store.save_output(gen_output)
+        if not grounded.chunks:
+            raise InsufficientGroundingError(
+                "No indexed documents found in workspace to ground generation."
+            )
+        run.source_chunk_ids = grounded.chunk_ids
+
+        client = _get_llm_client(for_study=True)
+        agent = StudyPlanAgent(client=client, model=model)
+
+        content_text = cap_content(grounded.as_prompt_content())
+
+        start = date.today()  # noqa: DTZ011
+        if request.days:
+            span_days = max(int(request.days), 1)
+            is_day_based = True
+            end = start + timedelta(days=span_days)
+        else:
+            weeks = max(request.weeks or 4, 1)
+            span_days = weeks * 7
+            is_day_based = span_days < 14
+            end = start + timedelta(weeks=weeks)
+
+        hours_per_week = request.hoursPerWeek or (
+            (request.hoursPerDay or 2) * 7 if request.hoursPerDay is not None else 10.0
+        )
+
+        plan = agent.generate(
+            content=content_text,
+            start_date=start,
+            end_date=end,
+            learner_goal="Master workspace topics",
+            difficulty="medium",
+            hours_per_week=hours_per_week,
+        )
+
+        sections: list[StudyPlanSection] = []
+        days: list[StudyPlanDay] = []
+
+        for idx, item in enumerate(plan.topic_schedule, start=1):
+            label = f"Day {idx}" if is_day_based else f"Week {(idx - 1) // 7 + 1}"
+            sections.append(
+                StudyPlanSection(
+                    title=f"{label}: {item.topic}",
+                    items=[f"Resource: {r}" for r in item.resources]
+                    or [f"Study {item.topic}"],
+                )
+            )
+            days.append(
+                StudyPlanDay(
+                    day=idx,
+                    topics=[item.topic],
+                    hours=item.duration_hours,
+                )
+            )
+
+        # recorded_run owns the AgentRun lifecycle.
+        gen_id = f"gen-{uuid4().hex[:8]}"
+        gen_output = GeneratedOutput(
+            id=gen_id,
+            agent_run_id=run.id,
+            output_type="study_plan",
+            payload={
+                "goal": plan.goal,
+                "schedule": [s.model_dump() for s in sections],
+            },
+            schema_name="StudyPlan",
+            validation_passed=True,
+            validation_report={"days": len(days)},
+            status=OutputStatus.PENDING,
+        )
+        store.save_output(gen_output)
 
     return GenerateStudyPlanResponse(
         generationId=gen_id,
@@ -533,81 +536,93 @@ def generate_revision_sheet_service(
 ) -> GenerateRevisionSheetResponse:
     """Generate revision sheet grounded in workspace documents."""
     store = PlatformStore(db_path)
-    grounded = build_grounded_context(
-        workspace_id=request.workspaceId,
-        query="revision topics summary key ideas",
-        document_ids=request.documentIds if request.documentIds else None,
-        chroma_dir=chroma_dir,
-    )
+    model = _resolve_model(request.model)
 
-    if not grounded.chunks:
-        raise InsufficientGroundingError(
-            "No indexed documents found in workspace to ground generation."
-        )
-
-    client = _get_llm_client(for_study=True)
-    agent = RevisionAgent(client=client, model=_resolve_model(request.model))
-
-    content_text = grounded.as_prompt_content()
-    extracted_topics = FlashcardAgent.extract_topics(content_text)
-    topics = [t for t in (request.topics or []) if t in extracted_topics]
-    if not topics:
-        topics = extracted_topics[:3]
-    if not topics:
-        topics = ["Core Concept"]
-
-    session = agent.generate(
-        content=content_text,
-        selected_topics=topics,
-        session_date=date.today(),  # noqa: DTZ011
-    )
-
-    sections: list[StudyPlanSection] = []
-    weak_topics: list[WeakTopic] = []
-
-    for item in session.items:
-        sections.append(
-            StudyPlanSection(
-                title=f"Revision: {item.topic}",
-                items=[item.description, item.confidence_prompt],
-            )
-        )
-        weak_topics.append(
-            WeakTopic(
-                topic=item.topic,
-                strength=40 if item.difficulty == "hard" else 60,
-                action=f"Review by {item.next_revision_date}",
-                description=item.description,
-                difficulty=item.difficulty,
-                nextRevisionDate=str(item.next_revision_date),
-                confidencePrompt=item.confidence_prompt,
-            )
-        )
-
-    run = AgentRun(
+    with recorded_run(
+        store,
         agent_name="revision_agent",
         input_context=f"workspace:{request.workspaceId}",
-        source_chunk_ids=grounded.chunk_ids,
-        model=_resolve_model(request.model),
-    )
-    run.mark_finished()
-    store.save_agent_run(run)
+        model=model,
+    ) as run:
+        # request.topics names what the learner wants revised; retrieving for
+        # it - rather than a fixed literal - is what makes the passages this
+        # sheet is built from actually match what was picked. Falls back to
+        # the literal only when nothing was picked to retrieve for.
+        query = (
+            " ".join(request.topics)
+            if request.topics
+            else "revision topics summary key ideas"
+        )
+        grounded = build_grounded_context(
+            workspace_id=request.workspaceId,
+            query=query,
+            document_ids=request.documentIds if request.documentIds else None,
+            chroma_dir=chroma_dir,
+            db_path=db_path,
+            top_k=DEFAULT_TOP_K,
+        )
 
-    gen_id = f"gen-{uuid4().hex[:8]}"
-    gen_output = GeneratedOutput(
-        id=gen_id,
-        agent_run_id=run.id,
-        output_type="revision_sheet",
-        payload={
-            "notes": session.notes,
-            "weak_topics": [w.model_dump() for w in weak_topics],
-        },
-        schema_name="RevisionSession",
-        validation_passed=True,
-        validation_report={"items": len(sections)},
-        status=OutputStatus.PENDING,
-    )
-    store.save_output(gen_output)
+        if not grounded.chunks:
+            raise InsufficientGroundingError(
+                "No indexed documents found in workspace to ground generation."
+            )
+        run.source_chunk_ids = grounded.chunk_ids
+
+        client = _get_llm_client(for_study=True)
+        agent = RevisionAgent(client=client, model=model)
+
+        content_text = cap_content(grounded.as_prompt_content())
+        extracted_topics = FlashcardAgent.extract_topics(content_text)
+        topics = [t for t in (request.topics or []) if t in extracted_topics]
+        if not topics:
+            topics = extracted_topics[:3]
+        if not topics:
+            topics = ["Core Concept"]
+
+        session = agent.generate(
+            content=content_text,
+            selected_topics=topics,
+            session_date=date.today(),  # noqa: DTZ011
+        )
+
+        sections: list[StudyPlanSection] = []
+        weak_topics: list[WeakTopic] = []
+
+        for item in session.items:
+            sections.append(
+                StudyPlanSection(
+                    title=f"Revision: {item.topic}",
+                    items=[item.description, item.confidence_prompt],
+                )
+            )
+            weak_topics.append(
+                WeakTopic(
+                    topic=item.topic,
+                    strength=40 if item.difficulty == "hard" else 60,
+                    action=f"Review by {item.next_revision_date}",
+                    description=item.description,
+                    difficulty=item.difficulty,
+                    nextRevisionDate=str(item.next_revision_date),
+                    confidencePrompt=item.confidence_prompt,
+                )
+            )
+
+        # recorded_run owns the AgentRun lifecycle.
+        gen_id = f"gen-{uuid4().hex[:8]}"
+        gen_output = GeneratedOutput(
+            id=gen_id,
+            agent_run_id=run.id,
+            output_type="revision_sheet",
+            payload={
+                "notes": session.notes,
+                "weak_topics": [w.model_dump() for w in weak_topics],
+            },
+            schema_name="RevisionSession",
+            validation_passed=True,
+            validation_report={"items": len(sections)},
+            status=OutputStatus.PENDING,
+        )
+        store.save_output(gen_output)
 
     return GenerateRevisionSheetResponse(
         generationId=gen_id,

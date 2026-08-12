@@ -45,6 +45,7 @@ import type { WsDoc } from "@/types/domain";
 import type { ChatCitation } from "@/types/domain";
 import type { GeneratedQuestion } from "@/types/domain";
 import type { WeakTopic } from "@/types/domain";
+import { AgentText } from "@/components/app/AgentText";
 
 export const Route = createFileRoute("/studio")({
   head: () => ({
@@ -120,7 +121,7 @@ function StudioPage() {
             <SelectContent>
               {docs.map((d) => (
                 <SelectItem key={d.id} value={d.id}>
-                  {d.title} · {d.chunks.length} chunks
+                  {d.title}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -734,9 +735,9 @@ function RevisionPanel({ model, doc }: { model: ModelId; doc: string }) {
                       )}
                     </div>
                     {it.description && (
-                      <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+                      <AgentText className="text-muted-foreground mt-1 text-xs leading-relaxed">
                         {it.description}
-                      </p>
+                      </AgentText>
                     )}
                     {it.confidencePrompt && (
                       <p className="border-primary/30 bg-primary/5 mt-2 rounded-lg border-l-2 pl-2 text-xs italic">
@@ -890,7 +891,7 @@ function ChatPanel({
             </div>
           ) : (
             <div key={i} className="surface-card max-w-[85%] p-3 text-sm">
-              <div className="whitespace-pre-wrap">{m.text}</div>
+              <AgentText citations={m.citations}>{m.text}</AgentText>
               {m.citations && m.citations.length > 0 && (
                 <MessageReferences citations={m.citations} />
               )}
@@ -930,6 +931,28 @@ function ChatPanel({
 
 function MessageReferences({ citations }: { citations: ChatCitation[] }) {
   const [open, setOpen] = useState(false);
+
+  // A citation chip in the reply body asks its own reference list to open.
+  // AgentText has no way to reach this state, and threading a callback through
+  // every place model prose is rendered would put chat wiring in components
+  // that have nothing to do with chat, so the chip announces and the list that
+  // owns that chunk answers.
+  useEffect(() => {
+    const onCite = (event: Event) => {
+      const chunk = (event as CustomEvent<{ chunk: string }>).detail?.chunk;
+      if (!chunk || !citations.some((c) => c.chunk === chunk)) return;
+      setOpen(true);
+      // After the panel has rendered, not before.
+      requestAnimationFrame(() => {
+        document
+          .getElementById(`ref-${chunk}`)
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    };
+    window.addEventListener("sensei:cite", onCite);
+    return () => window.removeEventListener("sensei:cite", onCite);
+  }, [citations]);
+
   return (
     <div className="mt-2.5">
       <button
@@ -946,7 +969,11 @@ function MessageReferences({ citations }: { citations: ChatCitation[] }) {
       {open && (
         <div className="border-border mt-2 space-y-2 border-l-2 pl-3">
           {citations.map((c, i) => (
-            <div key={`${c.docId}-${i}`} className="text-xs leading-relaxed">
+            <div
+              key={`${c.docId}-${i}`}
+              id={c.chunk ? `ref-${c.chunk}` : undefined}
+              className="scroll-mt-24 text-xs leading-relaxed"
+            >
               <p className="text-primary font-semibold">
                 {c.docTitle}
                 {c.page ? ` · p.${c.page}` : ""}
@@ -1067,7 +1094,6 @@ function DocLine({ doc }: { doc: string }) {
         Grounded to · {active.name}
       </p>
       <p className="mt-0.5 truncate font-medium">{d?.title ?? "No document selected"}</p>
-      {d && <p className="text-muted-foreground mt-0.5">{d.chunks.length} chunks indexed</p>}
       {d?.notes && (
         <p className="border-primary/30 text-muted-foreground mt-2 line-clamp-3 border-l-2 pl-2 italic">
           Your notes: {d.notes}

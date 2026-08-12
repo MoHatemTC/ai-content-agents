@@ -16,6 +16,7 @@ import {
 import { AppShell } from "@/components/app/AppShell";
 import { RoleGate } from "@/components/app/RoleGate";
 import { NoActiveWorkspace } from "@/components/app/AsyncState";
+import { AgentText } from "@/components/app/AgentText";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -293,7 +294,9 @@ function StudentHome() {
                       onClick={() => setOpenFavorite(f)}
                       className="border-border bg-muted/40 hover:border-primary/40 flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors"
                     >
-                      <span className="min-w-0 flex-1 truncate">{f.front}</span>
+                      <span className="min-w-0 flex-1 truncate">
+                        <AgentText inline>{f.front}</AgentText>
+                      </span>
                       <span className="text-muted-foreground shrink-0 text-xs">
                         {f.topic ?? "flashcard"}
                       </span>
@@ -310,14 +313,16 @@ function StudentHome() {
               >
                 <DialogContent className="sm:max-w-md">
                   <DialogHeader>
-                    <DialogTitle className="pr-6">{openFavorite?.front}</DialogTitle>
+                    <DialogTitle className="pr-6">
+                      <AgentText inline>{openFavorite?.front}</AgentText>
+                    </DialogTitle>
                     {openFavorite?.topic ? (
                       <DialogDescription>{openFavorite.topic}</DialogDescription>
                     ) : null}
                   </DialogHeader>
-                  <p className="text-muted-foreground text-sm">
+                  <AgentText className="text-muted-foreground text-sm">
                     {openFavorite?.back ?? "No answer saved for this flashcard."}
-                  </p>
+                  </AgentText>
                 </DialogContent>
               </Dialog>
             </div>

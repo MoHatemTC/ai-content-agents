@@ -25,6 +25,10 @@ class CreateChatResponse(BaseModel):
 class ChatCitation(BaseModel):
     docId: str
     docTitle: str
+    # The chunk the model actually cited, kept so a marker in the reply can be
+    # matched to the passage it names. Generation's Citation has always carried
+    # this; chat discarded it, splitting the id down to its document half.
+    chunk: str | None = None
     page: int | None = None
     snippet: str
 

@@ -59,6 +59,8 @@ from src.llm_gateway import (
     DEFAULT_TEMPERATURE,
     UpstreamResponseError,
     chat_json,
+    find_corruption,
+    loads_model_json,
     strip_fences,
 )
 
@@ -78,6 +80,8 @@ __all__ = [
     "output_budget",
     "parse_json",
     "schema_block",
+    "find_corruption",
+    "loads_model_json",
     "strip_fences",
 ]
 
@@ -94,10 +98,12 @@ OUTPUT_OVERHEAD_TOKENS = 400
 # request - 20 items at QUESTION_ITEM_TOKENS - asks for 8400, so the cap
 # silently trimmed it back to 8000 and the reply was truncated: the bug this
 # guard exists to prevent, caused by the guard. Probed against the live
-# gateway, requests were accepted at 8000, 12000, 16000, 32000 and 65536, so
-# 12000 funds every slider in the app with room to spare and stays far below
-# anything the gateway objected to.
-MAX_OUTPUT_TOKENS = 12000
+# gateway, requests were accepted at 8000, 12000, 16000, 32000 and 65536.
+# 12000 was then chosen deliberately conservatively, "with room to spare"
+# rather than at the tested ceiling. Raised to that ceiling now that budget
+# for it is available - every value the probe tried was accepted, so this
+# spends the full validated headroom rather than a fraction of it.
+MAX_OUTPUT_TOKENS = 65536
 
 
 def max_tokens_default() -> int:
@@ -229,11 +235,23 @@ def parse_json(text: str, schema: type[ModelT]) -> ModelT:
     body = strip_fences(text)
 
     try:
-        payload = json.loads(body)
+        # Tolerates LaTeX's unescaped backslashes; see loads_model_json.
+        payload = loads_model_json(body)
     except json.JSONDecodeError as exc:
         raise ValueError(
             f"The model did not return valid JSON ({exc}). Output began: {body[:200]!r}"
         ) from exc
+
+    # A control character means a LaTeX command was mis-read as an escape and
+    # the text is already wrong; the content lanes refuse the same way. The
+    # study schemas carry maths too, so this lane needs it as much as they do.
+    corruption = find_corruption(payload)
+    if corruption is not None:
+        raise ValueError(
+            f"The model's reply contains {corruption!r}, which means a LaTeX "
+            f"command was mis-read as an escape sequence. Output began: "
+            f"{body[:200]!r}"
+        )
 
     # The review flag is a control over the system, not an output of it, and
     # the study schemas now pin it Literal[True] + frozen so nothing downstream

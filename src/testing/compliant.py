@@ -7,6 +7,16 @@ offline; importing it from production code therefore pollutes a running server
 This module has no import-time side effects. Production only instantiates these
 doubles when ``SENSEI_USE_TEST_DOUBLES`` is set; tests reach them via the
 re-exports in ``tests/conftest.py``.
+
+**That last sentence used to be false.** ``conftest.py`` did not re-export
+these - it held a second copy, 421 duplicated lines of it, and the two drifted
+in both directions. This copy answered ``options=None`` for every non-mcq
+question type, so a ``true_false`` generation failed schema validation against
+a double whose whole job is to be compliant; that was fixed in the other copy
+and never came back. Meanwhile this one grew the study-plan topic slicing that
+the other lacked. The backend under doubles and the agents under doubles were
+therefore not testing the same thing - which is precisely the failure mode a
+shared double exists to prevent.
 """
 
 from __future__ import annotations
@@ -297,6 +307,22 @@ class CompliantStudyClient:
         )
 
 
+# What each question type must answer with. The schema enforces that
+# ``correct_answer`` is one of ``options`` character for character when options
+# is not null, and free text when it is - see question_bank.yaml.
+#
+# The double used to answer ``None`` for every non-mcq type, so a true_false
+# generation failed schema validation against a double that was supposed to be
+# compliant. Fixed in tests/conftest.py and never carried across to here, which
+# is the drift this module now exists to end.
+_OPTIONS_FOR: dict[str, list[str] | None] = {
+    "mcq": ["for", "while", "if", "switch"],
+    "true_false": ["True", "False"],
+    "short_answer": None,
+}
+_ANSWER_FOR = {"mcq": "while", "true_false": "False", "short_answer": "a while loop"}
+
+
 class CompliantAgentsClient:
     """A fake gateway for the four content agents in ``src/agents``.
 
@@ -353,10 +379,8 @@ class CompliantAgentsClient:
         questions = [
             {
                 "question": f"Question {index + 1} about the supplied content?",
-                "options": ["for", "while", "if", "switch"]
-                if question_type == "mcq"
-                else None,
-                "correct_answer": "while",
+                "options": _OPTIONS_FOR.get(question_type),
+                "correct_answer": _ANSWER_FOR.get(question_type, "while"),
                 "rationale": text[:240],
                 "difficulty": difficulty.group(1) if difficulty else "beginner",
                 "type": question_type,
@@ -406,3 +430,77 @@ class CompliantAgentsClient:
             "mentor, concept, question-bank and test-help agents. Prompt began: "
             f"{prompt[:200]!r}"
         )
+
+
+def unescape_backslashes(body: str) -> str:
+    r"""Undo JSON's backslash escaping, the way a real model fails to apply it.
+
+    ``json.dumps`` writes ``\\dots``; the model writes ``\dots``. One is valid
+    JSON and the other is what actually arrives.
+    """
+    return body.replace("\\\\", "\\")
+
+
+class LatexAgentsClient(CompliantAgentsClient):
+    r"""A gateway double whose replies carry LaTeX, the way the real one does.
+
+    :class:`CompliantAgentsClient` builds every reply with ``json.dumps``,
+    which escapes backslashes correctly. No test using it could therefore ever
+    reproduce the failure that broke every Mentor reply against the real
+    textbook: the prompts ask for mathematics as LaTeX, the model writes
+    ``$x_1, \dots, x_n$`` inside a JSON string, and ``\d`` is not one of JSON's
+    escapes - so a complete, correct answer is rejected by the parser.
+
+    1040 passing tests sat on top of that, because the double was more
+    well-behaved than the thing it stood in for. This one is not: it serialises
+    properly and then unescapes, which is exactly the malformed-but-meaningful
+    output the gateway receives.
+    """
+
+    #: The notation observed live, from the Linear Algebra textbook.
+    #:
+    #: The second half matters more than the first. ``\dots``, ``\mathbb`` and
+    #: ``\underline`` are *invalid* escapes: they make the parser raise, which
+    #: is loud and was fixed. ``\times`` and ``\beta`` are *valid* ones meaning
+    #: something else - they decode to TAB and BACKSPACE, and the reply reaches
+    #: the learner as "8imes300" and "y = Ξeta_0" with nothing raised at all.
+    MATHS = (
+        r"$x_1, \dots, x_n$ in $\mathbb{R}^n$, with $\underline{x}$, "
+        r"an $8 \times 300$ matrix and $y = \beta_0 + \beta_1 x$, "
+        r"where $\frac{a}{b} \neq \rho$ and $\theta \rightarrow 0$"
+    )
+
+    def create(self, **kwargs: Any) -> Reply:
+        self.calls.append(kwargs)
+        prompt = kwargs["messages"][0]["content"]
+        segment_id, text = self._grounding(prompt)
+        maths = f"{text[:120]} {self.MATHS}"
+        references = [{"segment_id": segment_id, "text": text[:240]}]
+
+        if "educational mentor" in prompt:
+            payload = {
+                "explanation": maths,
+                "key_points": [maths],
+                "next_steps": [maths],
+                "references": references,
+                "requires_human_review": True,
+            }
+        elif "concept explanation assistant" in prompt:
+            payload = {
+                "definition": maths,
+                "explanation": maths,
+                "key_points": [maths],
+                "references": references,
+                "requires_human_review": True,
+            }
+        elif "assessment specialist" in prompt or "test preparation assistant" in prompt:
+            return Reply(
+                unescape_backslashes(self._questions(prompt, segment_id, maths))
+            )
+        else:
+            raise AssertionError(
+                "LatexAgentsClient does not recognise this prompt. Prompt began: "
+                f"{prompt[:200]!r}"
+            )
+
+        return Reply(unescape_backslashes(json.dumps(payload)))

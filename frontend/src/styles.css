@@ -1,6 +1,8 @@
 @import "tailwindcss" source(none);
 @source "../src";
 @import "tw-animate-css";
+/* KaTeX drives <AgentText>; imported once here rather than per-component. */
+@import "katex/dist/katex.min.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -307,5 +309,34 @@
 
   &:active {
     transform: translateY(-1px);
+  }
+}
+
+/*
+ * Agent prose (<AgentText>).
+ *
+ * KaTeX ships its own colour, which is a fixed near-black - invisible on the
+ * dark theme's cards. Inheriting instead keeps notation the same colour as the
+ * sentence around it in both themes.
+ *
+ * Display maths is the one thing here that will not wrap: a long derivation is
+ * a single unbreakable box, so it scrolls inside its own strip rather than
+ * stretching the chat bubble past the viewport.
+ */
+.agent-prose {
+  & .katex {
+    color: inherit;
+    font-size: 1.05em;
+  }
+
+  & .katex-display {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-block: 0.25rem;
+    margin-block: 0.5rem;
+  }
+
+  & strong {
+    font-weight: 600;
   }
 }

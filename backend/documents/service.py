@@ -42,6 +42,7 @@ from src.ingestion.quality import QualityChecker
 from src.ingestion.schema import Chunk as IngestionChunk
 from src.retrieval.config import RetrievalConfig
 from src.retrieval.index import ChunkIndex
+from src.retrieval.structure import label_sections
 from src.validation.integration import to_retrieval_chunks
 
 from .schemas import (
@@ -361,6 +362,10 @@ def chunk_document(
     chunker = TextChunker(chunk_size=config.chunk_size, overlap=config.chunk_overlap)
     ingestion_chunks = chunker.chunk(row["text"], document_id)
     page_offsets = json.loads(row["page_offsets_json"] or "[]")
+    # Label each chunk with the chapter/section it falls under so a query that
+    # names one can be served. Returns all-None for a document with no
+    # detectable headings, which leaves retrieval exactly as it was.
+    sections = label_sections([chunk.text for chunk in ingestion_chunks])
 
     conn.execute("DELETE FROM document_chunks WHERE document_id = ?", (document_id,))
     created_at = now().isoformat()
@@ -382,7 +387,7 @@ def chunk_document(
                 token_count(chunk.text),
                 chunk.text,
                 "[]",
-                None,
+                sections[chunk.ordinal],
                 created_at,
             ),
         )

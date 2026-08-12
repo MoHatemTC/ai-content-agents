@@ -100,6 +100,12 @@ class RetrievalScope(BaseModel):
     document_id: str | None = None
     session_id: str | None = None
     workspace_id: str | None = None
+    #: Inclusive ``(first, last)`` ordinal span, for a query that named a
+    #: chapter or section (see :mod:`src.retrieval.structure`). Chunks are
+    #: stored in document order and ``ordinal`` is already indexed metadata,
+    #: so a range expresses "chapter 4" without a new field or a re-embed.
+    #: This narrows a scope; it never widens one, and is not a scope itself.
+    ordinal_range: tuple[int, int] | None = None
 
     @model_validator(mode="after")
     def _require_some_scope(self) -> RetrievalScope:
@@ -122,13 +128,23 @@ class RetrievalScope(BaseModel):
             ``None`` for a workspace-only scope (the collection is the whole
             workspace, so no metadata filter applies), a single equality
             clause when one of ``document_id``/``session_id`` is set, or an
-            ``$and`` of both clauses when both are set.
+            ``$and`` of the clauses when more than one applies. An
+            ``ordinal_range`` contributes a range clause on the same footing,
+            so a chapter-confined search is filtered before the similarity
+            search like every other scope rule.
         """
         clauses: list[dict[str, object]] = []
         if self.document_id is not None:
             clauses.append({"document_id": self.document_id})
         if self.session_id is not None:
             clauses.append({"session_id": self.session_id})
+        if self.ordinal_range is not None:
+            first, last = self.ordinal_range
+            # Two clauses, not one {"$gte": ..., "$lte": ...} dict: Chroma
+            # rejects an operator expression carrying more than one operator
+            # ("Expected operator expression to have exactly one operator").
+            clauses.append({"ordinal": {"$gte": first}})
+            clauses.append({"ordinal": {"$lte": last}})
         if not clauses:
             return None
         if len(clauses) == 1:
