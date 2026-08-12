@@ -65,7 +65,13 @@ logger = logging.getLogger(__name__)
 # about 15% of it - but the prompts now ask for depth, and a detailed
 # explanation plus key points, next steps and citations passes 2000 easily.
 # Raising it after the prompt change would be finding this out from a user.
-EXPLANATION_TOKENS = 4000
+#
+# Raised again to the same ceiling src/study/llm_client.MAX_OUTPUT_TOKENS
+# uses: that figure was probed directly against this gateway/account, so it
+# applies here too. A flat cap this high costs nothing on a reply shorter
+# than it - gateways bill generated tokens, not the requested ceiling - and
+# only matters as headroom against truncating an unusually long one.
+EXPLANATION_TOKENS = 65536
 
 # Module-level so a test can point it at a tmp dir. The prompt-loading tests
 # used to write ":::: invalid yaml ::::" over the real src/prompts/mentor.yaml

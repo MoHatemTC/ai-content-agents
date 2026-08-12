@@ -68,7 +68,12 @@ logger = logging.getLogger(__name__)
 #
 # Reusing the flashcard figure is what made five questions ask for 2000 tokens
 # and come back truncated mid-JSON.
-QUESTION_ITEM_TOKENS = 400
+#
+# Widened from 400 to 600 for further margin now that MAX_OUTPUT_TOKENS has
+# the budget to fund it - not a new measurement, the 369/253 figures above
+# still stand, this is spare room on top of them rather than a revised
+# estimate.
+QUESTION_ITEM_TOKENS = 600
 
 
 class QuestionCountError(ValueError):

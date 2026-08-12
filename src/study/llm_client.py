@@ -98,10 +98,12 @@ OUTPUT_OVERHEAD_TOKENS = 400
 # request - 20 items at QUESTION_ITEM_TOKENS - asks for 8400, so the cap
 # silently trimmed it back to 8000 and the reply was truncated: the bug this
 # guard exists to prevent, caused by the guard. Probed against the live
-# gateway, requests were accepted at 8000, 12000, 16000, 32000 and 65536, so
-# 12000 funds every slider in the app with room to spare and stays far below
-# anything the gateway objected to.
-MAX_OUTPUT_TOKENS = 12000
+# gateway, requests were accepted at 8000, 12000, 16000, 32000 and 65536.
+# 12000 was then chosen deliberately conservatively, "with room to spare"
+# rather than at the tested ceiling. Raised to that ceiling now that budget
+# for it is available - every value the probe tried was accepted, so this
+# spends the full validated headroom rather than a fraction of it.
+MAX_OUTPUT_TOKENS = 65536
 
 
 def max_tokens_default() -> int:
