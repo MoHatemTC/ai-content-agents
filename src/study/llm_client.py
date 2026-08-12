@@ -59,6 +59,7 @@ from src.llm_gateway import (
     DEFAULT_TEMPERATURE,
     UpstreamResponseError,
     chat_json,
+    loads_model_json,
     strip_fences,
 )
 
@@ -78,6 +79,7 @@ __all__ = [
     "output_budget",
     "parse_json",
     "schema_block",
+    "loads_model_json",
     "strip_fences",
 ]
 
@@ -229,7 +231,8 @@ def parse_json(text: str, schema: type[ModelT]) -> ModelT:
     body = strip_fences(text)
 
     try:
-        payload = json.loads(body)
+        # Tolerates LaTeX's unescaped backslashes; see loads_model_json.
+        payload = loads_model_json(body)
     except json.JSONDecodeError as exc:
         raise ValueError(
             f"The model did not return valid JSON ({exc}). Output began: {body[:200]!r}"

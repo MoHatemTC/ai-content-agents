@@ -44,9 +44,10 @@ from src.llm_gateway import (
     build_client,
     chat_json,
     default_model,
+    loads_model_json,
 )
 from src.models.batch import BatchGenerationFailure, BatchGenerationResult
-from src.retrieval.grounding import verify_references
+from src.retrieval.grounding import CitationGroundingError, verify_references
 from src.retrieval.models import GroundedContext
 from src.validation.review_schema import GeneratedOutput
 from src.validation.reviewable import persist_reviewable_run
@@ -243,8 +244,8 @@ class ExplanationAgentBase:
 
         Raises:
             ValueError: If a control value is invalid, the reply is not JSON,
-                the reply does not satisfy the schema, or the output is not
-                grounded in ``context``.
+                or the reply does not satisfy the schema.
+            CitationGroundingError: If the output is not grounded in ``context``.
             UpstreamResponseError: If the gateway returned nothing usable.
         """
         prompt_content = context if context is not None else content
@@ -253,12 +254,38 @@ class ExplanationAgentBase:
             user_question=user_question,
             difficulty=difficulty,
         )
+
+        try:
+            return self._generate_once(prompt, context)
+        except CitationGroundingError:
+            # A refusal, not a malformed reply. Re-rolling until the model
+            # happens to cite something real is how a grounding guarantee
+            # becomes a coin flip.
+            raise
+        except ValueError as first:
+            # The model failed to produce the shape it was asked for - live,
+            # it abbreviated "segment_id" to "s_id" on roughly one call in six
+            # and the whole answer was thrown away. The question lane already
+            # retries once here for a wrong question count; this is the same
+            # bargain for the same kind of non-compliance.
+            logger.info(
+                "%s did not fit its schema (%s); retrying once.",
+                self.output_schema.__name__,
+                first,
+            )
+
+        return self._generate_once(prompt, context)
+
+    def _generate_once(self, prompt: str, context: GroundedContext | None) -> Any:
+        """One attempt: call, parse, validate, enforce grounding."""
         # The orchestrator never calls generate(); it calls _call_llm and
         # retries itself. This is the page path, which had no retry at all.
         raw_response = self._call_llm(prompt, attempts=DEFAULT_ATTEMPTS)
 
         try:
-            payload = json.loads(raw_response)
+            # Tolerates the unescaped backslashes LaTeX puts in a JSON string;
+            # a truncated or non-JSON reply still raises.
+            payload = loads_model_json(raw_response)
         except json.JSONDecodeError as e:
             raise ValueError("The LLM returned invalid JSON.") from e
 
@@ -324,19 +351,20 @@ class ExplanationAgentBase:
             Human-readable warnings; empty when nothing was flagged.
 
         Raises:
-            ValueError: If a citation was invented, or none was given.
+            CitationGroundingError: If a citation was invented, or none
+                was given.
         """
         if not result.references:
             # verify_references treats an empty citation list as trivially
             # valid, so without this an uncited answer passes grounding.
-            raise ValueError(
+            raise CitationGroundingError(
                 "The generated output cites no sources, so it cannot be "
                 "verified against the retrieved content."
             )
 
         verification = verify_references(result.references, context)
         if not verification.valid:
-            raise ValueError(
+            raise CitationGroundingError(
                 "The generated references are not grounded in the retrieved "
                 f"content: {verification.unknown_segment_ids}"
             )

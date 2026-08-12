@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from backend.errors import ApiError
+from src.retrieval.grounding import CitationGroundingError
 from src.validation.history import RUN_COMPLETED, RUN_FAILED, RUN_STARTED
 from src.validation.review_schema import AgentRun, RunStatus
 from src.validation.store import PlatformStore
@@ -83,7 +84,7 @@ def recorded_run(
 
 
 def generate_or_422(agent: Any, **kwargs: Any) -> Any:
-    """Call an agent, turning a grounding refusal into a 422.
+    """Call an agent, turning its refusals into responses that name the cause.
 
     PREVIEW ADAPTATION. These call sites passed ``strict=False``, which existed
     on the separate MentorAgent and ConceptAgent this branch was written
@@ -97,12 +98,26 @@ def generate_or_422(agent: Any, **kwargs: Any) -> Any:
     Neither a chat answer nor a question set is a good reason to relax either,
     so the call is adapted rather than the guarantee. A 422 naming the problem
     beats the 500 the catch-all handler would otherwise return.
+
+    **Two outcomes, because there are two problems.** The agents raise
+    ``ValueError`` for a grounding refusal *and* for a reply that could not be
+    parsed or did not fit the schema. Mapping both to ``ungrounded_reply`` told
+    a learner their question "could not be grounded in this workspace" when the
+    model had really returned LaTeX that broke the JSON parser - the wrong
+    cause, pointing at the wrong fix. A refusal is 422 and about the content; a
+    reply that never became an object is 502 and about the provider.
     """
     try:
         return agent.generate(**kwargs)
-    except ValueError as exc:
+    except CitationGroundingError as exc:
         raise ApiError(
             status_code=422,
             code="ungrounded_reply",
             message=f"The model's reply could not be grounded in this workspace: {exc}",
+        ) from exc
+    except ValueError as exc:
+        raise ApiError(
+            status_code=502,
+            code="invalid_model_reply",
+            message=f"The model returned a reply this app could not read: {exc}",
         ) from exc

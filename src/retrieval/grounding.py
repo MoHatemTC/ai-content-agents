@@ -64,6 +64,23 @@ def build_grounded_context(
     return context
 
 
+class CitationGroundingError(ValueError):
+    """An output cited nothing, or cited something that was never retrieved.
+
+    A refusal, not a malfunction: the content agents raise plain ``ValueError``
+    for four unrelated causes - an invalid control value, a reply that is not
+    JSON, a reply that does not match the schema, and this. Callers that could
+    only catch ``ValueError`` therefore reported a serialisation failure to the
+    learner as "could not be grounded in this workspace", which named the wrong
+    problem and pointed at the wrong fix.
+
+    Subclasses ``ValueError`` so every existing caller and test still catches
+    it, and mirrors the study lane, which already separates its refusals this
+    way (:class:`src.study.flashcard_agent.GroundingError`,
+    ``RevisionGroundingError``, ``PlanGroundingError``).
+    """
+
+
 class GroundingVerification(BaseModel):
     """Result of checking cited references against a grounded context.
 

@@ -21,6 +21,7 @@ CI has none.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -212,6 +213,57 @@ def strip_fences(text: str) -> str:
     """Remove a surrounding ``` block, if the model added one."""
     match = _FENCE.match(text)
     return match.group("body") if match else text.strip()
+
+
+def loads_model_json(text: str) -> Any:
+    r"""``json.loads`` for a reply that may carry LaTeX.
+
+    The agents ask for mathematics as LaTeX and the model writes it inside JSON
+    string values - ``$x_1, \dots, x_n$``. JSON recognises only ``\" \\ \/ \b
+    \f \n \r \t \uXXXX``, so ``\d`` makes the parser reject a reply that is
+    otherwise complete and correct, and the learner sees "The LLM returned
+    invalid JSON".
+
+    :func:`chat_json` sends ``response_format`` to stop this at the source, and
+    that measured 8 of 8 when it was written. It no longer holds for every
+    model: against the real Linear Algebra textbook,
+    ``gemini/gemini-flash-lite-latest`` failed 3 of 6 identical Mentor requests
+    this way *with* JSON mode accepted. Forbidding LaTeX in the prompt is the
+    other lever and is the wrong one - the notation is the point, and the
+    interface now renders it.
+
+    Strict parsing is tried first, so a reply that is already valid is never
+    touched. Only on failure are the unrecognised escapes repaired.
+
+    Args:
+        text: The reply body.
+
+    Returns:
+        The decoded payload.
+
+    Raises:
+        json.JSONDecodeError: If the text is still not JSON once its escapes
+            are repaired - a truncated or non-JSON reply is a real error and
+            must stay one.
+    """
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return json.loads(_ESCAPES.sub(_repair_escape, text))
+
+
+# Valid escapes match first so they are consumed whole; only a backslash that
+# starts nothing valid falls through to the second branch. Scanning for lone
+# backslashes without this turns an already-correct ``\\d`` into ``\\\d``.
+# ``u`` needs its four hex digits or LaTeX's ``\underline`` and ``\uparrow``
+# pass as valid and still fail.
+_ESCAPES = re.compile(r'\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4})|\\')
+
+
+def _repair_escape(match: re.Match[str]) -> str:
+    """Keep a valid escape; double a bare backslash so JSON accepts it."""
+    found = match.group(0)
+    return found if len(found) > 1 else "\\\\"
 
 
 def chat_json(

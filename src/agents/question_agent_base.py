@@ -39,8 +39,9 @@ from src.llm_gateway import (
     build_client,
     chat_json,
     default_model,
+    loads_model_json,
 )
-from src.retrieval.grounding import verify_references
+from src.retrieval.grounding import CitationGroundingError, verify_references
 from src.retrieval.models import GroundedContext
 from src.validation.review_schema import GeneratedOutput
 from src.validation.reviewable import persist_reviewable_run
@@ -330,7 +331,9 @@ class QuestionAgentBase:
         )
 
         try:
-            payload = json.loads(raw_response)
+            # Tolerates the unescaped backslashes LaTeX puts in a JSON string;
+            # a truncated or non-JSON reply still raises.
+            payload = loads_model_json(raw_response)
         except json.JSONDecodeError as e:
             raise ValueError("The LLM returned invalid JSON.") from e
 
@@ -527,7 +530,8 @@ class QuestionAgentBase:
             Human-readable warnings; empty when nothing was flagged.
 
         Raises:
-            ValueError: If a citation was invented, or none was given.
+            CitationGroundingError: If a citation was invented, or none
+                was given.
         """
         references = [
             reference for item in result.questions for reference in item.references
@@ -538,14 +542,14 @@ class QuestionAgentBase:
             # passes grounding. Every prompt here says "every question must
             # contain at least one grounding reference"; this is what makes
             # that true rather than merely requested.
-            raise ValueError(
+            raise CitationGroundingError(
                 "The generated questions cite no sources, so they cannot be "
                 "verified against the retrieved content."
             )
 
         verification = verify_references(references, context)
         if not verification.valid:
-            raise ValueError(
+            raise CitationGroundingError(
                 "The generated references are not grounded in the retrieved "
                 f"content: {verification.unknown_segment_ids}"
             )

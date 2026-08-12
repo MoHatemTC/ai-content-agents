@@ -263,6 +263,48 @@ def test_generate_questions_rejects_invented_citations(
     assert resp.json()["error"]["code"] == "ungrounded_reply"
 
 
+class _UnreadableClient:
+    """A gateway double whose reply never becomes an object."""
+
+    def __init__(self) -> None:
+        self.chat = self
+        self.completions = self
+
+    def create(self, **kwargs: object) -> Reply:
+        return Reply("I'd be happy to help! Here are your questions:")
+
+
+def test_unreadable_reply_is_not_reported_as_ungrounded(
+    gen_app_client, monkeypatch
+):
+    """A reply that never parsed was not "ungrounded" - it was never read.
+
+    Both causes raise ValueError out of the agent, and mapping them together
+    told a learner their question could not be grounded in this workspace when
+    the model had actually returned prose instead of JSON.
+    """
+    client, token, ws_id = gen_app_client
+    monkeypatch.setattr(
+        gen_service, "_get_llm_client", lambda for_study=False: _UnreadableClient()
+    )
+
+    resp = client.post(
+        "/generate/questions",
+        json={
+            "workspaceId": ws_id,
+            "documentIds": [],
+            "model": "gemini",
+            "count": 1,
+            "difficulty": "Intermediate",
+            "types": ["MCQ"],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 502
+    assert resp.json()["error"]["code"] == "invalid_model_reply"
+
+
 def test_failed_generation_is_recorded_not_lost(gen_app_client, tmp_path, monkeypatch):
     """A run that never produced an output still belongs in History."""
     client, token, ws_id = gen_app_client
