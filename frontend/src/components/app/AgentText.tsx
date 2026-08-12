@@ -28,50 +28,83 @@ export function AgentText({
   children,
   className,
   citations,
+  inline,
 }: {
   children: string | null | undefined;
   className?: string;
   /** Lets an inline chunk id be labelled with its page and linked to its entry. */
   citations?: ChatCitation[];
+  /**
+   * Render as phrasing content only - a `<span>` with no block-level output.
+   *
+   * Block elements (`<p>`, `<ul>`, ...) are invalid inside a `<button>`, which
+   * is what an MCQ option or a True/False choice is. Everything else -
+   * remark-math, rehype-katex, the citation-chip handler - is unchanged.
+   */
+  inline?: boolean;
 }) {
   if (!children) return null;
 
   const text = linkifyCitations(children, citations ?? []);
+  const Root = inline ? "span" : "div";
+  const Block = inline ? "span" : "p";
+  const List = inline ? "span" : "ul";
+  const OrderedList = inline ? "span" : "ol";
+  const Heading = inline ? "span" : undefined;
 
   return (
-    <div className={cn("agent-prose", className)}>
+    <Root className={cn("agent-prose", className)}>
       <ReactMarkdown
         remarkPlugins={[remarkMath]}
         rehypePlugins={[rehypeKatex]}
         components={{
           // Bind to the surrounding type scale instead of browser defaults:
           // this renders inside cards and chat bubbles that already set size.
-          p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+          p: ({ children }) => <Block className={inline ? undefined : "mb-2 last:mb-0"}>{children}</Block>,
           ul: ({ children }) => (
-            <ul className="mb-2 list-disc space-y-1 pl-5 last:mb-0">{children}</ul>
+            <List className={inline ? undefined : "mb-2 list-disc space-y-1 pl-5 last:mb-0"}>
+              {children}
+            </List>
           ),
           ol: ({ children }) => (
-            <ol className="mb-2 list-decimal space-y-1 pl-5 last:mb-0">{children}</ol>
+            <OrderedList
+              className={inline ? undefined : "mb-2 list-decimal space-y-1 pl-5 last:mb-0"}
+            >
+              {children}
+            </OrderedList>
           ),
-          h1: ({ children }) => (
-            <h1 className="mt-3 mb-1 text-base font-semibold first:mt-0">{children}</h1>
-          ),
-          h2: ({ children }) => (
-            <h2 className="mt-3 mb-1 text-sm font-semibold first:mt-0">{children}</h2>
-          ),
-          h3: ({ children }) => (
-            <h3 className="mt-3 mb-1 text-sm font-semibold first:mt-0">{children}</h3>
-          ),
+          li: ({ children }) => (inline ? <span>{children}</span> : <li>{children}</li>),
+          h1: ({ children }) =>
+            Heading ? (
+              <Heading>{children}</Heading>
+            ) : (
+              <h1 className="mt-3 mb-1 text-base font-semibold first:mt-0">{children}</h1>
+            ),
+          h2: ({ children }) =>
+            Heading ? (
+              <Heading>{children}</Heading>
+            ) : (
+              <h2 className="mt-3 mb-1 text-sm font-semibold first:mt-0">{children}</h2>
+            ),
+          h3: ({ children }) =>
+            Heading ? (
+              <Heading>{children}</Heading>
+            ) : (
+              <h3 className="mt-3 mb-1 text-sm font-semibold first:mt-0">{children}</h3>
+            ),
           code: ({ children }) => (
             <code className="bg-muted/60 rounded px-1 py-0.5 font-mono text-[0.9em]">
               {children}
             </code>
           ),
-          pre: ({ children }) => (
-            <pre className="bg-muted/60 mb-2 overflow-x-auto rounded-lg p-3 text-xs last:mb-0">
-              {children}
-            </pre>
-          ),
+          pre: ({ children }) =>
+            inline ? (
+              <span className="font-mono text-[0.9em]">{children}</span>
+            ) : (
+              <pre className="bg-muted/60 mb-2 overflow-x-auto rounded-lg p-3 text-xs last:mb-0">
+                {children}
+              </pre>
+            ),
           a: ({ children, href }) => {
             // Citation markers are rewritten into links by linkifyCitations so
             // react-markdown parses them without a custom plugin; they are
@@ -117,20 +150,26 @@ export function AgentText({
               </a>
             );
           },
-          table: ({ children }) => (
-            <div className="mb-2 overflow-x-auto last:mb-0">
-              <table className="w-full text-left text-xs">{children}</table>
-            </div>
-          ),
-          blockquote: ({ children }) => (
-            <blockquote className="border-border text-muted-foreground mb-2 border-l-2 pl-3 last:mb-0">
-              {children}
-            </blockquote>
-          ),
+          table: ({ children }) =>
+            inline ? (
+              <span>{children}</span>
+            ) : (
+              <div className="mb-2 overflow-x-auto last:mb-0">
+                <table className="w-full text-left text-xs">{children}</table>
+              </div>
+            ),
+          blockquote: ({ children }) =>
+            inline ? (
+              <span>{children}</span>
+            ) : (
+              <blockquote className="border-border text-muted-foreground mb-2 border-l-2 pl-3 last:mb-0">
+                {children}
+              </blockquote>
+            ),
         }}
       >
         {text}
       </ReactMarkdown>
-    </div>
+    </Root>
   );
 }
