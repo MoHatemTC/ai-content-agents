@@ -30,6 +30,12 @@ from src.retrieval.config import RetrievalConfig
 from src.retrieval.index import ChunkIndex
 from src.retrieval.models import GroundedContext, RetrievalScope
 from src.retrieval.retriever import ChromaRetriever
+from src.retrieval.structure import (
+    STRUCTURE_BACK_MATTER,
+    STRUCTURE_FRONT_MATTER,
+    ordinal_range_for,
+    parse_structure_ref,
+)
 
 from .schemas import SUPPORTED_SEARCH_KIND, SearchResponse, SearchResult
 
@@ -126,6 +132,67 @@ def search_workspace(
     return _to_response(conn, workspace_id, retrieved)
 
 
+def _structural_range(
+    query: str, document_id: str | None, db_path: str | None
+) -> tuple[int, int] | None:
+    """Confine retrieval to the part of a document a query is really about.
+
+    Two cases, one mechanism. A query naming a chapter or section gets that
+    chapter's ordinals. Any other query gets the document's *body* — front
+    matter (title page, table of contents, preface) and back matter (the
+    answer key) removed. Both are dense with section numbers and empty of
+    explanation, which is why "explain chapter 4" used to come back describing
+    the preface and the answers to odd-numbered exercises.
+
+    Args:
+        query: The user's question.
+        document_id: The document being searched, when scoped to one.
+        db_path: Where ``document_chunks`` lives. ``None`` disables routing.
+
+    Returns:
+        An inclusive ordinal span, or ``None`` to retrieve unconfined —
+        which is what happens for an unlabelled document, an unmatched
+        reference, or a workspace-wide search.
+    """
+    if not document_id or not db_path:
+        return None
+
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT ordinal, section FROM document_chunks "
+            "WHERE document_id = ? ORDER BY ordinal",
+            (document_id,),
+        ).fetchall()
+    except sqlite3.Error:
+        return None
+    finally:
+        conn.close()
+
+    labels: list[str | None] = [row[1] for row in rows]
+    if not labels or all(label is None for label in labels):
+        # Unlabelled: either chunked before labelling existed, or a document
+        # with no headings to find. Make no claim about its structure.
+        return None
+
+    ref = parse_structure_ref(query)
+    if ref is not None:
+        return ordinal_range_for(labels, ref)
+
+    body = [
+        i
+        for i, label in enumerate(labels)
+        if label not in (None, STRUCTURE_FRONT_MATTER, STRUCTURE_BACK_MATTER)
+    ]
+    if not body:
+        return None
+    # A body that is a minority of the document means the labelling misread
+    # it. Narrowing on that would hide real material, so leave it alone.
+    if len(body) * 2 < len(labels):
+        return None
+    return body[0], body[-1]
+
+
 def build_grounded_context(
     *,
     query: str,
@@ -135,6 +202,7 @@ def build_grounded_context(
     document_id: str | None = None,
     document_ids: list[str] | None = None,
     session_id: str | None = None,
+    db_path: str | None = None,
 ) -> GroundedContext:
     """Retrieve a grounded context for generation (M5 plumbing).
 
@@ -150,6 +218,9 @@ def build_grounded_context(
         document_id=target_doc_id,
         session_id=session_id,
         workspace_id=workspace_id,
+        ordinal_range=_structural_range(
+            query, target_doc_id, db_path=db_path
+        ),
     )
     chunks = retriever.retrieve(query, scope, top_k=top_k)
     if not chunks and len(index) > 0:

@@ -148,6 +148,7 @@ def generate_questions_service(
             query=query,
             document_ids=request.documentIds if request.documentIds else None,
             chroma_dir=chroma_dir,
+            db_path=db_path,
         )
 
         if not grounded.chunks:
@@ -300,6 +301,7 @@ def generate_flashcards_service(
             query=query,
             document_ids=request.documentIds if request.documentIds else None,
             chroma_dir=chroma_dir,
+            db_path=db_path,
         )
 
         if not grounded.chunks:
@@ -397,6 +399,7 @@ def flashcard_topics_service(
         query="flashcards key concepts definitions terms",
         document_ids=request.documentIds if request.documentIds else None,
         chroma_dir=chroma_dir,
+            db_path=db_path,
     )
     if not grounded.chunks:
         return FlashcardTopicsResponse(topics=[])
@@ -427,6 +430,7 @@ def generate_study_plan_service(
             query="study plan topics schedule breakdown",
             document_ids=request.documentIds if request.documentIds else None,
             chroma_dir=chroma_dir,
+            db_path=db_path,
         )
 
         if not grounded.chunks:
@@ -535,6 +539,7 @@ def generate_revision_sheet_service(
             query="revision topics summary key ideas",
             document_ids=request.documentIds if request.documentIds else None,
             chroma_dir=chroma_dir,
+            db_path=db_path,
         )
 
         if not grounded.chunks:

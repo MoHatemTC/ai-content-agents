@@ -185,6 +185,7 @@ def send_chat_message_service(
             query=request.message,
             document_ids=request.documentIds if request.documentIds else None,
             chroma_dir=chroma_dir,
+            db_path=db_path,
         )
 
         if not grounded.chunks:
