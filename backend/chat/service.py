@@ -194,12 +194,21 @@ def send_chat_message_service(
             )
         run.source_chunk_ids = grounded.chunk_ids
 
-        # Get document titles for citations
+        # Document titles and chunk pages for citations. The page is what makes
+        # a reference readable ("p. 213" beats a uuid), and it lives here rather
+        # than on the retrieved chunk: RetrievedChunk carries no page, so the
+        # previous getattr(retrieved, "page", None) was always None and the
+        # reference panel never showed one.
         doc_titles: dict[str, str] = {}
+        chunk_pages: dict[str, int] = {}
         conn = _connect(db_path)
         try:
             rows = conn.execute("SELECT id, title FROM documents").fetchall()
             doc_titles = {r[0]: r[1] for r in rows}
+            page_rows = conn.execute(
+                "SELECT id, page FROM document_chunks WHERE page IS NOT NULL"
+            ).fetchall()
+            chunk_pages = {r[0]: r[1] for r in page_rows}
         finally:
             conn.close()
 
@@ -245,7 +254,8 @@ def send_chat_message_service(
                 ChatCitation(
                     docId=doc_id,
                     docTitle=title,
-                    page=getattr(retrieved, "page", None) if retrieved else None,
+                    chunk=segment_id,
+                    page=chunk_pages.get(segment_id),
                     snippet=snippet[:200],
                 )
             )

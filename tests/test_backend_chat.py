@@ -117,6 +117,46 @@ def test_mentor_chat_message(chat_app_client):
     assert len(data["citations"]) > 0
 
 
+def test_chat_citations_carry_the_cited_chunk(chat_app_client):
+    """The chunk id has to survive into the citation.
+
+    The prompts tell the model to write segment_ids into its prose, so the UI
+    has to match a marker in the reply to the passage it names. Chat used to
+    split the id down to its document half (``segment_id.split("-c")[0]``),
+    which left nothing to match on - while generation's Citation kept it.
+    """
+    client, token, ws_id = chat_app_client
+    headers = {"Authorization": f"Bearer {token}"}
+
+    chat_id = client.post(
+        "/chats",
+        json={
+            "workspaceId": ws_id,
+            "kind": "mentor",
+            "title": "Mentor Chat",
+            "model": "gemini",
+        },
+        headers=headers,
+    ).json()["chatId"]
+
+    data = client.post(
+        "/mentor/chat",
+        json={
+            "workspaceId": ws_id,
+            "chatId": chat_id,
+            "message": "Explain Newton's laws",
+            "model": "gemini",
+        },
+        headers=headers,
+    ).json()
+
+    citation = data["citations"][0]
+    assert citation["chunk"], "the cited chunk id was dropped"
+    # Still a chunk id, not the document id it used to be reduced to.
+    assert "-c" in citation["chunk"]
+    assert citation["chunk"].startswith(citation["docId"])
+
+
 def test_concept_chat_message(chat_app_client):
     client, token, ws_id = chat_app_client
     headers = {"Authorization": f"Bearer {token}"}

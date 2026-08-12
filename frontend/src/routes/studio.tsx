@@ -891,7 +891,7 @@ function ChatPanel({
             </div>
           ) : (
             <div key={i} className="surface-card max-w-[85%] p-3 text-sm">
-              <AgentText>{m.text}</AgentText>
+              <AgentText citations={m.citations}>{m.text}</AgentText>
               {m.citations && m.citations.length > 0 && (
                 <MessageReferences citations={m.citations} />
               )}
@@ -931,6 +931,28 @@ function ChatPanel({
 
 function MessageReferences({ citations }: { citations: ChatCitation[] }) {
   const [open, setOpen] = useState(false);
+
+  // A citation chip in the reply body asks its own reference list to open.
+  // AgentText has no way to reach this state, and threading a callback through
+  // every place model prose is rendered would put chat wiring in components
+  // that have nothing to do with chat, so the chip announces and the list that
+  // owns that chunk answers.
+  useEffect(() => {
+    const onCite = (event: Event) => {
+      const chunk = (event as CustomEvent<{ chunk: string }>).detail?.chunk;
+      if (!chunk || !citations.some((c) => c.chunk === chunk)) return;
+      setOpen(true);
+      // After the panel has rendered, not before.
+      requestAnimationFrame(() => {
+        document
+          .getElementById(`ref-${chunk}`)
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    };
+    window.addEventListener("sensei:cite", onCite);
+    return () => window.removeEventListener("sensei:cite", onCite);
+  }, [citations]);
+
   return (
     <div className="mt-2.5">
       <button
@@ -947,7 +969,11 @@ function MessageReferences({ citations }: { citations: ChatCitation[] }) {
       {open && (
         <div className="border-border mt-2 space-y-2 border-l-2 pl-3">
           {citations.map((c, i) => (
-            <div key={`${c.docId}-${i}`} className="text-xs leading-relaxed">
+            <div
+              key={`${c.docId}-${i}`}
+              id={c.chunk ? `ref-${c.chunk}` : undefined}
+              className="scroll-mt-24 text-xs leading-relaxed"
+            >
               <p className="text-primary font-semibold">
                 {c.docTitle}
                 {c.page ? ` · p.${c.page}` : ""}

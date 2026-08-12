@@ -2,7 +2,9 @@ import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkMath from "remark-math";
 
+import { CITE_HREF_PREFIX, linkifyCitations } from "@/lib/citations";
 import { cn } from "@/lib/utils";
+import type { ChatCitation } from "@/types/domain";
 
 /**
  * The single place model prose becomes DOM.
@@ -25,11 +27,16 @@ import { cn } from "@/lib/utils";
 export function AgentText({
   children,
   className,
+  citations,
 }: {
   children: string | null | undefined;
   className?: string;
+  /** Lets an inline chunk id be labelled with its page and linked to its entry. */
+  citations?: ChatCitation[];
 }) {
   if (!children) return null;
+
+  const text = linkifyCitations(children, citations ?? []);
 
   return (
     <div className={cn("agent-prose", className)}>
@@ -65,16 +72,51 @@ export function AgentText({
               {children}
             </pre>
           ),
-          a: ({ children, href }) => (
-            <a
-              href={href}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="text-primary underline underline-offset-2"
-            >
-              {children}
-            </a>
-          ),
+          a: ({ children, href }) => {
+            // Citation markers are rewritten into links by linkifyCitations so
+            // react-markdown parses them without a custom plugin; they are
+            // rendered as chips rather than links.
+            if (href?.startsWith(CITE_HREF_PREFIX)) {
+              const chunk = href.slice(CITE_HREF_PREFIX.length);
+              const known = (citations ?? []).some((c) => c.chunk === chunk);
+              return (
+                <a
+                  href={href}
+                  title={
+                    known
+                      ? undefined
+                      : // Same call src/ui_common.py makes: say the model cited
+                        // something outside the retrieved set rather than hide it.
+                        `Unverified citation — the model cited ${chunk}, which is not among this reply's sources`
+                  }
+                  onClick={(event) => {
+                    event.preventDefault();
+                    window.dispatchEvent(
+                      new CustomEvent("sensei:cite", { detail: { chunk } }),
+                    );
+                  }}
+                  className={cn(
+                    "mx-0.5 inline-flex items-baseline rounded border px-1 align-baseline text-[0.7em] font-medium no-underline transition-colors",
+                    known
+                      ? "border-primary/30 text-primary hover:bg-primary/10"
+                      : "border-warning/40 text-warning hover:bg-warning/10",
+                  )}
+                >
+                  {children}
+                </a>
+              );
+            }
+            return (
+              <a
+                href={href}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="text-primary underline underline-offset-2"
+              >
+                {children}
+              </a>
+            );
+          },
           table: ({ children }) => (
             <div className="mb-2 overflow-x-auto last:mb-0">
               <table className="w-full text-left text-xs">{children}</table>
@@ -87,7 +129,7 @@ export function AgentText({
           ),
         }}
       >
-        {children}
+        {text}
       </ReactMarkdown>
     </div>
   );

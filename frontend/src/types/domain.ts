@@ -117,6 +117,8 @@ export interface WsDoc {
 export interface ChatCitation {
   docId: string;
   docTitle: string;
+  /** The chunk the model cited, so an inline marker can be matched to it. */
+  chunk?: string;
   page?: number;
   snippet: string;
 }
