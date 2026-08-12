@@ -59,6 +59,7 @@ from src.llm_gateway import (
     DEFAULT_TEMPERATURE,
     UpstreamResponseError,
     chat_json,
+    find_corruption,
     loads_model_json,
     strip_fences,
 )
@@ -79,6 +80,7 @@ __all__ = [
     "output_budget",
     "parse_json",
     "schema_block",
+    "find_corruption",
     "loads_model_json",
     "strip_fences",
 ]
@@ -237,6 +239,17 @@ def parse_json(text: str, schema: type[ModelT]) -> ModelT:
         raise ValueError(
             f"The model did not return valid JSON ({exc}). Output began: {body[:200]!r}"
         ) from exc
+
+    # A control character means a LaTeX command was mis-read as an escape and
+    # the text is already wrong; the content lanes refuse the same way. The
+    # study schemas carry maths too, so this lane needs it as much as they do.
+    corruption = find_corruption(payload)
+    if corruption is not None:
+        raise ValueError(
+            f"The model's reply contains {corruption!r}, which means a LaTeX "
+            f"command was mis-read as an escape sequence. Output began: "
+            f"{body[:200]!r}"
+        )
 
     # The review flag is a control over the system, not an output of it, and
     # the study schemas now pin it Literal[True] + frozen so nothing downstream

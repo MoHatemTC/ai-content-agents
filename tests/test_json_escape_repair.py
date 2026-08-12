@@ -104,6 +104,48 @@ def test_ambiguous_initial_commands_survive(command: str) -> None:
     assert parsed["t"] == command
 
 
+@pytest.mark.parametrize(
+    ("raw_tail", "expected"),
+    [
+        # \ne would eat a paragraph beginning "e.g." - ordinary prose.
+        (r"line one\ne.g. this", "line one\ne.g. this"),
+        # \ni would eat one beginning "i.e."
+        (r"line one\ni.e. that", "line one\ni.e. that"),
+    ],
+)
+def test_short_commands_do_not_eat_real_control_characters(
+    raw_tail: str, expected: str
+) -> None:
+    r"""Two-letter commands guess wrong more often than they help.
+
+    ``\ne`` and ``\ni`` are real LaTeX, but so is a paragraph that starts
+    "e.g." or "i.e.", and the second is far more common in an explanation than
+    the first. Dropping them costs a rendered symbol; keeping them costs the
+    reader a mangled sentence.
+    """
+    assert loads_model_json('{"t": "%s"}' % raw_tail)["t"] == expected
+
+
+@pytest.mark.parametrize(
+    "command",
+    [r"\bowtie", r"\flat", r"\bigsqcup", r"\forall", r"\beta", r"\begin{bmatrix}"],
+)
+def test_backspace_and_formfeed_commands_survive_without_a_list(
+    command: str,
+) -> None:
+    r"""``\b`` and ``\f`` are never legitimate here, so no list is needed.
+
+    A BACKSPACE or FORM FEED has no meaning in a study explanation, so any
+    ``\b``/``\f`` followed by letters is LaTeX by construction - which covers
+    the commands a hand-written list was always going to miss.
+    """
+    parsed = loads_model_json('{"t": "%s"}' % command)
+
+    assert parsed["t"] == command
+    assert "\b" not in parsed["t"]
+    assert "\f" not in parsed["t"]
+
+
 def test_a_real_newline_followed_by_a_word_stays_a_newline() -> None:
     r"""The regression the obvious fix causes.
 

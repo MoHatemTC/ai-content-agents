@@ -256,26 +256,27 @@ def loads_model_json(text: str) -> Any:
     return json.loads(_ESCAPES.sub(_repair_escape, text))
 
 
-# LaTeX commands whose first letter is also a JSON escape character. These are
-# the only ambiguous ones: every other letter already forms an invalid escape
-# and is repaired by the last branch below, including ``\u`` when it is not
-# followed by four hex digits (``\underline``, ``\uparrow``).
+# LaTeX commands beginning with n, t or r - the three escape characters that
+# are *also* legitimate content. A reply really does contain newlines, so
+# ``\n`` has to stay a newline unless the letters after it spell a command.
+#
+# ``ne`` and ``ni`` are deliberately absent. They swallow a paragraph beginning
+# "e.g." or "i.e." - ordinary prose, and far commoner in an explanation than the
+# two symbols are. Nothing else collides: ``\nu`` needs a line starting with a
+# lone "u", ``\to`` needs a tab before an "o" word, and a tab is rejected
+# outright further down. Dropping a command costs a rendered glyph; keeping a
+# greedy one costs the reader a mangled sentence.
 #
 # Sorted longest-first so ``textbf`` wins over ``text``; the trailing boundary
 # then stops ``\textbf`` matching as ``text`` plus stray letters.
-_LATEX_AMBIGUOUS = sorted(
+_LATEX_NTR = sorted(
     (
         # t - \times and \text were both seen corrupting live output
         "times", "theta", "tau", "text", "textbf", "textit", "texttt", "tfrac",
         "tilde", "to", "top", "triangle", "therefore", "tan", "tanh", "tbinom",
-        # b - \beta and \begin likewise
-        "beta", "bar", "begin", "binom", "bmatrix", "bmod", "boldsymbol",
-        "bullet", "big", "bigcup", "bigcap", "bot", "boxed",
-        # f
-        "frac", "forall", "floor", "flat", "fbox", "frown",
         # n
-        "neq", "ne", "nu", "nabla", "not", "notin", "nonumber", "ni", "nleq",
-        "ngeq", "nmid", "nsubseteq", "nsupseteq",
+        "neq", "nu", "nabla", "not", "notin", "nonumber", "nleq", "ngeq",
+        "nmid", "nsubseteq", "nsupseteq",
         # r
         "rho", "rightarrow", "rangle", "rceil", "rfloor", "right", "rtimes",
         "rm", "rvert", "real",
@@ -287,22 +288,29 @@ _LATEX_AMBIGUOUS = sorted(
 # Order is the whole design:
 #   1. an already-escaped backslash, consumed whole so a correct ``\\mathbf``
 #      is never touched (the model does get it right sometimes),
-#   2. a LaTeX command whose initial doubles as an escape character - the
-#      branch that stops ``\times`` decoding to TAB + "imes",
-#   3. a genuine escape, left alone - this is what keeps a real ``\n`` before a
-#      word working, and every newline in a real reply is followed by a word,
-#   4. anything else: an invalid escape, doubled so JSON accepts it.
+#   2. a backslash-b or backslash-f followed by letters. These decode to
+#      BACKSPACE and FORM FEED, neither of which means anything in a study
+#      explanation, so the letters are LaTeX by construction - no list to keep
+#      current, and it covers the names a list always misses,
+#   3. a listed command beginning with n, t or r - the escapes that are also
+#      legitimate content, so only known names may claim them,
+#   4. a genuine escape, left alone: what keeps a real newline a newline,
+#   5. anything else: an invalid escape, doubled so JSON accepts it.
 _ESCAPES = re.compile(
     r"(?P<kept>\\\\)"
-    r"|(?P<latex>\\(?:" + "|".join(_LATEX_AMBIGUOUS) + r")(?![A-Za-z]))"
+    r"|(?P<never>\\[bf][A-Za-z]+)"
+    r"|(?P<latex>\\(?:" + "|".join(_LATEX_NTR) + r")(?![A-Za-z]))"
     r'|(?P<valid>\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))'
     r"|(?P<lone>\\)"
 )
 
-#: Control characters that mean a command was eaten despite the list above.
-#: Neither has any business in a study explanation, and their presence is the
-#: only trace left once ``\beta`` has become BACKSPACE + "eta".
-CORRUPTION_MARKERS = ("\x08", "\x0c")
+#: What a mis-read LaTeX command leaves behind once JSON has decoded it.
+#:
+#: A newline is deliberately absent: it is ordinary in an explanation, so
+#: flagging it would reject every well-formed reply. That leaves an
+#: n-initial command outside ``$...$`` as the one case nothing can catch, and
+#: it degrades to a stray line break rather than mangled words.
+CORRUPTION_MARKERS = ("\x08", "\x0c", "\x09", "\x0d")
 
 
 def _repair_escape(match: re.Match[str]) -> str:
@@ -313,11 +321,42 @@ def _repair_escape(match: re.Match[str]) -> str:
     both longer than two characters and mean opposite things.
     """
     branch = match.lastgroup
-    if branch == "latex":
+    if branch in ("latex", "never"):
         return "\\" + match.group(0)
     if branch == "lone":
         return "\\\\"
     return match.group(0)
+
+
+def find_corruption(payload: Any) -> str | None:
+    """Return the first corruption marker in any string inside ``payload``.
+
+    The last line of defence. ``loads_model_json`` protects the commands it
+    knows about; anything it misses has already decoded to a control character
+    by the time this runs, and nothing downstream will notice - the reply
+    parses, satisfies its schema, passes grounding, and reaches the learner as
+    mangled words.
+
+    It must be handed the **decoded** payload. The marker cannot appear in the
+    raw reply, which holds the two characters ``\\`` and ``b`` and no backspace
+    at all; checking the raw text was a guarantee that could never fire.
+
+    Args:
+        payload: A decoded JSON value.
+
+    Returns:
+        The offending character, or ``None`` when the payload is clean.
+    """
+    if isinstance(payload, str):
+        return next((m for m in CORRUPTION_MARKERS if m in payload), None)
+    if isinstance(payload, dict):
+        payload = payload.values()
+    if isinstance(payload, (list, tuple)) or hasattr(payload, "__iter__"):
+        for item in payload:
+            found = find_corruption(item)
+            if found is not None:
+                return found
+    return None
 
 
 def chat_json(

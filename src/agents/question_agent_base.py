@@ -37,9 +37,9 @@ from pydantic import BaseModel, ValidationError
 from src.llm_gateway import (
     DEFAULT_ATTEMPTS,
     build_client,
-    CORRUPTION_MARKERS,
     chat_json,
     default_model,
+    find_corruption,
     loads_model_json,
 )
 from src.retrieval.grounding import CitationGroundingError, verify_references
@@ -339,13 +339,16 @@ class QuestionAgentBase:
             raise ValueError("The LLM returned invalid JSON.") from e
 
         # A control character here means a LaTeX command the repair does not
-        # know about was eaten by a valid escape - eta becoming BACKSPACE +
-        # "eta". The text is already wrong and nothing further will notice, so
-        # this is the last chance to reject it rather than serve it.
-        if any(marker in raw_response for marker in CORRUPTION_MARKERS):
+        # know about was mis-read as an escape - backslash-b becoming a
+        # BACKSPACE and taking the "b" with it. The text is already wrong and
+        # nothing downstream will notice, so this is the last chance to reject
+        # it rather than serve it. Checked on the decoded payload: the raw
+        # reply holds a backslash and a letter, never the control character.
+        corruption = find_corruption(payload)
+        if corruption is not None:
             raise ValueError(
-                "The LLM reply contains control characters, which means a "
-                "LaTeX command was mis-read as an escape sequence."
+                f"The LLM reply contains {corruption!r}, which means a LaTeX "
+                "command was mis-read as an escape sequence."
             )
 
         # The review flag is a control over the system, not an output of it.
