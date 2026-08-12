@@ -199,32 +199,53 @@ python -m ruff check src/retrieval tests/test_retrieval.py tests/test_retrieval_
 python -m mypy src/retrieval --ignore-missing-imports
 ```
 
-## Known limitation: questions about chapters and sections
+## Questions about chapters and sections
 
-Chunks carry no structural metadata. A chunk knows its document, its ordinal
-and its text; it does not know which chapter or section it came from. Retrieval
-is embedding similarity over that text, so a question shaped like
+This used to be a refusal. A chunk knew its document, its ordinal and its text,
+but not which chapter it came from, so a question shaped like
 
 > explain chapter 1 and chapter 2
 
-cannot be answered. Two things go wrong at once. The query has no topic to match
-on, so nearest-neighbour search falls back on passages that happen to *mention*
-chapter numbers - cross-references and exercise headers. And even when retrieval
-returns genuinely relevant passages, the model has no way to tell whether they
-came from chapter 1 or chapter 7, so a well-behaved agent says the content does
-not cover what was asked. Observed on a real textbook: the Concept page answered
-"Not available in the provided content" while holding correct passages about
-vector spaces.
+could not be answered. The query has no topic to match on, so nearest-neighbour
+search fell back on the passages that *mention* chapter numbers — the contents
+page, cross-references, the answer key. Observed on a real textbook: the Concept
+page reported that the material covered "the preface, answers to odd-numbered
+exercises" while the whole book sat in the index.
 
-**This is the agents behaving correctly.** Refusing to guess is the contract.
-The gap is upstream, in what ingestion records.
+`src/retrieval/structure.py` closes it, and the shape of the fix is worth
+knowing because the obvious version does not work.
 
-Ask by topic instead - "what is a vector space", "how do you find eigenvalues" -
-which is what the retrieval this lane implements is built to answer.
+**Headings are read from the running page header, not from a heading line.**
+Chunks are fixed-size, so a once-per-chapter heading almost never lands at the
+start of one. The header a publisher prints on every page does — `CHAPTER 4`
+appeared in 261 of a 579-page textbook's chunks, in order, with no noise. Being
+repeated is exactly what makes it safe to read: missing one occurrence costs
+nothing, because the next page carries it again.
 
-Closing it properly means detecting headings during parsing, storing chapter and
-section on each `Chunk`, carrying them through `GroundedContext` into the
-`[chunk_id]` marker the prompts already cite, and offering them as a filter. That
-is an ingestion change as much as a retrieval one, and every existing document
-has to be re-ingested to pick the metadata up - which is why it is written down
-here rather than done in passing.
+**Labels go in `document_chunks.section`**, which has existed since M3 and was
+never populated, and the query side uses `RetrievalScope.ordinal_range` —
+chunks are stored in document order and `ordinal` is already indexed Chroma
+metadata, so a chapter is expressible as a range without a new metadata field
+or a re-embed. The filter is applied inside the vector store, like every other
+scope rule.
+
+**Ordinary queries use the same mechanism** to skip front matter (title page,
+contents, preface) and back matter (the answer key). Those pollute topical
+retrieval too — they are dense with section numbers and empty of explanation.
+
+### What it will and will not do
+
+It works on a typeset textbook with running headers. It will not find structure
+in a lecture handout or a scanned page set, and it does not try: when no chapter
+is found every label stays `NULL`, `ordinal_range` stays `None`, and retrieval
+behaves exactly as it did before. A wrong structure is worse than none, so three
+guards are in place — back matter must follow a chapter and sit in the second
+half of the document, chapters advance by one rather than jumping, and a section
+counts only inside its own chapter. Each was added because the real textbook
+broke the version without it; the first one alone had labelled 853 of 861 chunks
+as back matter, off a single contents-page line.
+
+**Existing documents must be re-chunked and re-embedded** to pick up labels —
+`POST /documents/{id}/chunk` then `POST /documents/{id}/embed`. Until then they
+are unlabelled, which is the no-confinement path, so nothing breaks in the
+meantime.

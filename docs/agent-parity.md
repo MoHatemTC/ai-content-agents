@@ -89,9 +89,15 @@ topic allow-list instead, which is a real constraint but a weaker one. Recorded
 in [study-lane-sprint3.md](study-lane-sprint3.md); closing it is a schema change
 plus a prompt change, not a parity fix.
 
-**Chapter-shaped questions cannot be answered** - chunks carry no chapter or
-section metadata, so retrieval cannot serve them and the agents correctly refuse.
-Recorded in [retrieval-lane.md](retrieval-lane.md).
+~~**Chapter-shaped questions cannot be answered**~~ — **closed.** Chunks now
+carry a `section` label taken from the running page header, and
+`RetrievalScope.ordinal_range` confines the search to it, so "explain chapter 4"
+reaches chapter 4 instead of the contents page and the answer key. See
+[retrieval-lane.md](retrieval-lane.md) and `src/retrieval/structure.py`.
+
+**A document chunked before that lands is still unlabelled**, and an unlabelled
+document retrieves exactly as it did before — no confinement, no refusal
+change. Re-chunk and re-embed to pick up the labels.
 
 **The explanation agents use a flat output cap** where the other two lanes size
 it to the request. One explanation is one explanation, so a flat cap is
