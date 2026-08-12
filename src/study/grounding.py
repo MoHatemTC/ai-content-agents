@@ -59,6 +59,36 @@ DEFAULT_TOP_K = 12
 MAX_CONTENT_CHARS = 24_000
 
 
+def cap_content(content: str, limit: int = MAX_CONTENT_CHARS) -> str:
+    """Trim ``content`` to ``limit`` on a passage boundary.
+
+    :meth:`~src.retrieval.models.GroundedContext.as_prompt_content` joins
+    retrieved passages with a blank line; cutting anywhere else would serve a
+    half-quoted passage, misrepresenting what the source says. Exported so
+    every caller of ``as_prompt_content`` shares one cap rather than each
+    re-deriving it - which is exactly how the FastAPI generation services
+    ended up with no cap at all while this module had one.
+
+    Args:
+        content: The rendered prompt content block.
+        limit: The character ceiling; defaults to :data:`MAX_CONTENT_CHARS`.
+
+    Returns:
+        ``content`` unchanged if within ``limit``, else trimmed to whole
+        passages (or a hard slice, if even the first passage exceeds it).
+    """
+    if len(content) <= limit:
+        return content
+    kept: list[str] = []
+    budget = limit
+    for block in content.split("\n\n"):
+        if len(block) + 2 > budget:
+            break
+        kept.append(block)
+        budget -= len(block) + 2
+    return "\n\n".join(kept) or content[:limit]
+
+
 class NoGroundingError(RuntimeError):
     """Raised when nothing could be retrieved for a document."""
 
@@ -191,18 +221,9 @@ def grounded_content(
             "try a different focus."
         )
 
-    content = context.as_prompt_content()
-    if len(content) > MAX_CONTENT_CHARS:
-        # Trim on a passage boundary so a chunk is never half-quoted; a card
-        # citing a truncated passage would misrepresent the source.
-        kept: list[str] = []
-        budget = MAX_CONTENT_CHARS
-        for block in content.split("\n\n"):
-            if len(block) + 2 > budget:
-                break
-            kept.append(block)
-            budget -= len(block) + 2
-        content = "\n\n".join(kept) or content[:MAX_CONTENT_CHARS]
+    raw_content = context.as_prompt_content()
+    content = cap_content(raw_content)
+    if len(content) < len(raw_content):
         logger.info("trimmed grounded content to %d chars", len(content))
 
     logger.info(
