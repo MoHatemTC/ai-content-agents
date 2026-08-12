@@ -8,7 +8,9 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from backend.chat import service as chat_service
 from backend.main import create_app
+from src.study.grounding import DEFAULT_TOP_K
 from tests.supabase_test_helpers import make_settings, make_token
 
 
@@ -187,3 +189,53 @@ def test_concept_chat_message(chat_app_client):
     data = msg_resp.json()
     assert data["message"]["role"] == "assistant"
     assert len(data["message"]["text"]) > 0
+
+
+# --------------------------------------------------------------------------- #
+# Parity with the study lane's own grounding decisions
+#
+# src/app.py's ground() is the single retrieval helper behind every Streamlit
+# page - mentor and concept included - and it retrieves DEFAULT_TOP_K (12)
+# passages, not the search lane's default of 5. This endpoint had drifted
+# back to 5. See tests/test_backend_generation.py for the matching gap on the
+# generation endpoints, and its comment on why content is not capped here:
+# explanation_agent_base.generate() lets `context` override `content` for the
+# prompt whenever both are supplied, which they always are on this path.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("path", ["/mentor/chat", "/concept/chat"])
+def test_chat_uses_the_study_lanes_wider_top_k(chat_app_client, monkeypatch, path):
+    client, token, ws_id = chat_app_client
+    headers = {"Authorization": f"Bearer {token}"}
+    kind = "mentor" if path == "/mentor/chat" else "concept"
+
+    chat_id = client.post(
+        "/chats",
+        json={"workspaceId": ws_id, "kind": kind, "title": "t", "model": "gemini"},
+        headers=headers,
+    ).json()["chatId"]
+
+    calls: list[dict] = []
+    real = chat_service.build_grounded_context
+
+    def spy(**kwargs: object) -> object:
+        calls.append(kwargs)
+        return real(**kwargs)
+
+    monkeypatch.setattr(chat_service, "build_grounded_context", spy)
+
+    resp = client.post(
+        path,
+        json={
+            "workspaceId": ws_id,
+            "chatId": chat_id,
+            "message": "Explain Newton's laws",
+            "model": "gemini",
+        },
+        headers=headers,
+    )
+
+    assert resp.status_code == 200
+    assert calls, "build_grounded_context was never called"
+    assert calls[0]["top_k"] == DEFAULT_TOP_K

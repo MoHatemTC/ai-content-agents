@@ -28,6 +28,7 @@ from backend.search.service import build_grounded_context
 from src.agents.concept_agent import ConceptAgent
 from src.agents.mentor_agent import MentorAgent
 from src.retrieval.models import InsufficientGroundingError
+from src.study.grounding import DEFAULT_TOP_K
 from src.validation.review_schema import GeneratedOutput, OutputStatus
 from src.validation.store import PlatformStore
 
@@ -179,13 +180,23 @@ def send_chat_message_service(
         input_context=f"chat:{request.chatId}",
         model=_resolve_model(request.model),
     ) as run:
-        # Retrieve grounded context
+        # Retrieve grounded context. top_k matches the study lane's, not the
+        # search lane's default of 5: every Streamlit page - mentor and
+        # concept included - retrieves 12 passages through the same
+        # ground()/grounded_content() helper; this endpoint had drifted back
+        # to 5. (No content cap here: explanation_agent_base.generate() lets
+        # `context` override `content` for the prompt whenever both are
+        # supplied, which they always are below, so a capped string handed
+        # to `content=` would be silently discarded - capping would need to
+        # change what `context` itself renders, which touches the shared
+        # agent base the Streamlit/orchestrator path also depends on.)
         grounded = build_grounded_context(
             workspace_id=request.workspaceId,
             query=request.message,
             document_ids=request.documentIds if request.documentIds else None,
             chroma_dir=chroma_dir,
             db_path=db_path,
+            top_k=DEFAULT_TOP_K,
         )
 
         if not grounded.chunks:

@@ -40,6 +40,7 @@ from src.llm_gateway import build_client, default_model
 from src.retrieval.models import InsufficientGroundingError
 from src.schemas.flashcards import Flashcard
 from src.study.flashcard_agent import FlashcardAgent
+from src.study.grounding import DEFAULT_TOP_K, cap_content
 from src.study.revision_agent import RevisionAgent
 from src.study.study_plan_agent import StudyPlanAgent
 from src.validation.review_schema import GeneratedOutput, OutputStatus
@@ -149,6 +150,7 @@ def generate_questions_service(
             document_ids=request.documentIds if request.documentIds else None,
             chroma_dir=chroma_dir,
             db_path=db_path,
+            top_k=DEFAULT_TOP_K,
         )
 
         if not grounded.chunks:
@@ -164,9 +166,15 @@ def generate_questions_service(
         # `context=` is what switches _enforce_grounding on. Without it the
         # agent verifies nothing (question_agent_base._generate_once), so an
         # invented segment_id reaches the UI wearing a citation chip.
+        #
+        # `content=` is capped and `context=` is not: unlike the explanation
+        # agents (mentor/concept), question_agent_base._build_prompt renders
+        # `content` regardless of `context` - `context` only turns on
+        # verification - so this is the one place capping the prompt text
+        # actually does anything for this agent family.
         output: QuestionBankOutput = generate_or_422(
             agent,
-            content=grounded,
+            content=cap_content(grounded.as_prompt_content()),
             question_type=q_type,
             difficulty=request.difficulty.lower(),
             num_questions=request.count,
@@ -302,6 +310,7 @@ def generate_flashcards_service(
             document_ids=request.documentIds if request.documentIds else None,
             chroma_dir=chroma_dir,
             db_path=db_path,
+            top_k=DEFAULT_TOP_K,
         )
 
         if not grounded.chunks:
@@ -317,7 +326,7 @@ def generate_flashcards_service(
         # keeps whatever ids the model invented, card.source_chunk_id misses,
         # and citations have to be guessed by keyword instead.
         card_set = agent.generate(
-            content=grounded.as_prompt_content(),
+            content=cap_content(grounded.as_prompt_content()),
             card_format=request.cardFormat,
             card_count=request.count,
             source_chunk_ids=grounded.chunk_ids,
@@ -431,6 +440,7 @@ def generate_study_plan_service(
             document_ids=request.documentIds if request.documentIds else None,
             chroma_dir=chroma_dir,
             db_path=db_path,
+            top_k=DEFAULT_TOP_K,
         )
 
         if not grounded.chunks:
@@ -442,7 +452,7 @@ def generate_study_plan_service(
         client = _get_llm_client(for_study=True)
         agent = StudyPlanAgent(client=client, model=model)
 
-        content_text = grounded.as_prompt_content()
+        content_text = cap_content(grounded.as_prompt_content())
 
         start = date.today()  # noqa: DTZ011
         if request.days:
@@ -534,12 +544,22 @@ def generate_revision_sheet_service(
         input_context=f"workspace:{request.workspaceId}",
         model=model,
     ) as run:
+        # request.topics names what the learner wants revised; retrieving for
+        # it - rather than a fixed literal - is what makes the passages this
+        # sheet is built from actually match what was picked. Falls back to
+        # the literal only when nothing was picked to retrieve for.
+        query = (
+            " ".join(request.topics)
+            if request.topics
+            else "revision topics summary key ideas"
+        )
         grounded = build_grounded_context(
             workspace_id=request.workspaceId,
-            query="revision topics summary key ideas",
+            query=query,
             document_ids=request.documentIds if request.documentIds else None,
             chroma_dir=chroma_dir,
             db_path=db_path,
+            top_k=DEFAULT_TOP_K,
         )
 
         if not grounded.chunks:
@@ -551,7 +571,7 @@ def generate_revision_sheet_service(
         client = _get_llm_client(for_study=True)
         agent = RevisionAgent(client=client, model=model)
 
-        content_text = grounded.as_prompt_content()
+        content_text = cap_content(grounded.as_prompt_content())
         extracted_topics = FlashcardAgent.extract_topics(content_text)
         topics = [t for t in (request.topics or []) if t in extracted_topics]
         if not topics:
