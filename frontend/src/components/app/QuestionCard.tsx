@@ -5,6 +5,7 @@ import type { GeneratedQuestion } from "@/types/domain";
 import { BloomBadge, DifficultyBadge, NeutralBadge, ReviewBadge } from "@/components/app/badges";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { AgentText } from "@/components/app/AgentText";
 
 export function QuestionCard({ q, index = 0 }: { q: GeneratedQuestion; index?: number }) {
   const [open, setOpen] = useState(false);
@@ -33,7 +34,7 @@ export function QuestionCard({ q, index = 0 }: { q: GeneratedQuestion; index?: n
         </span>
       </div>
 
-      <h3 className="mt-4 text-[15px] leading-relaxed font-medium">{q.prompt}</h3>
+      <AgentText className="mt-4 text-[15px] leading-relaxed font-medium">{q.prompt}</AgentText>
 
       {q.options && (
         <ul className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -71,13 +72,15 @@ export function QuestionCard({ q, index = 0 }: { q: GeneratedQuestion; index?: n
             <p className="text-muted-foreground text-[11px] font-semibold tracking-widest uppercase">
               Answer key
             </p>
-            <p className="mt-1 text-sm font-medium">{q.answer}</p>
+            <AgentText className="mt-1 text-sm font-medium">{q.answer}</AgentText>
           </div>
           <div>
             <p className="text-muted-foreground text-[11px] font-semibold tracking-widest uppercase">
               Rationale
             </p>
-            <p className="text-muted-foreground mt-1 text-sm leading-relaxed">{q.rationale}</p>
+            <AgentText className="text-muted-foreground mt-1 text-sm leading-relaxed">
+              {q.rationale}
+            </AgentText>
           </div>
           <div>
             <p className="text-muted-foreground text-[11px] font-semibold tracking-widest uppercase">

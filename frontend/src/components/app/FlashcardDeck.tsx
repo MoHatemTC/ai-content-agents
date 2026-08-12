@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { Citation } from "@/types/domain";
+import { AgentText } from "@/components/app/AgentText";
 
 export interface Flashcard {
   id: string;
@@ -137,7 +138,7 @@ export function FlashcardDeck({
               {mode === "quiz" ? "Question" : "Front"}
               {current.topic ? ` · ${current.topic}` : ""}
             </span>
-            <p className="text-2xl leading-tight font-semibold">{current.front}</p>
+            <AgentText className="text-2xl leading-tight font-semibold">{current.front}</AgentText>
             <span className="text-muted-foreground mt-auto text-xs">
               Click or press Space to flip
             </span>
@@ -147,7 +148,7 @@ export function FlashcardDeck({
               {mode === "quiz" ? "Answer" : "Back"}
               {current.format ? ` · ${current.format}` : ""}
             </span>
-            <p className="text-xl leading-relaxed">{current.back}</p>
+            <AgentText className="text-xl leading-relaxed">{current.back}</AgentText>
             {current.citations && current.citations.length > 0 && (
               <CardReferences citations={current.citations} />
             )}

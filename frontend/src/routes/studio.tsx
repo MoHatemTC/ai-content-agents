@@ -45,6 +45,7 @@ import type { WsDoc } from "@/types/domain";
 import type { ChatCitation } from "@/types/domain";
 import type { GeneratedQuestion } from "@/types/domain";
 import type { WeakTopic } from "@/types/domain";
+import { AgentText } from "@/components/app/AgentText";
 
 export const Route = createFileRoute("/studio")({
   head: () => ({
@@ -734,9 +735,9 @@ function RevisionPanel({ model, doc }: { model: ModelId; doc: string }) {
                       )}
                     </div>
                     {it.description && (
-                      <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+                      <AgentText className="text-muted-foreground mt-1 text-xs leading-relaxed">
                         {it.description}
-                      </p>
+                      </AgentText>
                     )}
                     {it.confidencePrompt && (
                       <p className="border-primary/30 bg-primary/5 mt-2 rounded-lg border-l-2 pl-2 text-xs italic">
@@ -890,7 +891,7 @@ function ChatPanel({
             </div>
           ) : (
             <div key={i} className="surface-card max-w-[85%] p-3 text-sm">
-              <div className="whitespace-pre-wrap">{m.text}</div>
+              <AgentText>{m.text}</AgentText>
               {m.citations && m.citations.length > 0 && (
                 <MessageReferences citations={m.citations} />
               )}

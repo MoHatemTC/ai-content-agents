@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import type { GeneratedQuestion } from "@/types/domain";
 import { CitationChip } from "@/components/app/CitationChip";
 import { DifficultyBadge, BloomBadge, NeutralBadge } from "@/components/app/badges";
+import { AgentText } from "@/components/app/AgentText";
 
 export function InteractiveQuiz({ questions }: { questions: GeneratedQuestion[] }) {
   return (
@@ -62,7 +63,7 @@ function QuizItem({ q, index }: { q: GeneratedQuestion; index: number }) {
         </span>
       </div>
 
-      <h3 className="mt-3 text-[15px] leading-relaxed font-medium">{q.prompt}</h3>
+      <AgentText className="mt-3 text-[15px] leading-relaxed font-medium">{q.prompt}</AgentText>
 
       {isShortAnswer ? (
         <div className="mt-4 space-y-3">
@@ -95,7 +96,7 @@ function QuizItem({ q, index }: { q: GeneratedQuestion; index: number }) {
                     <span className="text-success text-[11px] font-semibold tracking-widest uppercase">
                       Expected answer
                     </span>
-                    <span className="text-foreground mt-0.5 block">{q.answer}</span>
+                    <AgentText className="text-foreground mt-0.5 block">{q.answer}</AgentText>
                   </span>
                 )}
               </div>
@@ -205,7 +206,9 @@ function QuizItem({ q, index }: { q: GeneratedQuestion; index: number }) {
               <p className="text-muted-foreground text-[11px] font-semibold tracking-widest uppercase">
                 Explanation
               </p>
-              <p className="text-muted-foreground mt-1 text-sm leading-relaxed">{q.rationale}</p>
+              <AgentText className="text-muted-foreground mt-1 text-sm leading-relaxed">
+                {q.rationale}
+              </AgentText>
             </div>
             <div>
               <p className="text-muted-foreground text-[11px] font-semibold tracking-widest uppercase">
