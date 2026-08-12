@@ -39,6 +39,48 @@ The three lanes:
 | Batch generation | ✅ `generate_batch` | ❌ | ✅ `src/study/batch.py` |
 | Prompt shape (7 sections, `prompt_template`) | ✅ | ✅ | ✅ |
 
+## The other axis: which entry path drives the agents
+
+The table above compares three lanes. It does not compare the two ways those
+agents get invoked, and that is where the same class of bug came back.
+
+| Path | Reaches agents via | Used by |
+|---|---|---|
+| Orchestrator | `_call_llm` + `validator.validate`, retries itself | Streamlit pages, batch, `src/validation/automation.py` |
+| HTTP services | `generate()` directly, which retries itself | `backend/` → the React UI |
+
+| Behaviour | Orchestrator | HTTP services |
+|---|---|---|
+| Cited ids verified against retrieval | ✅ | ✅ *(was ❌ for question bank / test help — see below)* |
+| Failed run recorded, not lost | ✅ | ✅ *(was ❌ on every service)* |
+| `run_started` / `run_failed` / `run_completed` events | ✅ | ✅ |
+| Warnings reach the review record | ✅ `generate_reviewable` | ✅ carried by the service |
+| Output persisted for review | ✅ | ✅ |
+| Retry | ✅ its own | ✅ `generate()`'s — never both |
+| Schema validation | `validator.validate` | inside `generate()` |
+
+**Two guards were missing on the HTTP path and are now closed.** The services
+called `agent.generate()` with a plain string and no `context=`, which switches
+`_enforce_grounding` off (`question_agent_base._generate_once`) — so question
+bank and test help accepted invented `segment_id`s that Streamlit refused. And
+every service saved its `AgentRun` only after a success, so a failed generation
+left no trace. `backend/runs.py:recorded_run` now mirrors the orchestrator's
+sequence, and `generate_or_422` is shared by both service modules.
+
+**The HTTP path does not use `validator.validate`, and should not.** The
+orchestrator needs it because it calls `_call_llm` and gets raw text back. The
+services call `generate()`, which already parses, schema-validates, enforces the
+request and enforces grounding. Running the validator over an
+already-validated model would duplicate the schema check, not add a guarantee.
+What the validator *also* did — putting warnings in the review record — the
+services now do directly.
+
+**Neither path may fabricate a citation.** A citation chip states the model
+cited that passage. The services used to attach the whole retrieved context to
+an output that cited nothing, and to match a flashcard's `source_topic` against
+chunk text by substring. Both are gone: the exact/fuzzy split in "Two rules
+worth keeping" applies to what gets *displayed*, not only to what blocks.
+
 ## The gaps that remain, and why
 
 **The study lane has no citation verification.** Its three schemas carry no

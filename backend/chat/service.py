@@ -283,10 +283,22 @@ def send_chat_message_service(
             id=gen_id,
             agent_run_id=run.id,
             output_type=f"{kind}_chat",
-            payload={"text": reply_text, "citations": [c.model_dump() for c in citations]},
+            payload={
+                "text": reply_text,
+                "citations": [c.model_dump() for c in citations],
+            },
             schema_name="MentorOutput" if kind == "mentor" else "ConceptOutput",
             validation_passed=True,
-            validation_report={"grounded": True},
+            validation_report={
+                "grounded": True,
+                # generate_reviewable() collects these into the review record;
+                # this path calls generate(), so it carries them itself. They
+                # are advisory - a 0.6 token-overlap heuristic that rejects
+                # correct answers - so they inform the reviewer, never block.
+                "grounding_warnings": list(
+                    getattr(agent, "_grounding_warnings", []) or []
+                ),
+            },
             status=OutputStatus.PENDING,
         )
         store.save_output(gen_output)
