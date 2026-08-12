@@ -406,3 +406,67 @@ class CompliantAgentsClient:
             "mentor, concept, question-bank and test-help agents. Prompt began: "
             f"{prompt[:200]!r}"
         )
+
+
+def unescape_backslashes(body: str) -> str:
+    r"""Undo JSON's backslash escaping, the way a real model fails to apply it.
+
+    ``json.dumps`` writes ``\\dots``; the model writes ``\dots``. One is valid
+    JSON and the other is what actually arrives.
+    """
+    return body.replace("\\\\", "\\")
+
+
+class LatexAgentsClient(CompliantAgentsClient):
+    r"""A gateway double whose replies carry LaTeX, the way the real one does.
+
+    :class:`CompliantAgentsClient` builds every reply with ``json.dumps``,
+    which escapes backslashes correctly. No test using it could therefore ever
+    reproduce the failure that broke every Mentor reply against the real
+    textbook: the prompts ask for mathematics as LaTeX, the model writes
+    ``$x_1, \dots, x_n$`` inside a JSON string, and ``\d`` is not one of JSON's
+    escapes - so a complete, correct answer is rejected by the parser.
+
+    1040 passing tests sat on top of that, because the double was more
+    well-behaved than the thing it stood in for. This one is not: it serialises
+    properly and then unescapes, which is exactly the malformed-but-meaningful
+    output the gateway receives.
+    """
+
+    #: The notation observed live, from the Linear Algebra textbook.
+    MATHS = r"$x_1, \dots, x_n$ in $\mathbb{R}^n$, with $\underline{x}$"
+
+    def create(self, **kwargs: Any) -> Reply:
+        self.calls.append(kwargs)
+        prompt = kwargs["messages"][0]["content"]
+        segment_id, text = self._grounding(prompt)
+        maths = f"{text[:120]} {self.MATHS}"
+        references = [{"segment_id": segment_id, "text": text[:240]}]
+
+        if "educational mentor" in prompt:
+            payload = {
+                "explanation": maths,
+                "key_points": [maths],
+                "next_steps": [maths],
+                "references": references,
+                "requires_human_review": True,
+            }
+        elif "concept explanation assistant" in prompt:
+            payload = {
+                "definition": maths,
+                "explanation": maths,
+                "key_points": [maths],
+                "references": references,
+                "requires_human_review": True,
+            }
+        elif "assessment specialist" in prompt or "test preparation assistant" in prompt:
+            return Reply(
+                unescape_backslashes(self._questions(prompt, segment_id, maths))
+            )
+        else:
+            raise AssertionError(
+                "LatexAgentsClient does not recognise this prompt. Prompt began: "
+                f"{prompt[:200]!r}"
+            )
+
+        return Reply(unescape_backslashes(json.dumps(payload)))
