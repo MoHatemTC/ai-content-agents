@@ -98,10 +98,16 @@ def test_beta_is_latex_not_a_backspace() -> None:
      r"\rho", r"\rightarrow", r"\begin{bmatrix}", r"\textbf{x}", r"\bar{x}"],
 )
 def test_ambiguous_initial_commands_survive(command: str) -> None:
-    r"""Every LaTeX command starting with b, f, n, r or t is exposed."""
-    parsed = loads_model_json('{"t": "%s"}' % command)
+    r"""Every LaTeX command starting with b, f, n, r or t is exposed.
 
-    assert parsed["t"] == command
+    Delimited, because that is how they arrive - the prompts require it and all
+    29 commands in the stored replies obeyed. Undelimited is a separate case
+    with a separate answer; see
+    ``test_an_undelimited_command_is_left_for_the_detector``.
+    """
+    parsed = loads_model_json('{"t": "$%s$"}' % command)
+
+    assert parsed["t"] == f"${command}$"
 
 
 @pytest.mark.parametrize(
@@ -169,6 +175,89 @@ def test_escapes_the_model_got_right_are_left_alone() -> None:
 def test_a_tab_that_is_really_a_tab_is_preserved() -> None:
     """``\\t`` not followed by a command is still a tab."""
     assert loads_model_json(r'{"t": "col1\tcol2"}')["t"] == "col1\tcol2"
+
+
+# --------------------------------------------------------------------------- #
+# Maths delimiters decide, so no list has to
+#
+# Measured across the stored replies: 29 LaTeX commands inside $...$, 0 outside.
+# The model delimits everything, exactly as the prompts tell it to, so "is this
+# backslash inside maths?" answers what a hand-written list of command names was
+# guessing at - and answers it for commands nobody thought to list.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # The two the list had to drop: they collide with "e.g." and "i.e."
+        # in prose, and are unambiguous once delimited.
+        r"\ne", r"\ni",
+        # Names no list contained.
+        r"\bowtie", r"\ltimes", r"\curlyvee", r"\nrightarrow", r"\rtimes",
+    ],
+)
+def test_any_command_inside_maths_survives(command: str) -> None:
+    parsed = loads_model_json('{"t": "the value $x %s y$ holds"}' % command)
+
+    assert parsed["t"] == f"the value $x {command} y$ holds"
+
+
+def test_display_maths_survives() -> None:
+    raw = r'{"t": "the sum $$\sum_{i=1}^{n} \alpha_i x_i = \beta$$ converges"}'
+
+    parsed = loads_model_json(raw)
+
+    assert parsed["t"] == (
+        r"the sum $$\sum_{i=1}^{n} \alpha_i x_i = \beta$$ converges"
+    )
+
+
+def test_a_newline_inside_display_maths_stays_a_newline() -> None:
+    r"""The model lays equations out across lines, and that must survive.
+
+    Escaping every backslash inside a span turned ``$$A =`` newline
+    ``\begin{bmatrix}`` into a literal ``\n``. A command has two letters or
+    more; a control escape has exactly one, which is what separates them.
+    """
+    raw = r'{"t": "$$A =\n\begin{bmatrix} 1 \\ 2 \end{bmatrix}$$"}'
+
+    parsed = loads_model_json(raw)
+
+    assert "\n" in parsed["t"], "the line break was escaped away"
+    assert r"\begin{bmatrix}" in parsed["t"]
+    assert r"\n\begin" not in parsed["t"]
+
+
+def test_a_newline_inside_prose_is_kept_when_dollars_are_unbalanced() -> None:
+    r"""Two stray currency amounts must not turn the prose between them into maths.
+
+    "costs $5 … worth $10" is ordinary writing, and a Leontief economics chapter
+    is exactly where it shows up. Without a length cap the span between them
+    would be treated as maths and the newline inside it escaped away.
+    """
+    raw = (
+        r'{"t": "the process costs $5 per unit, which is a long way of saying '
+        r'that the intermediate demand is not free and has to be accounted for '
+        r'somewhere in the model.\nThe output is worth $10 per unit."}'
+    )
+
+    parsed = loads_model_json(raw)
+
+    assert "\n" in parsed["t"]
+    assert r"\nThe" not in parsed["t"]
+
+
+def test_an_undelimited_command_is_left_for_the_detector() -> None:
+    r"""Bare ``\theta`` is indistinguishable from a tab, and is not guessed at.
+
+    Nothing here can tell them apart, so the reply keeps its tab and
+    ``find_corruption`` refuses it - one more sample rather than a wrong answer.
+    That is self-correcting in a way the list never was.
+    """
+    parsed = loads_model_json(r'{"t": "the angle \theta is small"}')
+
+    assert "\t" in parsed["t"]
 
 
 def test_structurally_broken_json_still_raises() -> None:

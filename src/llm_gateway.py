@@ -253,53 +253,75 @@ def loads_model_json(text: str) -> Any:
             are repaired - a truncated or non-JSON reply is a real error and
             must stay one.
     """
-    return json.loads(_ESCAPES.sub(_repair_escape, text))
+    return json.loads(_ESCAPES.sub(_repair_escape, _protect_maths(text)))
 
 
-# LaTeX commands beginning with n, t or r - the three escape characters that
-# are *also* legitimate content. A reply really does contain newlines, so
-# ``\n`` has to stay a newline unless the letters after it spell a command.
+# A maths span. Inside one, every backslash is a LaTeX command by construction,
+# which is what makes a list of command names unnecessary: measured across the
+# stored replies, 29 of 29 commands sat inside delimiters and none outside,
+# because that is what the prompts ask for.
 #
-# ``ne`` and ``ni`` are deliberately absent. They swallow a paragraph beginning
-# "e.g." or "i.e." - ordinary prose, and far commoner in an explanation than the
-# two symbols are. Nothing else collides: ``\nu`` needs a line starting with a
-# lone "u", ``\to`` needs a tab before an "o" word, and a tab is rejected
-# outright further down. Dropping a command costs a rendered glyph; keeping a
-# greedy one costs the reader a mangled sentence.
+# The length caps bound the one way this misreads prose. "the process costs $5
+# … the output is worth $10" is ordinary writing - and a Leontief economics
+# chapter is exactly where it appears - so an unbalanced pair would otherwise
+# swallow everything between them and escape a real newline.
 #
-# Sorted longest-first so ``textbf`` wins over ``text``; the trailing boundary
-# then stops ``\textbf`` matching as ``text`` plus stray letters.
-_LATEX_NTR = sorted(
-    (
-        # t - \times and \text were both seen corrupting live output
-        "times", "theta", "tau", "text", "textbf", "textit", "texttt", "tfrac",
-        "tilde", "to", "top", "triangle", "therefore", "tan", "tanh", "tbinom",
-        # n
-        "neq", "nu", "nabla", "not", "notin", "nonumber", "nleq", "ngeq",
-        "nmid", "nsubseteq", "nsupseteq",
-        # r
-        "rho", "rightarrow", "rangle", "rceil", "rfloor", "right", "rtimes",
-        "rm", "rvert", "real",
-    ),
-    key=len,
-    reverse=True,
+# 120 is measured, not guessed: across 49 real inline spans the median was 12
+# characters and the longest 56 - a bmatrix - so this leaves roughly double the
+# headroom while failing closed on a sentence-length gap. Display maths keeps a
+# larger allowance because nobody writes "$$5".
+_MATHS_SPANS = re.compile(
+    r"\$\$[\s\S]{1,400}?\$\$"  # display maths
+    r"|\$[^$]{1,120}?\$"  # inline maths
 )
 
-# Order is the whole design:
-#   1. an already-escaped backslash, consumed whole so a correct ``\\mathbf``
-#      is never touched (the model does get it right sometimes),
+# Within a span: an already-escaped backslash, consumed whole so a correct
+# ``\\begin`` is not escaped twice, or a command *name*.
+#
+# Two letters minimum, because a command has at least two and a control escape
+# has exactly one. Escaping every backslash instead turned a real newline
+# inside display maths into a literal ``\n`` - the model does lay equations out
+# across lines, and ``$$A =`` newline ``\begin{bmatrix}`` is how they arrive.
+_SPAN_COMMAND = re.compile(r"\\\\|\\[A-Za-z]{2,}")
+
+
+def _protect_maths(text: str) -> str:
+    r"""Escape the LaTeX commands inside a maths span.
+
+    This is the pass that removes the guessing. ``$x \ne y$`` is unambiguous:
+    a command is the only thing a backslash can start there, so ``\ne`` is the
+    symbol and not a newline followed by "e". Outside a span the question stays
+    open and the second pass answers it conservatively.
+
+    Anything this leaves - a lone ``\n``, a ``\,`` thin space - falls through to
+    that second pass and is treated exactly as it would be in prose.
+    """
+
+    def protect(match: re.Match[str]) -> str:
+        return _SPAN_COMMAND.sub(
+            lambda m: m.group(0) if m.group(0) == "\\\\" else "\\" + m.group(0),
+            match.group(0),
+        )
+
+    return _MATHS_SPANS.sub(protect, text)
+
+# The second pass, for what is left outside a maths span. Order is the design:
+#   1. an already-escaped backslash, consumed whole. After _protect_maths this
+#      also covers every command inside maths, and a correct ``\\mathbf`` the
+#      model wrote itself,
 #   2. a backslash-b or backslash-f followed by letters. These decode to
-#      BACKSPACE and FORM FEED, neither of which means anything in a study
-#      explanation, so the letters are LaTeX by construction - no list to keep
-#      current, and it covers the names a list always misses,
-#   3. a listed command beginning with n, t or r - the escapes that are also
-#      legitimate content, so only known names may claim them,
-#   4. a genuine escape, left alone: what keeps a real newline a newline,
-#   5. anything else: an invalid escape, doubled so JSON accepts it.
+#      BACKSPACE and FORM FEED, neither of which means anything in an
+#      explanation, so the letters are a command whether or not anyone
+#      delimited them,
+#   3. a genuine escape, left alone: what keeps a real newline a newline,
+#   4. anything else: an invalid escape, doubled so JSON accepts it.
+#
+# There is deliberately no list of command names. Undelimited ``\theta`` is
+# indistinguishable from a tab, so it stays a tab and find_corruption refuses
+# the reply - one more sample, rather than a guess that was wrong twice.
 _ESCAPES = re.compile(
     r"(?P<kept>\\\\)"
     r"|(?P<never>\\[bf][A-Za-z]+)"
-    r"|(?P<latex>\\(?:" + "|".join(_LATEX_NTR) + r")(?![A-Za-z]))"
     r'|(?P<valid>\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))'
     r"|(?P<lone>\\)"
 )
@@ -321,7 +343,7 @@ def _repair_escape(match: re.Match[str]) -> str:
     both longer than two characters and mean opposite things.
     """
     branch = match.lastgroup
-    if branch in ("latex", "never"):
+    if branch == "never":
         return "\\" + match.group(0)
     if branch == "lone":
         return "\\\\"
