@@ -7,6 +7,16 @@ offline; importing it from production code therefore pollutes a running server
 This module has no import-time side effects. Production only instantiates these
 doubles when ``SENSEI_USE_TEST_DOUBLES`` is set; tests reach them via the
 re-exports in ``tests/conftest.py``.
+
+**That last sentence used to be false.** ``conftest.py`` did not re-export
+these - it held a second copy, 421 duplicated lines of it, and the two drifted
+in both directions. This copy answered ``options=None`` for every non-mcq
+question type, so a ``true_false`` generation failed schema validation against
+a double whose whole job is to be compliant; that was fixed in the other copy
+and never came back. Meanwhile this one grew the study-plan topic slicing that
+the other lacked. The backend under doubles and the agents under doubles were
+therefore not testing the same thing - which is precisely the failure mode a
+shared double exists to prevent.
 """
 
 from __future__ import annotations
@@ -297,6 +307,22 @@ class CompliantStudyClient:
         )
 
 
+# What each question type must answer with. The schema enforces that
+# ``correct_answer`` is one of ``options`` character for character when options
+# is not null, and free text when it is - see question_bank.yaml.
+#
+# The double used to answer ``None`` for every non-mcq type, so a true_false
+# generation failed schema validation against a double that was supposed to be
+# compliant. Fixed in tests/conftest.py and never carried across to here, which
+# is the drift this module now exists to end.
+_OPTIONS_FOR: dict[str, list[str] | None] = {
+    "mcq": ["for", "while", "if", "switch"],
+    "true_false": ["True", "False"],
+    "short_answer": None,
+}
+_ANSWER_FOR = {"mcq": "while", "true_false": "False", "short_answer": "a while loop"}
+
+
 class CompliantAgentsClient:
     """A fake gateway for the four content agents in ``src/agents``.
 
@@ -353,10 +379,8 @@ class CompliantAgentsClient:
         questions = [
             {
                 "question": f"Question {index + 1} about the supplied content?",
-                "options": ["for", "while", "if", "switch"]
-                if question_type == "mcq"
-                else None,
-                "correct_answer": "while",
+                "options": _OPTIONS_FOR.get(question_type),
+                "correct_answer": _ANSWER_FOR.get(question_type, "while"),
                 "rationale": text[:240],
                 "difficulty": difficulty.group(1) if difficulty else "beginner",
                 "type": question_type,
