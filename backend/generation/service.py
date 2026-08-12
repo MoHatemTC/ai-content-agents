@@ -32,6 +32,7 @@ from backend.generation.schemas import (
     WsFlashcard,
 )
 from backend.errors import ApiError
+from backend.runs import generate_or_422, recorded_run
 from backend.search.service import build_grounded_context
 from src.agents.question_bank_agent import QuestionBankAgent
 from src.agents.test_help_agent import TestHelpAgent
@@ -124,152 +125,146 @@ def generate_questions_service(
 ) -> GenerateQuestionsResponse:
     """Generate question bank or exam help grounded in workspace documents."""
     store = PlatformStore(db_path)
+    agent_name = "test_help_agent" if is_test_help else "question_bank_agent"
+    model = _resolve_model(request.model)
 
     # 1. Build grounded context
     query = (
         f"Key concepts difficulty {request.difficulty} types {','.join(request.types)}"
     )
-    grounded = build_grounded_context(
-        workspace_id=request.workspaceId,
-        query=query,
-        document_ids=request.documentIds if request.documentIds else None,
-        chroma_dir=chroma_dir,
-    )
-
-    if not grounded.chunks:
-        raise InsufficientGroundingError(
-            "No indexed documents found in workspace to ground generation."
-        )
-
-    # 2. Invoke agent
-    client = _get_llm_client(for_study=False)
     q_type = request.types[0] if request.types else "MCQ"
-    content_text = grounded.as_prompt_content()
 
-    if is_test_help:
-        agent = TestHelpAgent(client=client, model=_resolve_model(request.model))
-        output: QuestionBankOutput = agent.generate(
-            content=content_text,
-            question_type=q_type,
-            difficulty=request.difficulty.lower(),
-            num_questions=request.count,
-        )
-    else:
-        agent = QuestionBankAgent(client=client, model=_resolve_model(request.model))
-        output = agent.generate(
-            content=content_text,
-            question_type=q_type,
-            difficulty=request.difficulty.lower(),
-            num_questions=request.count,
-        )
-
-    # 3. Build per-question citations from each question's own grounded references.
-    # The agent returns references per question, so citations must follow the
-    # question rather than reusing one shared list for the whole request.
-    chunk_by_id = {chunk.chunk.chunk_id: chunk for chunk in grounded.chunks}
-
-    def _question_citations(q: QuestionItem) -> list[Citation]:
-        """Map one question's agent references to the citation contract."""
-        refs = getattr(q, "references", None) or []
-        if not refs:
-            # No per-question references: fall back to the retrieved context so
-            # every question still shows where the material came from.
-            return [
-                Citation(
-                    doc=(
-                        chunk.chunk.chunk_id.split("-c")[0]
-                        if "-c" in chunk.chunk.chunk_id
-                        else chunk.chunk.chunk_id
-                    ),
-                    chunk=chunk.chunk.chunk_id,
-                    snippet=chunk.chunk.text[:200],
-                    score=round(chunk.score, 3),
-                )
-                for chunk in grounded.chunks
-            ]
-
-        result: list[Citation] = []
-        for ref in refs:
-            segment_id = ref.segment_id
-            retrieved = chunk_by_id.get(segment_id)
-            doc_id = segment_id.split("-c")[0] if "-c" in segment_id else segment_id
-            snippet = ref.text or (retrieved.chunk.text if retrieved else "")
-            result.append(
-                Citation(
-                    doc=doc_id,
-                    chunk=segment_id,
-                    snippet=snippet[:200],
-                    score=round(retrieved.score, 3) if retrieved else 0.0,
-                )
-            )
-        return result
-
-    # 4. Support validation score
-    support = validate_support(extract_claim_text(output), grounded)
-    grounding_score = 100.0 if support.supported else 85.0
-    quality_score = 9.2 if support.supported else 7.5
-
-    questions: list[GeneratedQuestion] = []
-    for idx, q in enumerate(output.questions, start=1):
-        questions.append(
-            GeneratedQuestion(
-                id=f"q-{uuid4().hex[:8]}",
-                prompt=q.question,
-                type=_display_type(getattr(q, "type", "") or q_type),
-                difficulty=request.difficulty,
-                options=getattr(q, "options", None),
-                answer=getattr(q, "correct_answer", "") or getattr(q, "answer", ""),
-                rationale=getattr(q, "rationale", ""),
-                bloom="Understanding",
-                quality=quality_score,
-                grounded=grounding_score,
-                estMinutes=2,
-                review="Pending",
-                citations=_question_citations(q),
-            )
-        )
-
-    # 5. Save AgentRun and GeneratedOutput to PlatformStore
-    run = AgentRun(
-        agent_name="test_help_agent" if is_test_help else "question_bank_agent",
+    # Everything that can fail runs inside the recorder, so an unanswerable
+    # query or a refused generation is a failed run in History rather than a
+    # response that never happened.
+    with recorded_run(
+        store,
+        agent_name=agent_name,
         input_context=f"workspace:{request.workspaceId}",
-        source_chunk_ids=grounded.chunk_ids,
-        model=_resolve_model(request.model),
-    )
-    run.mark_finished()
-    store.save_agent_run(run)
-
-    gen_id = f"gen-{uuid4().hex[:8]}"
-    gen_output = GeneratedOutput(
-        id=gen_id,
-        agent_run_id=run.id,
-        output_type="question_bank",
-        payload={"questions": [q.model_dump() for q in questions]},
-        schema_name="QuestionBankOutput",
-        validation_passed=support.supported,
-        validation_report={
-            "support": support.supported,
-            "grounding_score": grounding_score,
-        },
-        status=OutputStatus.PENDING,
-    )
-    store.save_output(gen_output)
-
-    # Auto-flag if thresholds not met
-    if grounding_score < 98.0 or quality_score < 8.5:
-        store.log_event(
-            "auto_flagged",
-            f"Output {gen_id} auto-flagged due to low grounding ({grounding_score}) or quality ({quality_score})",
-            output_id=gen_id,
+        model=model,
+    ) as run:
+        grounded = build_grounded_context(
+            workspace_id=request.workspaceId,
+            query=query,
+            document_ids=request.documentIds if request.documentIds else None,
+            chroma_dir=chroma_dir,
         )
 
-    return GenerateQuestionsResponse(
-        generationId=gen_id,
-        kind="question_bank",
-        grounding_score=grounding_score,
-        quality_score=quality_score,
-        questions=questions,
-    )
+        if not grounded.chunks:
+            raise InsufficientGroundingError(
+                "No indexed documents found in workspace to ground generation."
+            )
+        run.source_chunk_ids = grounded.chunk_ids
+
+        # 2. Invoke agent
+        client = _get_llm_client(for_study=False)
+        agent_type = TestHelpAgent if is_test_help else QuestionBankAgent
+        agent = agent_type(client=client, model=model)
+        # `context=` is what switches _enforce_grounding on. Without it the
+        # agent verifies nothing (question_agent_base._generate_once), so an
+        # invented segment_id reaches the UI wearing a citation chip.
+        output: QuestionBankOutput = generate_or_422(
+            agent,
+            content=grounded,
+            question_type=q_type,
+            difficulty=request.difficulty.lower(),
+            num_questions=request.count,
+            context=grounded,
+        )
+
+        # 3. Build per-question citations from each question's own references.
+        # The agent returns references per question, so citations must follow
+        # the question rather than reusing one shared list for the request.
+        chunk_by_id = {chunk.chunk.chunk_id: chunk for chunk in grounded.chunks}
+
+        def _question_citations(q: QuestionItem) -> list[Citation]:
+            """Map one question's agent references to the citation contract."""
+            # No fallback to "every retrieved chunk" here. A citation chip
+            # states the model cited that passage; attaching the whole context
+            # to an uncited question says something the model never said. With
+            # `context=` passed above, an uncited set is refused outright, so
+            # this list is empty only when a question genuinely cited nothing.
+            result: list[Citation] = []
+            for ref in getattr(q, "references", None) or []:
+                segment_id = ref.segment_id
+                retrieved = chunk_by_id.get(segment_id)
+                doc_id = segment_id.split("-c")[0] if "-c" in segment_id else segment_id
+                snippet = ref.text or (retrieved.chunk.text if retrieved else "")
+                result.append(
+                    Citation(
+                        doc=doc_id,
+                        chunk=segment_id,
+                        snippet=snippet[:200],
+                        score=round(retrieved.score, 3) if retrieved else 0.0,
+                    )
+                )
+            return result
+
+        # 4. Support validation score
+        support = validate_support(extract_claim_text(output), grounded)
+        grounding_score = 100.0 if support.supported else 85.0
+        quality_score = 9.2 if support.supported else 7.5
+
+        questions: list[GeneratedQuestion] = []
+        for q in output.questions:
+            questions.append(
+                GeneratedQuestion(
+                    id=f"q-{uuid4().hex[:8]}",
+                    prompt=q.question,
+                    type=_display_type(getattr(q, "type", "") or q_type),
+                    difficulty=request.difficulty,
+                    options=getattr(q, "options", None),
+                    answer=getattr(q, "correct_answer", "")
+                    or getattr(q, "answer", ""),
+                    rationale=getattr(q, "rationale", ""),
+                    bloom="Understanding",
+                    quality=quality_score,
+                    grounded=grounding_score,
+                    estMinutes=2,
+                    review="Pending",
+                    citations=_question_citations(q),
+                )
+            )
+
+        # 5. Save the GeneratedOutput; recorded_run owns the AgentRun.
+        gen_id = f"gen-{uuid4().hex[:8]}"
+        gen_output = GeneratedOutput(
+            id=gen_id,
+            agent_run_id=run.id,
+            output_type="question_bank",
+            payload={"questions": [q.model_dump() for q in questions]},
+            schema_name="QuestionBankOutput",
+            validation_passed=support.supported,
+            validation_report={
+                "support": support.supported,
+                "grounding_score": grounding_score,
+                # The agent's own grounding warnings are advisory (a 0.6
+                # token-overlap heuristic); they inform the reviewer rather
+                # than blocking, so they belong in the review record.
+                "grounding_warnings": list(
+                    getattr(agent, "_grounding_warnings", []) or []
+                ),
+            },
+            status=OutputStatus.PENDING,
+        )
+        store.save_output(gen_output)
+
+        # Auto-flag if thresholds not met
+        if grounding_score < 98.0 or quality_score < 8.5:
+            store.log_event(
+                "auto_flagged",
+                f"Output {gen_id} auto-flagged due to low grounding "
+                f"({grounding_score}) or quality ({quality_score})",
+                output_id=gen_id,
+            )
+
+        return GenerateQuestionsResponse(
+            generationId=gen_id,
+            kind="question_bank",
+            grounding_score=grounding_score,
+            quality_score=quality_score,
+            questions=questions,
+        )
 
 
 def generate_flashcards_service(

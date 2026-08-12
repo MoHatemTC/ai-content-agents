@@ -6,10 +6,16 @@ Tests /generate/questions, /generate/test-help, /generate/flashcards,
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
+from backend.generation import service as gen_service
 from backend.main import create_app
+from src.testing.compliant import Reply
+from src.validation.review_schema import RunStatus
+from src.validation.store import PlatformStore
 from tests.supabase_test_helpers import make_settings, make_token
 
 
@@ -172,3 +178,117 @@ def test_generate_revision_sheet_success(gen_app_client):
     assert data["kind"] == "revision_sheet"
     assert "sections" in data
     assert len(data["weakTopics"]) > 0
+
+
+# --------------------------------------------------------------------------- #
+# Parity with the orchestrator path
+#
+# The guards in docs/agent-parity.md are all reached when the agents are driven
+# from Streamlit or the orchestrator. These two tests pin the same guarantees
+# for the FastAPI path, where the React UI drives them.
+# --------------------------------------------------------------------------- #
+
+
+class _InventingClient:
+    """A gateway double that cites a chunk id which is not in the context.
+
+    Mirrors ``CompliantAgentsClient``'s shape, but answers with a fabricated
+    ``segment_id``. ``verify_references`` is set membership over the retrieved
+    chunk ids, so this is exactly what it exists to catch.
+    """
+
+    def __init__(self) -> None:
+        self.chat = self
+        self.completions = self
+
+    def create(self, **kwargs: object) -> Reply:
+        questions = [
+            {
+                "question": "Which organelle produces ATP?",
+                "options": ["Nucleus", "Mitochondria", "Ribosome", "Golgi"],
+                "correct_answer": "Mitochondria",
+                "rationale": "Mitochondria produce most of the cell's ATP.",
+                "difficulty": "intermediate",
+                "type": "mcq",
+                "references": [
+                    {
+                        "segment_id": "chunk-that-was-never-retrieved",
+                        "text": "Mitochondria produce most of the cell's ATP.",
+                    }
+                ],
+            }
+        ]
+        return Reply(json.dumps({"questions": questions, "requires_human_review": True}))
+
+
+class _ExplodingClient:
+    """A gateway double that fails the way a saturated provider does."""
+
+    def __init__(self) -> None:
+        self.chat = self
+        self.completions = self
+
+    def create(self, **kwargs: object) -> Reply:
+        raise RuntimeError("gateway exploded")
+
+
+def test_generate_questions_rejects_invented_citations(
+    gen_app_client, tmp_path, monkeypatch
+):
+    """An invented segment_id must not reach the UI as a grounded question.
+
+    The chat path passes ``context=`` and so verifies citations; before this
+    fix the generation path passed only a string, which left
+    ``_enforce_grounding`` switched off for question bank and test help.
+    """
+    client, token, ws_id = gen_app_client
+    monkeypatch.setattr(
+        gen_service, "_get_llm_client", lambda for_study=False: _InventingClient()
+    )
+
+    resp = client.post(
+        "/generate/questions",
+        json={
+            "workspaceId": ws_id,
+            "documentIds": [],
+            "model": "gemini",
+            "count": 1,
+            "difficulty": "Intermediate",
+            "types": ["MCQ"],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "ungrounded_reply"
+
+
+def test_failed_generation_is_recorded_not_lost(gen_app_client, tmp_path, monkeypatch):
+    """A run that never produced an output still belongs in History."""
+    client, token, ws_id = gen_app_client
+    monkeypatch.setattr(
+        gen_service, "_get_llm_client", lambda for_study=False: _ExplodingClient()
+    )
+
+    # The gateway failure still reaches the catch-all handler (a 500 envelope
+    # in a real server; TestClient re-raises it). What must not happen is the
+    # run disappearing with it.
+    with pytest.raises(RuntimeError, match="gateway exploded"):
+        client.post(
+            "/generate/questions",
+            json={
+                "workspaceId": ws_id,
+                "documentIds": [],
+                "model": "gemini",
+                "count": 1,
+                "difficulty": "Intermediate",
+                "types": ["MCQ"],
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    store = PlatformStore(str(tmp_path / "test_gen.db"))
+    failures = store.list_agent_runs(status=RunStatus.FAILURE)
+    assert failures, "the failed run was not recorded"
+    assert failures[0].agent_name == "question_bank_agent"
+    assert "gateway exploded" in (failures[0].error or "")
